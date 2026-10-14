@@ -3,7 +3,15 @@ import Foundation
 enum DeepSeekCredentialLocator {
     static func module(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
         let suffix = "@deepseek-ai/dsh-credentials-local/lib/index.js"
-        var roots = ["/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules"].map { URL(fileURLWithPath: $0) }
+        var roots: [URL]
+        #if os(Windows)
+        roots = [URL(fileURLWithPath: ProcessInfo.processInfo.environment["APPDATA"] ?? "",
+                     isDirectory: true).appendingPathComponent("npm/node_modules"),
+                 URL(fileURLWithPath: ProcessInfo.processInfo.environment["PROGRAMFILES"] ?? "",
+                     isDirectory: true).appendingPathComponent("nodejs/node_modules")]
+        #else
+        roots = ["/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules"].map { URL(fileURLWithPath: $0) }
+        #endif
         roots.append(home.appendingPathComponent(".bun/install/global/node_modules"))
         let cache = home.appendingPathComponent(".npm/_npx")
         if let installs = try? FileManager.default.contentsOfDirectory(at: cache, includingPropertiesForKeys: [.contentModificationDateKey]) {

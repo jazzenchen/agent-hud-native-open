@@ -11,25 +11,40 @@ enum ProcessLines {
     static func mentioning(_ words: [String], in listing: String) -> [String] {
         let words = words.filter { !$0.isEmpty }
         guard !words.isEmpty else { return [] }
-        return listing.withCString { text in
-            let length = strlen(text)
-            // Each line that holds a match, by where it starts.
-            var found: [Int: Int] = [:]
-            for word in words {
-                var cursor = 0
-                // The words are ASCII, and no locale folds another byte into an ASCII letter.
-                while cursor < length, let match = strcasestr(text + cursor, word) {
-                    var start = text.distance(to: match)
-                    while start > 0, text[start - 1] != 0x0A { start -= 1 }
-                    let end = memchr(match, 0x0A, length - text.distance(to: match))
-                        .map { UnsafeRawPointer(text).distance(to: $0) } ?? length
-                    found[start] = end
-                    cursor = end + 1
-                }
-            }
-            return found.sorted { $0.key < $1.key }.map { start, end in
-                String(decoding: UnsafeRawBufferPointer(start: text + start, count: end - start), as: UTF8.self)
+        // ASCII case folding only: the words are plain ASCII, and no locale folds another byte into an ASCII letter.
+        func fold(_ byte: UInt8) -> UInt8 { (65...90).contains(byte) ? byte &+ 32 : byte }
+        let needles = words.map { Array($0.utf8).map(fold) }
+        var lines: [String] = []
+        var line = [UInt8]()
+        func keep() {
+            if needles.contains(where: { matches(line, $0) }) {
+                lines.append(String(decoding: line, as: UTF8.self))
             }
         }
+        for byte in listing.utf8 {
+            if byte == 0x0A {
+                keep()
+                line.removeAll(keepingCapacity: true)
+            } else {
+                line.append(byte)
+            }
+        }
+        keep()
+        return lines
+    }
+
+    /// Whether the folded bytes of `needle` appear anywhere in the folded `line`.
+    private static func matches(_ line: [UInt8], _ needle: [UInt8]) -> Bool {
+        guard let first = needle.first, line.count >= needle.count else { return false }
+        var start = 0
+        while start + needle.count <= line.count {
+            if fold(line[start]) == first {
+                var offset = 1
+                while offset < needle.count, fold(line[start + offset]) == needle[offset] { offset += 1 }
+                if offset == needle.count { return true }
+            }
+            start += 1
+        }
+        return false
     }
 }

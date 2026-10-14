@@ -170,6 +170,8 @@ make test
 make run
 ```
 
+在 Windows 上，同一仓库构建平台无关的记录、数据源与存储层，以及可执行文件里的 hook、适配器与 `--probe` 命令（`swift test` 即可构建并验证）；灵动岛与统计界面依赖 AppKit，仍是 macOS 专属，部分依赖内核信息的功能（会话归属终端、Antigravity 服务发现）在 Windows 上不可用。
+
 以上命令会构建并打开 `build/Agent HUD Open.app`，使用临时签名供本机运行，无需开发者账户、签名身份或预置描述文件。想在没有安装任何 agent 时试用，先退出应用，再运行 `make demo`，它会用示例数据打开应用。
 
 <details>

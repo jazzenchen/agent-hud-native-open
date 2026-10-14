@@ -19,7 +19,7 @@ actor CursorClient {
         return result
     }
 
-    init(database: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb"),
+    init(database: URL = ClientHome.applicationData("Cursor").appendingPathComponent("User/globalStorage/state.vscdb"),
          agentFolder: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cursor"),
          http: ProviderHTTP = ProviderHTTP()) {
         self.database = database; self.agentFolder = agentFolder; self.http = http

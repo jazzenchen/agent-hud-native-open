@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Providers/Codex/CodexTerminalOriginsTests.swift tests macOS-side sockets and home layouts.
 import Darwin
 import Foundation
 import XCTest
@@ -60,3 +62,4 @@ final class CodexTerminalOriginsTests: XCTestCase {
         XCTAssertNil(CodexTerminalOrigins.terminalEnvironment(data.prefix(12)))
     }
 }
+#endif

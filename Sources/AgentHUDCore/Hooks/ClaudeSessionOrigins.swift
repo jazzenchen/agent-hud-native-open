@@ -105,7 +105,12 @@ public enum ClaudeSessionOrigins {
     }
 
     private static func engineArguments(ancestors: [HookProcessOrigins.Ancestor], executablePaths: Set<String>) -> [String]? {
+        #if os(Windows)
+        // Ancestry is unknown on Windows, so no shell is ever skipped there.
+        let shells: Set<String> = []
+        #else
         let shells: Set<String> = ["/bin/sh", "/bin/bash", "/bin/zsh"]
+        #endif
         guard let process = ancestors.first(where: { !shells.contains($0.executable) }) else { return nil }
         let executable = URL(fileURLWithPath: process.executable).resolvingSymlinksInPath().path
         let arguments: [String]

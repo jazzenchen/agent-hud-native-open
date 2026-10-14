@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#endif
 
 /// Kernel-reported callback ancestry shared by local origin hooks; process environments are never decoded.
 enum HookProcessOrigins {
@@ -11,6 +13,10 @@ enum HookProcessOrigins {
     }
 
     static func ancestors() -> [Ancestor] {
+        #if os(Windows)
+        // Kernel-reported ancestry has no Windows equivalent here; the callback runs without one.
+        return []
+        #else
         var pid = getppid(), seen: Set<pid_t> = [], result: [Ancestor] = []
         while pid > 1, result.count < 16, seen.insert(pid).inserted {
             var info = proc_bsdinfo()
@@ -23,8 +29,10 @@ enum HookProcessOrigins {
             pid = pid_t(info.pbi_ppid)
         }
         return result
+        #endif
     }
 
+    #if !os(Windows)
     private static func bundleIdentifier(_ executable: String) -> String? {
         let file = URL(fileURLWithPath: executable), macOS = file.deletingLastPathComponent()
         guard macOS.lastPathComponent == "MacOS", macOS.deletingLastPathComponent().lastPathComponent == "Contents" else { return nil }
@@ -61,4 +69,5 @@ enum HookProcessOrigins {
         }
         return arguments
     }
+    #endif
 }

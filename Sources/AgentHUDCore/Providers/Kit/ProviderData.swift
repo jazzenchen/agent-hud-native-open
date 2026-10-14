@@ -51,9 +51,14 @@ public enum AdditionalSource: String, CaseIterable, Sendable {
         // A same-named desktop app is not the CLI these clients read, and it must not trigger hook installation.
         default: return layout?.installPaths.contains { FileManager.default.fileExists(atPath: home.appendingPathComponent($0).path) } ?? false
         }
+        #if os(Windows)
+        return paths.contains { FileManager.default.fileExists(atPath: home.appendingPathComponent($0).path) }
+            || !VendorCatalog.applications(vendor).isEmpty
+        #else
         return paths.contains { FileManager.default.fileExists(atPath: home.appendingPathComponent($0).path) }
             || FileManager.default.fileExists(atPath: "/Applications/\(vendor).app")
             || !VendorCatalog.applications(vendor).isEmpty
+        #endif
     }
 }
 

@@ -43,8 +43,13 @@ public enum CodexLocator {
     }
 
     private static func cli(home: URL, path: String) -> [URL] {
-        [home.appendingPathComponent(".bun/bin/codex"), home.appendingPathComponent(".local/bin/codex"),
-         URL(fileURLWithPath: "/opt/homebrew/bin/codex"), URL(fileURLWithPath: "/usr/local/bin/codex")]
+        #if os(Windows)
+        return [home.appendingPathComponent(".bun/bin/codex.exe"), home.appendingPathComponent(".local/bin/codex.exe")]
             + Executables.onPath("codex", path: path)
+        #else
+        return [home.appendingPathComponent(".bun/bin/codex"), home.appendingPathComponent(".local/bin/codex"),
+                URL(fileURLWithPath: "/opt/homebrew/bin/codex"), URL(fileURLWithPath: "/usr/local/bin/codex")]
+            + Executables.onPath("codex", path: path)
+        #endif
     }
 }

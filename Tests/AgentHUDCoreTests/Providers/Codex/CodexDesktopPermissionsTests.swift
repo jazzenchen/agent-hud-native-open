@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Providers/Codex/CodexDesktopPermissionsTests.swift tests macOS-side sockets and home layouts.
 import AgentHUDSupport
 import Darwin
 import Foundation
@@ -570,3 +572,4 @@ private final class CodexPermissionsTestServer: @unchecked Sendable {
 
     private enum FixtureFailure: Error { case socket, protocolError }
 }
+#endif

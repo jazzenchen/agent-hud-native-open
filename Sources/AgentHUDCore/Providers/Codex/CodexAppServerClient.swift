@@ -16,7 +16,11 @@ public struct CodexAppServerClient: Sendable {
         var environment = ProcessInfo.processInfo.environment
         environment["CODEX_HOME"] = dataDirectory.path
         let home = FileManager.default.homeDirectoryForCurrentUser.path
+        #if os(Windows)
+        environment["PATH"] = "\(home)\.bun\bin;\(home)\.local\bin;" + (environment["PATH"] ?? "")
+        #else
         environment["PATH"] = "\(home)/.bun/bin:\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (environment["PATH"] ?? "")
+        #endif
         let server = try ChildProcess(executable, ["app-server", "--listen", "stdio://"], environment: environment,
                                       directory: FileManager.default.temporaryDirectory, input: true, stdoutLimit: 8 * 1024 * 1024)
         defer { server.stop() }

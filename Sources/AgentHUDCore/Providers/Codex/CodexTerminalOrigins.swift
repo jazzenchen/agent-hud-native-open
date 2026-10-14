@@ -1,4 +1,6 @@
+#if canImport(Darwin)
 import Darwin
+#endif
 import Foundation
 
 /// A daemon thread's `codex_tui` MCP endpoint belongs to its terminal frontend, even when the daemon's own environment
@@ -6,12 +8,18 @@ import Foundation
 public enum CodexTerminalOrigins {
     public static func read(threadIDs: Set<String>, dataDirectory: URL = CodexLocator.dataDirectory) async
         -> [String: SessionNavigationTarget] {
+        #if os(Windows)
+        // Matching an endpoint to a terminal reads iTerm2's environment out of the kernel; on Windows the endpoint is
+        // left unnamed and the session stays where it is.
+        return [:]
+        #else
         guard !threadIDs.isEmpty else { return [:] }
         let endpoints = await CodexDaemonOriginTransport.tuiHTTPOrigins(threadIDs: threadIDs, dataDirectory: dataDirectory)
         let ports = endpoints.compactMapValues(port)
         guard !ports.isEmpty else { return [:] }
         let targets = await Task.detached(priority: .utility) { listenerTargets(ports: Set(ports.values)) }.value
         return ports.compactMapValues { targets[$0] }
+        #endif
     }
 
     /// The native TUI binds IPv4 loopback and publishes only an HTTP origin. Other endpoints cannot identify a local PID.
@@ -22,6 +30,7 @@ public enum CodexTerminalOrigins {
         return UInt16(port)
     }
 
+    #if !os(Windows)
     struct ProcessIdentity: Equatable, Sendable {
         let pid: pid_t
         let uid: uid_t
@@ -129,4 +138,5 @@ public enum CodexTerminalOrigins {
         data.count = size
         return data
     }
+    #endif
 }

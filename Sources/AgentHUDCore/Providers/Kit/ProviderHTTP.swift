@@ -1,5 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(Security)
 import Security
+#endif
 
 /// Credential-bearing requests never follow redirects or use the shared cookie/cache stores.
 struct ProviderHTTP: Sendable {
@@ -44,6 +49,8 @@ struct ProviderHTTP: Sendable {
                         newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
             completionHandler(nil)
         }
+        #if canImport(Security)
+        // A local trust anchor the platform's own evaluator does not know is only allowed for the loopback interface.
         func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
                         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
             let space = challenge.protectionSpace
@@ -52,6 +59,7 @@ struct ProviderHTTP: Sendable {
                 completionHandler(.useCredential, URLCredential(trust: trust))
             } else { completionHandler(.performDefaultHandling, nil) }
         }
+        #endif
     }
 }
 

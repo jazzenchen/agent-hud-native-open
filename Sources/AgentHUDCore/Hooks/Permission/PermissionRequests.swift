@@ -1,6 +1,5 @@
 import AgentHUDSupport
 import Foundation
-import Network
 
 /// The requests a user is being asked about right now, and the channel their clients are waiting on.
 ///
@@ -15,7 +14,7 @@ public final class PermissionRequests {
     public private(set) var pending: [PermissionRequest] = []
 
     private enum Waiting {
-        case hook(NWConnection)
+        case hook(UnixConnection)
         case native(@MainActor (PermissionDecision) async throws -> Void)
     }
     @ObservationIgnored private var waiting: [String: Waiting] = [:]
@@ -62,7 +61,7 @@ public final class PermissionRequests {
 
     // MARK: Receiving
 
-    private func register(_ data: Data, connection: NWConnection) {
+    private func register(_ data: Data, connection: UnixConnection) {
         // The hook names its own client; a payload that arrives on this socket without one cannot be placed.
         guard let source = source(of: data), source.usesHook else { return connection.cancel() }
         counter &+= 1

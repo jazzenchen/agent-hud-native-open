@@ -172,6 +172,8 @@ make run
 
 This builds and opens `build/Agent HUD Open.app`, signed ad-hoc for local use. No developer account, signing identity or provisioning profile is required. To try the app without any agents, quit it and run `make demo`, which opens it on sample data.
 
+On Windows the same repository builds the platform-neutral record, data source and storage layers, and the executable's hook, adapter and `--probe` commands (`swift test` builds and verifies them); the island and statistics interface depends on AppKit and stays macOS-only, and features that read the kernel (session-to-terminal origins, Antigravity service discovery) are unavailable there.
+
 <details>
 <summary><strong>Development and embedding</strong></summary>
 

@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 /// Deterministic encoding for persisted records and their identities.
 public enum RecordCoding {
@@ -23,7 +22,7 @@ public enum RecordCoding {
         }
         var result = [UInt8]()
         result.reserveCapacity(64)
-        for byte in SHA256.hash(data: bytes) { result.append(hex[Int(byte >> 4)]); result.append(hex[Int(byte & 15)]) }
+        for byte in Digest.sha256(bytes) { result.append(hex[Int(byte >> 4)]); result.append(hex[Int(byte & 15)]) }
         return String(decoding: result, as: UTF8.self)
     }
 

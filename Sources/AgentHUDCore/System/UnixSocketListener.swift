@@ -1,4 +1,6 @@
 import Foundation
+
+#if canImport(Network)
 import Network
 import os.log
 
@@ -10,7 +12,7 @@ public final class UnixSocketListener {
     public let path: String
     /// The largest request read; a longer one closes its connection.
     public let requestLimit: Int
-    private let onRequest: @MainActor (Data, NWConnection) -> Void
+    private let onRequest: @MainActor (Data, UnixConnection) -> Void
     private let log: Logger
     private var listener: NWListener?
     /// The lock that makes this process the one serving the path, and the socket file it made, by device and inode.
@@ -18,7 +20,7 @@ public final class UnixSocketListener {
     private var socket: [Int]?
 
     /// - category: names the socket in the application's log.
-    public init(path: String, requestLimit: Int, category: String, onRequest: @escaping @MainActor (Data, NWConnection) -> Void) {
+    public init(path: String, requestLimit: Int, category: String, onRequest: @escaping @MainActor (Data, UnixConnection) -> Void) {
         self.path = path
         self.requestLimit = requestLimit
         self.onRequest = onRequest
@@ -116,3 +118,130 @@ public final class UnixSocketListener {
         }
     }
 }
+#else
+import os.log
+import WinSDK
+import ucrt
+
+/// The Windows side of the same listener. WinSock speaks AF_UNIX but puts no socket file in the filesystem, so the
+/// name dies with the serving process and there is nothing to unlink; the `.lock` file still keeps a second copy of the
+/// application from taking the channel over.
+@MainActor
+public final class UnixSocketListener {
+    public let path: String
+    public let requestLimit: Int
+    private let onRequest: @MainActor (Data, UnixConnection) -> Void
+    private let log: Logger
+    private var server: ListeningSocket?
+    /// The lock that makes this process the one serving the path.
+    private var lock: Int32 = -1
+
+    public init(path: String, requestLimit: Int, category: String, onRequest: @escaping @MainActor (Data, UnixConnection) -> Void) {
+        self.path = path
+        self.requestLimit = requestLimit
+        self.onRequest = onRequest
+        log = Logger(subsystem: "app.agenthud", category: category)
+    }
+
+    public var isListening: Bool { server != nil }
+
+    /// Starts listening; false when the path does not fit a socket address, another process serves it or the socket
+    /// cannot be made.
+    @discardableResult
+    public func start() -> Bool {
+        guard server == nil else { return true }
+        let path = path
+        guard WinSock.started, UnixSocket.fits(path) else {
+            log.error("Socket path is too long for a unix socket: \(path, privacy: .public)")
+            return false
+        }
+        try? FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        let lock = ucrt._open(path + ".lock", _O_CREAT | _O_RDWR | _O_BINARY, _S_IREAD | _S_IWRITE)
+        guard lock >= 0 else {
+            log.error("Could not open the channel lock beside \(path, privacy: .public)")
+            return false
+        }
+        guard ucrt._locking(lock, _LK_NBLCK, 1) == 0 else {
+            ucrt._close(lock)
+            log.info("Another instance serves \(path, privacy: .public)")
+            return false
+        }
+        guard let socket = ListeningSocket(path: path) else {
+            ucrt._close(lock)
+            log.error("Could not listen on \(path, privacy: .public)")
+            return false
+        }
+        self.lock = lock
+        self.server = socket
+        let limit = requestLimit
+        let onRequest = onRequest
+        let thread = Thread {
+            socket.acceptLoop(limit: limit, onRequest: onRequest)
+        }
+        thread.stackSize = 256 * 1024
+        thread.start()
+        return true
+    }
+
+    /// Stops listening. The name dies with this process, so only the lock is given up.
+    public func stop() {
+        server?.close()
+        server = nil
+        if lock >= 0 { ucrt._close(lock) }
+        lock = -1
+    }
+}
+
+/// The listening socket, held apart from the main actor so the accept thread and `stop()` can meet on it.
+private final class ListeningSocket: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handle: SOCKET
+
+    init?(path: String) {
+        let handle = WinSDK.socket(afUnix, sockStream, 0)
+        guard handle != WinSDK.INVALID_SOCKET else { return nil }
+        let bound = UnixSocket.withAddress(path) { address, length in
+            WinSDK.bind(handle, address, length)
+        }
+        guard bound == 0, WinSDK.listen(handle, 8) == 0 else {
+            WinSDK.closesocket(handle)
+            return nil
+        }
+        self.handle = handle
+    }
+
+    func take() -> SOCKET { lock.withLock { handle } }
+
+    func close() {
+        lock.withLock {
+            if handle != WinSDK.INVALID_SOCKET {
+                WinSDK.shutdown(handle, SD_BOTH)
+                WinSDK.closesocket(handle)
+                handle = WinSDK.INVALID_SOCKET
+            }
+        }
+    }
+
+    /// Accepts one connection at a time and reads each request whole; the answers are small and a client waits on its
+    /// request until the HUD answers, so a queue would change nothing.
+    func acceptLoop(limit: Int, onRequest: @escaping @MainActor (Data, UnixConnection) -> Void) {
+        while true {
+            let accepted = WinSDK.accept(take(), nil, nil)
+            guard accepted != WinSDK.INVALID_SOCKET else { break }
+            let connection = UnixConnection(handle: accepted)
+            connection.makeReady()
+            switch connection.readToEnd(limit: limit) {
+            case .success(let data):
+                if data.count <= limit {
+                    DispatchQueue.main.async { MainActor.assumeIsolated { onRequest(data, connection) } }
+                } else {
+                    connection.cancel()
+                }
+            case .failure:
+                connection.cancel()
+            }
+        }
+    }
+}
+#endif

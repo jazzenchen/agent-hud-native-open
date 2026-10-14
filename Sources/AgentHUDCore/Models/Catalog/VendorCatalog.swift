@@ -1,4 +1,6 @@
+#if canImport(CoreServices)
 import CoreServices
+#endif
 import Foundation
 
 /// What the app shows for a vendor, kept apart from the vendor's id. The id ("Codex") keys settings, the ledger, account
@@ -66,9 +68,13 @@ public enum VendorCatalog {
 
     /// The vendor's apps wherever Launch Services has seen them, so a renamed or moved app is still found.
     public static func applications(_ vendor: String) -> [URL] {
-        (entries[vendor]?.bundleIDs ?? []).flatMap { id -> [URL] in
+        #if canImport(CoreServices)
+        return (entries[vendor]?.bundleIDs ?? []).flatMap { id -> [URL] in
             (LSCopyApplicationURLsForBundleIdentifier(id as CFString, nil)?.takeRetainedValue() as? [URL]) ?? []
         }
+        #else
+        return []
+        #endif
     }
 
     /// Values met that no entry names yet, by kind ("Codex client"), for diagnostics.

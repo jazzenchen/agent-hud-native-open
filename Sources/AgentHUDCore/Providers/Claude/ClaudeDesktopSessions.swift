@@ -20,7 +20,7 @@ public actor ClaudeDesktopSessions {
     }
 
     public nonisolated static func defaultRoots(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL] {
-        let base = home.appendingPathComponent("Library/Application Support/Claude", isDirectory: true)
+        let base = ClientHome.applicationData("Claude", home: home)
         return ["claude-code-sessions", "local-agent-mode-sessions"].map { base.appendingPathComponent($0, isDirectory: true) }
     }
 

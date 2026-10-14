@@ -60,7 +60,12 @@ final class PermissionTranscriptWatch: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "app.agenthud.permission.transcript")
     private let handle: FileHandle
+    #if canImport(Darwin)
     private let source: DispatchSourceFileSystemObject
+    #else
+    /// No vnode sources off Darwin: a timer on the same queue asks the record for what was appended.
+    private let source: DispatchSourceTimer
+    #endif
     private var transcript: PermissionTranscript
     private var partial = Data()
     private var done = false
@@ -74,6 +79,7 @@ final class PermissionTranscriptWatch: @unchecked Sendable {
         self.handle = handle
         self.settled = settled
         transcript = PermissionTranscript(tool: tool, input: payload["tool_input"])
+        #if canImport(Darwin)
         source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: handle.fileDescriptor,
                                                            eventMask: [.extend, .write], queue: queue)
 
@@ -83,6 +89,16 @@ final class PermissionTranscriptWatch: @unchecked Sendable {
 
         source.setEventHandler { [weak self] in self?.follow() }
         source.resume()
+        #else
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: 0.25)
+        timer.setEventHandler { [weak self] in self?.follow() }
+        source = timer
+
+        _ = lines(in: (try? ProviderFiles.tail(handle, bytes: Self.history)) ?? Data())
+
+        source.resume()
+        #endif
         // Whatever was appended between the read above and the source starting would otherwise wait for the next write.
         queue.async { [weak self] in self?.follow() }
     }

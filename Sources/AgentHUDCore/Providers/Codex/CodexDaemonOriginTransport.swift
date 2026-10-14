@@ -1,6 +1,9 @@
-import CryptoKit
-import Darwin
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import WinSDK
+#endif
 
 /// Reads the running daemon's thread-owned TUI MCP endpoint. Codex 0.160 publishes it through
 /// mcpServerStatus/list.httpOrigin, which excludes the MCP path and authentication headers.
@@ -60,11 +63,31 @@ public enum CodexDaemonOriginTransport {
 private final class DaemonOriginSocket {
     private let descriptor: Int32
     private let deadline: TimeInterval
+    private var remaining: TimeInterval { deadline - ProcessInfo.processInfo.systemUptime }
     private var buffer: [UInt8] = []
     private let maximumMessage = 1024 * 1024
 
     init(path: String, timeout: TimeInterval) throws {
         deadline = ProcessInfo.processInfo.systemUptime + timeout
+        #if os(Windows)
+        guard WinSock.started, UnixSocket.fits(path) else { throw Failure.unavailable }
+        let handle = WinSDK.socket(afUnix, sockStream, 0)
+        guard handle != WinSDK.INVALID_SOCKET else { throw Failure.unavailable }
+        descriptor = Int32(truncatingIfNeeded: handle)
+        do {
+            var milliseconds: DWORD = DWORD(max(1, min(timeout, 86_400) * 1000))
+            let size = DWORD(MemoryLayout<DWORD>.size)
+            guard setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, &milliseconds, size) == 0,
+                  setsockopt(handle, SOL_SOCKET, SO_SNDTIMEO, &milliseconds, size) == 0 else { throw Failure.unavailable }
+            let connected = UnixSocket.withAddress(path) { address, length in
+                WinSDK.connect(handle, address, length)
+            }
+            guard connected == 0 else { throw Failure.unavailable }
+        } catch {
+            WinSDK.closesocket(handle)
+            throw error
+        }
+        #else
         var info = stat()
         guard UnixSocket.fits(path), stat(path, &info) == 0, info.st_uid == getuid(),
               (info.st_mode & S_IFMT) == S_IFSOCK else { throw Failure.unavailable }
@@ -93,9 +116,16 @@ private final class DaemonOriginSocket {
                 }
             }
         } catch { Darwin.close(descriptor); throw error }
+        #endif
     }
 
-    func close() { Darwin.close(descriptor) }
+    func close() {
+        #if os(Windows)
+        UnixSocket.close(descriptor)
+        #else
+        Darwin.close(descriptor)
+        #endif
+    }
 
     func upgrade() throws {
         let key = Data((0..<16).map { _ in UInt8.random(in: .min ... .max) }).base64EncodedString()
@@ -115,7 +145,7 @@ private final class DaemonOriginSocket {
             fields[String(line[..<separator]).lowercased()] = line[line.index(after: separator)...]
                 .trimmingCharacters(in: .whitespaces)
         }
-        let expected = Data(Insecure.SHA1.hash(data: Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8)))
+        let expected = Data(Digest.sha1(Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8)))
             .base64EncodedString()
         guard fields["sec-websocket-accept"] == expected, fields["upgrade"]?.lowercased() == "websocket",
               fields["connection"]?.lowercased().split(separator: ",").contains(where: {
@@ -186,12 +216,24 @@ private final class DaemonOriginSocket {
 
     private func read(_ count: Int) throws -> [UInt8] {
         while buffer.count < count {
+            #if os(Windows)
+            var bytes = [UInt8](repeating: 0, count: 4096)
+            let received = bytes.withUnsafeMutableBytes { raw in
+                WinSDK.recv(UnixSocket.handleOf(descriptor), raw.baseAddress, Int32(raw.count), 0)
+            }
+            if received == WinSDK.SOCKET_ERROR {
+                let error = WSAGetLastError()
+                if error == WSAEINTR { continue }
+                throw remaining > 0 ? Failure.unavailable : Failure.timeout
+            }
+            #else
             try wait(for: Int16(POLLIN))
             var bytes = [UInt8](repeating: 0, count: 4096)
             let received = recv(descriptor, &bytes, bytes.count, 0)
             if received < 0 && (errno == EINTR || errno == EAGAIN) { continue }
+            #endif
             guard received > 0 else { throw Failure.unavailable }
-            buffer += bytes.prefix(received)
+            buffer += bytes.prefix(Int(received))
         }
         let result = Array(buffer.prefix(count))
         buffer.removeFirst(count)
@@ -201,14 +243,25 @@ private final class DaemonOriginSocket {
     private func write(_ bytes: [UInt8]) throws {
         var offset = 0
         while offset < bytes.count {
+            #if os(Windows)
+            let sent = bytes.withUnsafeBytes {
+                WinSDK.send(UnixSocket.handleOf(descriptor), $0.baseAddress!.advanced(by: offset), Int32(bytes.count - offset), 0)
+            }
+            if sent == WinSDK.SOCKET_ERROR {
+                if WSAGetLastError() == WSAEINTR { continue }
+                throw remaining > 0 ? Failure.unavailable : Failure.timeout
+            }
+            #else
             try wait(for: Int16(POLLOUT))
             let sent = bytes.withUnsafeBytes { Darwin.send(descriptor, $0.baseAddress! + offset, bytes.count - offset, 0) }
             if sent < 0 && (errno == EINTR || errno == EAGAIN) { continue }
+            #endif
             guard sent > 0 else { throw Failure.unavailable }
             offset += sent
         }
     }
 
+    #if !os(Windows)
     private func wait(for events: Int16) throws {
         while true {
             let remaining = deadline - ProcessInfo.processInfo.systemUptime
@@ -220,6 +273,7 @@ private final class DaemonOriginSocket {
             return
         }
     }
+    #endif
 
     private enum Failure: Error { case unavailable, protocolError, timeout }
 }

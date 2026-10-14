@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Hooks/Permission/PermissionHookTests.swift tests macOS-side sockets and home layouts.
 import AgentHUDSupport
 import Darwin
 import Foundation
@@ -836,3 +838,4 @@ final class PermissionHookTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(requests.pending.isEmpty)
     }
 }
+#endif

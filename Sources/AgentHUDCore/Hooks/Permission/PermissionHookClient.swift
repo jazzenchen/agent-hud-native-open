@@ -1,6 +1,11 @@
 import AgentHUDSupport
-import Darwin
 import Foundation
+
+#if canImport(Darwin)
+import Darwin
+#else
+import ucrt
+#endif
 
 /// The `--permission-hook` side: a short-lived process the client starts and then waits on.
 ///
@@ -14,26 +19,28 @@ public enum PermissionHookClient {
     public static let sourceKey = "_agentHUDSource"
 
     public static func run(source: PermissionHooks.Source) {
-        // A HUD that stops reading must never raise a signal in the client's hook process.
+        // A HUD that stops reading must never raise a signal in the client's hook process; Windows has no SIGPIPE.
+        #if canImport(Darwin)
         signal(SIGPIPE, SIG_IGN)
         signal(SIGALRM) { _ in _exit(0) }
+        #endif
 
         // Everything up to the wait is bounded: a client that forgot to close its pipe, or a socket that will not
         // accept, must not hold the client here.
-        alarm(5)
+        let alarm = Alarm()
         let input = FileHandle.standardInput.readDataToEndOfFile()
         guard let payload = tagged(input, source: source) else { return }
         guard let socket = UnixSocket.connect(to: PermissionRequests.socketPath) else { return }
-        defer { close(socket) }
+        defer { UnixSocket.close(socket) }
         guard UnixSocket.send(socket, payload) else { return }
         // Half-close so the HUD sees the whole request and knows no more is coming.
-        shutdown(socket, SHUT_WR)
-        alarm(0)
+        UnixSocket.halfClose(socket)
+        alarm.cancel()
 
         // Answered in the client's own dialog, the call shows up settled in the session record while this hook is
         // still waiting; leaving without an answer then takes the request off the HUD.
         let watch = source.recordsCalls
-            ? (try? ProviderJSON.read(input)).flatMap { PermissionTranscriptWatch(payload: $0) { _exit(0) } }
+            ? (try? ProviderJSON.read(input)).flatMap { PermissionTranscriptWatch(payload: $0) { Self.goNow() } }
             : nil
         let response = UnixSocket.readToEnd(socket, limit: 1024 * 1024)
         // The HUD answered first; the answer is written whole.
@@ -50,5 +57,29 @@ public enum PermissionHookClient {
         guard source != .codex || CodexPermissionReviewer.isUser(payload: json) else { return nil }
         object[sourceKey] = .string(source.rawValue)
         return try? RecordCoding.encoder().encode(ProviderJSON.object(object))
+    }
+
+    /// Leaves at once, from wherever the transcript watch is running.
+    static func goNow() {
+        #if canImport(Darwin)
+        _exit(0)
+        #else
+        ucrt._exit(0)
+        #endif
+    }
+
+    /// The five seconds the connect-and-send phase may take; Darwin has `alarm`, elsewhere a one-shot on a side queue.
+    private final class Alarm {
+        #if canImport(Darwin)
+        init() { alarm(5) }
+        func cancel() { alarm(0) }
+        #else
+        private let item: DispatchWorkItem
+        init() {
+            item = DispatchWorkItem { Self.goNow() }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5, execute: item)
+        }
+        func cancel() { item.cancel() }
+        #endif
     }
 }

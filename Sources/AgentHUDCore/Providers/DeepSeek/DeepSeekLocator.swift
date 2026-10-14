@@ -20,6 +20,12 @@ public enum DeepSeekLocator {
 
     /// Harness itself requires Node with Zstandard support. GUI launches may have a minimal PATH.
     public static func nodeExecutable(path: String = ProcessInfo.processInfo.environment["PATH"] ?? "") -> URL? {
-        Executables.first(Executables.onPath("node", path: path) + ["/opt/homebrew/bin/node", "/usr/local/bin/node"].map { URL(fileURLWithPath: $0) })
+        #if os(Windows)
+        return Executables.first(Executables.onPath("node", path: path))
+            ?? Executables.first([URL(fileURLWithPath: ProcessInfo.processInfo.environment["PROGRAMFILES"] ?? "",
+                                       isDirectory: true).appendingPathComponent("nodejs/node.exe")])
+        #else
+        return Executables.first(Executables.onPath("node", path: path) + ["/opt/homebrew/bin/node", "/usr/local/bin/node"].map { URL(fileURLWithPath: $0) })
+        #endif
     }
 }

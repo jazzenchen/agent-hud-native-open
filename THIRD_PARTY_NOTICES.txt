@@ -143,3 +143,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## SQLite
+
+SQLite is in the public domain: <https://sqlite.org/copyright.html>.
+
+The amalgamation under `Sources/SQLite3` is vendored from <https://sqlite.org/download.html> (version 3.54.0)
+and only compiled on Windows, where the platform SDK does not ship a SQLite3 module.

@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Providers/Grok/GrokClientSeparationTests.swift tests macOS-side sockets and home layouts.
 import Foundation
 import XCTest
 @testable import AgentHUDCore
@@ -140,3 +142,4 @@ final class GrokClientSeparationTests: XCTestCase {
                           startedAt: now, completedAt: now.addingTimeInterval(seconds), client: client)
     }
 }
+#endif

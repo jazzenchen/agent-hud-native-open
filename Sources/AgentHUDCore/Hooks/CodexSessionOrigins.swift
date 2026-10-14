@@ -87,7 +87,12 @@ public enum CodexSessionOrigins {
 
     /// The nearest non-shell process owns the callback. An outer CLI cannot turn its app-server child into a CLI.
     static func host(ancestors: [Ancestor]) -> Host {
+        #if os(Windows)
+        // Ancestry is unknown on Windows, so no shell is ever skipped there.
+        let shells: Set<String> = []
+        #else
         let shells: Set<String> = ["/bin/sh", "/bin/bash", "/bin/zsh"]
+        #endif
         guard let index = ancestors.firstIndex(where: { !shells.contains($0.executable) }) else { return .unknown }
         let process = ancestors[index]
         guard URL(fileURLWithPath: process.executable).lastPathComponent == "codex" else { return .unknown }

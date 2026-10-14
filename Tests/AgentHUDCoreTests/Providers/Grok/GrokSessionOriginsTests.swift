@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Providers/Grok/GrokSessionOriginsTests.swift tests macOS-side sockets and home layouts.
 import Darwin
 import Foundation
 import XCTest
@@ -84,3 +86,4 @@ final class GrokSessionOriginsTests: XCTestCase {
         return data
     }
 }
+#endif

@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Providers/Codex/CodexDaemonOriginTransportTests.swift tests macOS-side sockets and home layouts.
 import CryptoKit
 import Darwin
 import Foundation
@@ -198,3 +200,4 @@ private final class OriginTestDaemon: @unchecked Sendable {
 
     private enum TestFailure: Error { case socket, protocolError }
 }
+#endif

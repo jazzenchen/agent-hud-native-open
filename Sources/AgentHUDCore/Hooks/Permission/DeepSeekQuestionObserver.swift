@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Follows the questions DeepSeek Harness's web hosts are already asking, over the event stream each one serves on
 /// loopback. It installs no hook and answers nothing on its own; the host stays the authority for every question's

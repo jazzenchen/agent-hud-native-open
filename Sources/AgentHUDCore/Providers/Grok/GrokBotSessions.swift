@@ -1,13 +1,16 @@
 import AgentHUDSupport
-import CryptoKit
 import Foundation
 
 /// The desktop client's account-scoped roster. Runtime turn state is deliberately absent from its persisted rows.
 enum GrokBotSessions: LocalSessionLayout {
+    #if os(Windows)
+    static let installPaths = ["AppData/Roaming/Grok Bot"]
+    #else
     static let installPaths = ["Library/Application Support/Grok Bot"]
+    #endif
 
     static func roots(home: URL, environment: [String: String]) -> [URL] {
-        [home.appendingPathComponent("Library/Application Support/Grok Bot/sand-client-persistence", isDirectory: true)]
+        [ClientHome.applicationData("Grok Bot", home: home).appendingPathComponent("sand-client-persistence", isDirectory: true)]
     }
 
     static func accepts(_ url: URL) -> Bool {
@@ -91,7 +94,7 @@ enum GrokBotCache {
 
     static func url(for key: String, in directory: URL) -> URL {
         let name = base32(Data(key.utf8)) + ".blob"
-        return directory.appendingPathComponent(name.utf8.count <= 240 ? name : base32(Data(SHA256.hash(data: Data(key.utf8)))) + ".kblob")
+        return directory.appendingPathComponent(name.utf8.count <= 240 ? name : base32(Data(Digest.sha256(Data(key.utf8)))) + ".kblob")
     }
 
     static func key(at url: URL) throws -> String {

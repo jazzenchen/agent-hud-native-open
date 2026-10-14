@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Hooks/Permission/DeepSeekQuestionObserverTests.swift tests macOS-side sockets and home layouts.
 import CryptoKit
 import Darwin
 import Foundation
@@ -386,3 +388,4 @@ private final class IdleQuestionHost: @unchecked Sendable {
 
     private enum Failure: Error { case socket }
 }
+#endif

@@ -18,4 +18,17 @@ public enum ClientHome {
         guard let value = environment[variable]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return value
     }
+
+    /// A desktop client's data directory: `~/Library/Application Support/<component>` on macOS, `%APPDATA%/<component>`
+    /// on Windows, wherever that client keeps its sign-in and account records.
+    static func applicationData(_ component: String, home: URL = FileManager.default.homeDirectoryForCurrentUser,
+                                environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        #if os(Windows)
+        let base = environment["APPDATA"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? home.appendingPathComponent("AppData/Roaming", isDirectory: true)
+        #else
+        let base = home.appendingPathComponent("Library/Application Support", isDirectory: true)
+        #endif
+        return base.appendingPathComponent(component, isDirectory: true)
+    }
 }

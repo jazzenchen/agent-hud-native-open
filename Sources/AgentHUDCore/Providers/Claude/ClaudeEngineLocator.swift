@@ -6,12 +6,19 @@ import Foundation
 public enum ClaudeEngineLocator {
     public static func candidates(home: URL = FileManager.default.homeDirectoryForCurrentUser,
                                   path: String = ProcessInfo.processInfo.environment["PATH"] ?? "") -> [URL] {
+        #if os(Windows)
+        var list = [
+            home.appendingPathComponent(".local/bin/claude.exe"),
+            home.appendingPathComponent(".claude/local/claude.exe"),
+        ]
+        #else
         var list = [
             home.appendingPathComponent(".local/bin/claude"),
             home.appendingPathComponent(".claude/local/claude"),
             URL(fileURLWithPath: "/opt/homebrew/bin/claude"),
             URL(fileURLWithPath: "/usr/local/bin/claude"),
         ]
+        #endif
         let versions = home.appendingPathComponent(".local/share/claude/versions", isDirectory: true)
         if let names = try? FileManager.default.contentsOfDirectory(atPath: versions.path) {
             let sorted = names.filter { !$0.hasPrefix(".") }.sorted { lhs, rhs in

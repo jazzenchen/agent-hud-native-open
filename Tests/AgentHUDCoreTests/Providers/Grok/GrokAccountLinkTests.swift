@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Providers/Grok/GrokAccountLinkTests.swift tests macOS-side sockets and home layouts.
 import AgentHUDSupport
 import XCTest
 @testable import AgentHUDCore
@@ -192,3 +194,4 @@ final class GrokAccountLinkTests: XCTestCase {
         XCTAssertEqual(report.snapshots.first?.updatedAt, f.now)
     }
 }
+#endif

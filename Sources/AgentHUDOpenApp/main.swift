@@ -1,3 +1,23 @@
+#if os(Windows)
+import AgentHUDCore
+import Foundation
+
+// Hooks and adapter commands run as short-lived processes, without the interface or an account query.
+if let status = HookEntry.handle(arguments: CommandLine.arguments) { exit(status) }
+
+// The interface is macOS-only for now; the Windows executable answers the read-only commands from the same sources.
+if CommandLine.arguments.contains("--probe-open-agents") {
+    Task { print(await OpenAgentDiagnostics.localSummary()); exit(0) }
+    dispatchMain()
+} else {
+    let settings = UsageAssembly.settings()
+    Task {
+        let status = await UsageProbe.run(settings: settings)
+        exit(status)
+    }
+    dispatchMain()
+}
+#else
 import AppKit
 import AgentHUDCore
 import AgentHUDDesktop
@@ -67,3 +87,4 @@ let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
 app.run()
+#endif

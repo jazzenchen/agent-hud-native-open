@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#endif
 
 /// Antigravity's already-running local services. Credentials stay in memory and are sent only to loopback.
 enum AntigravityService {
@@ -30,7 +32,12 @@ enum AntigravityService {
     static let remembered = Remembered(lifetime: discoveryInterval) { try await permissionEndpoints() }
 
     static func running() async throws -> [Candidate] {
-        candidates(try await ProviderCommand.run("/bin/ps", ["-U", String(getuid()), "-o", "pid=,command="]))
+        #if os(Windows)
+        // Service discovery reads `ps`; on Windows a running service is not searched for.
+        return []
+        #else
+        return candidates(try await ProviderCommand.run("/bin/ps", ["-U", String(getuid()), "-o", "pid=,command="]))
+        #endif
     }
 
     /// Only services advertising their local credentials can supply an authenticated native approval snapshot.
@@ -38,6 +45,9 @@ enum AntigravityService {
     static func permissionEndpoints(
         inspect: @Sendable (String, [String]) async throws -> String = ProviderCommand.run
     ) async throws -> [Endpoint] {
+        #if os(Windows)
+        return []
+        #else
         let running = candidates(try await inspect("/bin/ps", ["-U", String(getuid()), "-o", "pid=,command="]))
         var found: [Endpoint] = []
         for candidate in running where !candidate.token.isEmpty || !(candidate.extensionToken ?? "").isEmpty {
@@ -47,11 +57,17 @@ enum AntigravityService {
             found += endpoints
         }
         return found
+        #endif
     }
 
     static func endpoints(for candidate: Candidate,
                           inspect: @Sendable (String, [String]) async throws -> String = ProviderCommand.run) async throws -> [Endpoint] {
+        #if os(Windows)
+        // lsof is macOS: only the extension port, which the command line itself declares, is known here.
+        let ports: [Int] = []
+        #else
         let ports = Self.ports(try await inspect("/usr/sbin/lsof", ["-nP", "-a", "-p", String(candidate.pid), "-iTCP", "-sTCP:LISTEN", "-Fn"]))
+        #endif
         var locations = ports.map { ("https", $0, candidate.token) }
         if let port = candidate.extensionPort { locations.append(("http", port, candidate.extensionToken ?? candidate.token)) }
         return locations.compactMap { scheme, port, token in

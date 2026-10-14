@@ -1,4 +1,6 @@
+#if canImport(Darwin)
 import Darwin
+#endif
 import Foundation
 
 /// Grok's live registry owns the exact session-to-PID link. Resolve only an interactive native process with one
@@ -10,12 +12,18 @@ public enum GrokSessionOrigins {
 
     public static func read(sessionIDs: Set<String>, dataDirectory: URL = GrokSessionOrigins.dataDirectory)
         -> [String: SessionNavigationTarget] {
+        #if os(Windows)
+        // The registry's PID link is resolved through the kernel, which this port does not read.
+        return [:]
+        #else
         guard !sessionIDs.isEmpty,
               let data = try? Data(contentsOf: dataDirectory.appendingPathComponent("active_sessions.json")) else { return [:] }
         return targets(in: data, sessionIDs: sessionIDs, uid: getuid(),
                        process: CodexTerminalOrigins.processIdentity, arguments: CodexTerminalOrigins.argumentsData)
+        #endif
     }
 
+    #if !os(Windows)
     private struct ActiveSession: Decodable {
         let session_id: String
         let pid: pid_t
@@ -62,4 +70,5 @@ public enum GrokSessionOrigins {
               let pane = environment["ITERM_SESSION_ID"], !pane.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return .iTermSession(id: pane)
     }
+    #endif
 }

@@ -1,6 +1,5 @@
 import AgentHUDSupport
 import Foundation
-import CryptoKit
 
 struct OpenAgentCredential: Sendable {
     enum Service: String, Sendable { case kimi, kimiGlobal, glmChina, glmGlobal, go }
@@ -161,7 +160,7 @@ enum OpenAgentCredentials {
     static func kimiStorageName(_ service: OpenAgentCredential.Service) -> String {
         guard service == .kimiGlobal else { return "kimi-code" }
         let serialized = #"{"oauthHost":"https://auth.kimi.ai","baseUrl":"https://api.kimi.ai/coding/v1"}"#
-        let hash = SHA256.hash(data: Data(serialized.utf8)).map { String(format: "%02x", $0) }.joined()
+        let hash = Digest.sha256(Data(serialized.utf8)).map { String(format: "%02x", $0) }.joined()
         return "kimi-code-env-" + hash.prefix(16)
     }
 
