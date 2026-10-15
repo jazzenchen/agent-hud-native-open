@@ -56,8 +56,10 @@ if re.search(r"\.package\s*\(", manifest):
 # Verify ignore rules without creating any secret-shaped files.
 ignored = [".env", "signing/local.env", "config/service.local.json", "AuthKey_example.p8", "certificate.p12",
            "account.key", "development.mobileprovision", "build/Agent HUD Open.app/Contents/Info.plist", ".build/ignore-check/AgentHUDOpen"]
-result = subprocess.run(["git", "check-ignore", "--stdin"], cwd=ROOT,
-                        input="\n".join(ignored)+"\n", text=True, capture_output=True)
+# The paths go as arguments rather than through stdin: Git for Windows reads an empty stdin from Python's pipe,
+# which made every rule look missing there.
+result = subprocess.run(["git", "check-ignore", "--"] + ignored, cwd=ROOT,
+                        text=True, capture_output=True)
 missing = set(ignored) - set(result.stdout.splitlines())
 failures.extend(f".gitignore: missing rule for {name}" for name in sorted(missing))
 

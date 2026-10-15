@@ -1,3 +1,5 @@
+#if !os(Windows)
+// Antigravity's native approvals are macOS-only, and the Windows compiler's solver cannot type-check these long test bodies yet.
 import AgentHUDSupport
 import Foundation
 import XCTest
@@ -299,3 +301,4 @@ final class AntigravityPermissionsTests: XCTestCase, @unchecked Sendable {
         print("Antigravity permission probe: waiting=\(pending.count)")
     }
 }
+#endif

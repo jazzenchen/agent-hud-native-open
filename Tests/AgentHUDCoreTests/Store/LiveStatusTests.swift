@@ -1,7 +1,10 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import AgentHUDSupport
 import XCTest
 @testable import AgentHUDCore
 
+@MainActor
 final class LiveStatusTests: XCTestCase {
     @MainActor
     func testEveryAgentUsesTheSamePreferenceWithoutChangingUsageOrSourceState() throws {
@@ -123,3 +126,4 @@ final class LiveStatusTests: XCTestCase {
         XCTAssertTrue(groups.allSatisfy { $0.agents.isEmpty })
     }
 }
+#endif

@@ -6,13 +6,9 @@ enum GrokBotQuota {
     /// Match the account's known cache paths even after a file was deleted, without opening transcript blobs.
     static func isQuotaChange(_ paths: Set<String>, in directory: URL) -> Bool {
         guard !paths.isEmpty else { return false }
-        let resolved: [String]
-        if let path = realpath(directory.path, nil) {
-            let actual = String(cString: path)
-            // FSEvents uses the real path; Foundation callers can use its /var or /tmp alias.
-            resolved = [actual, URL(fileURLWithPath: actual).standardizedFileURL.path]
-            free(path)
-        } else { resolved = [] }
+        // File events use the real path; Foundation callers can use its /var or /tmp alias.
+        let actual = URL(fileURLWithPath: directory.path).resolvingSymlinksInPath().path
+        let resolved: [String] = actual.isEmpty ? [] : [actual, URL(fileURLWithPath: actual).standardizedFileURL.path]
         func contains(_ key: String) -> Bool {
             let url = GrokBotCache.url(for: key, in: directory)
             return paths.contains(url.standardizedFileURL.path)

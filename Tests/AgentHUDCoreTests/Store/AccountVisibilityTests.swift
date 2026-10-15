@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
@@ -7,7 +9,7 @@ final class AccountVisibilityTests: XCTestCase {
     private let work = ProviderAccount.identified(provider: "Codex", user: "work@example.com", workspace: "team")!
     private let personal = ProviderAccount.identified(provider: "Codex", user: "me@example.com", workspace: "personal")!
 
-    func testAccountSwitchSynchronizesAndPersistsAllItsWindowsWithoutChangingOrderOrOtherAccounts() throws {
+    func testAccountSwitchSynchronizesAndPersistsAllItsWindowsWithoutChangingOrderOrOtherAccounts() async throws {
         let old = try JSONDecoder().decode(Settings.self, from: Data("{}".utf8))
         XCTAssertTrue(old.hiddenAccountIDs.isEmpty)
         XCTAssertTrue(old.accountVisible(work.id))
@@ -51,7 +53,7 @@ final class AccountVisibilityTests: XCTestCase {
         XCTAssertEqual(SettingsStore(defaults: defaults).agents, reloaded.agents)
     }
 
-    func testPreviouslyHiddenAccountsNormalizeSavedWindowsAtLaunch() throws {
+    func testPreviouslyHiddenAccountsNormalizeSavedWindowsAtLaunch() async throws {
         let defaults = try makeDefaults()
         var preferences = Settings()
         preferences.setAccountVisibility(id: work.id, visible: false)
@@ -67,7 +69,7 @@ final class AccountVisibilityTests: XCTestCase {
         XCTAssertEqual(settings.agents.map(\.enabled), [false, true, true], "The other account's manual window choice remains off")
     }
 
-    func testDiscoveryKeepsNewAccountAndBillingPoolWindowsOffWhileTheirAccountIsHidden() throws {
+    func testDiscoveryKeepsNewAccountAndBillingPoolWindowsOffWhileTheirAccountIsHidden() async throws {
         let shared = pool("shared")
         let plan = BillingPool(provider: "Kimi", realm: "CN", product: .plan, scope: "plan", evidence: .account, entitlement: "coding-plan")
         let initial = quotaAgents + [
@@ -120,7 +122,7 @@ final class AccountVisibilityTests: XCTestCase {
         XCTAssertEqual(store.agentUsage.reduce(0) { $0 + store.tokenDimensions.count($1.tokens) }, 1650)
     }
 
-    func testQuotaVisibilityFiltersPresentationAndKeepsAllTokenAndSessionStatistics() throws {
+    func testQuotaVisibilityFiltersPresentationAndKeepsAllTokenAndSessionStatistics() async throws {
         let settings = SettingsStore(defaults: try makeDefaults(), defaultAgents: quotaAgents)
         let store = UsageStore(provider: NoReadProvider(), settings: settings)
         let report = quotaReport()
@@ -176,7 +178,7 @@ final class AccountVisibilityTests: XCTestCase {
         XCTAssertEqual(store.sessions, originalSessions)
     }
 
-    func testAPIBalancesUseTheirOwnPoolIdentityAndKeepRestorationEntries() throws {
+    func testAPIBalancesUseTheirOwnPoolIdentityAndKeepRestorationEntries() async throws {
         let shared = pool("shared"), other = pool("other")
         let agents = [
             AgentDescriptor(id: "open-shared", vendor: "OpenCode", model: "Model A", source: "", enabled: true, billingPool: shared),
@@ -213,7 +215,7 @@ final class AccountVisibilityTests: XCTestCase {
         XCTAssertEqual(settings.agents, agents)
     }
 
-    func testQuotaRowsWithoutAccountObservationsKeepOneRestorableControlPerIdentity() throws {
+    func testQuotaRowsWithoutAccountObservationsKeepOneRestorableControlPerIdentity() async throws {
         let settings = SettingsStore(defaults: try makeDefaults(), defaultAgents: quotaAgents)
         let store = UsageStore(provider: NoReadProvider(), settings: settings)
         let report = quotaReport(includeAccountObservations: false)
@@ -240,7 +242,7 @@ final class AccountVisibilityTests: XCTestCase {
         XCTAssertEqual(store.report, report)
     }
 
-    func testAPIRowsWithoutBillingReadingsKeepTheirPoolAndLegacyRestoreControls() throws {
+    func testAPIRowsWithoutBillingReadingsKeepTheirPoolAndLegacyRestoreControls() async throws {
         let shared = pool("shared"), other = pool("other")
         let agents = [
             AgentDescriptor(id: "shared-a", vendor: "OpenCode", model: "Model A", source: "", enabled: true, billingPool: shared),
@@ -277,7 +279,7 @@ final class AccountVisibilityTests: XCTestCase {
         XCTAssertEqual(store.enabledBilling, billing, "The next available readings follow the restored preference")
     }
 
-    func testAccountControlsFollowExistingGroupsAndReadingsAloneDoNotCreateGroups() {
+    func testAccountControlsFollowExistingGroupsAndReadingsAloneDoNotCreateGroups() async {
         let plan = BillingPool(provider: "Kimi", realm: "CN", product: .plan, scope: "plan", evidence: .account, entitlement: "coding-plan")
         let account = AccountObservation(account: ProviderAccount(pool: plan), plan: "Allegretto", observedAt: now)
         let absent = AgentDescriptor(id: "deepseek", vendor: "DeepSeek", model: "API", source: "", enabled: true)
@@ -293,7 +295,7 @@ final class AccountVisibilityTests: XCTestCase {
         XCTAssertNil(groups.first { $0.id == "DeepSeek" })
     }
 
-    func testConfirmedAliasesMoveVisibilityPreferenceOnceAndAllowShowingTheAccount() throws {
+    func testConfirmedAliasesMoveVisibilityPreferenceOnceAndAllowShowingTheAccount() async throws {
         let unresolved = ProviderAccount.unresolved(provider: "Codex", home: "test-home")
         let unresolvedWindow = AgentDescriptor(id: unresolved.windowID("codex"), vendor: "Codex", model: "5h", source: "", enabled: true, account: unresolved)
         let settings = SettingsStore(defaults: try makeDefaults(), defaultAgents: [unresolvedWindow, quotaAgents[2]])
@@ -364,3 +366,4 @@ final class AccountVisibilityTests: XCTestCase {
         }
     }
 }
+#endif

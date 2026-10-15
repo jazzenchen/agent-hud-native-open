@@ -28,7 +28,7 @@ final class ZCodeProviderTests: XCTestCase, @unchecked Sendable {
     }
     private func ms(_ offset: Double) -> Int64 { Int64((now.timeIntervalSince1970 + offset) * 1000) }
 
-    func testTotalDecidesTokenLayoutAndSessionJoinsWorkspace() throws {
+    func testTotalDecidesTokenLayoutAndSessionJoinsWorkspace() async throws {
         let url = try directory().appendingPathComponent("db.sqlite")
         try database(url, [
             "'inclusive', 's1', 'GLM-5.2', \(ms(-10)), \(ms(-9)), 100, 50, 10, 80, 5, 150",
@@ -57,7 +57,7 @@ final class ZCodeProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(other.events[0].model, "Unknown")
     }
 
-    func testZCodesOwnTitleBeatsTheFolderName() throws {
+    func testZCodesOwnTitleBeatsTheFolderName() async throws {
         let url = try directory().appendingPathComponent("db.sqlite")
         try database(url, sessions: false, ["'r1', 's1', 'glm', \(ms(-10)), \(ms(-9)), 100, 50, 10, 80, 5, 150",
                                            "'r2', 's2', 'glm', \(ms(-8)), \(ms(-7)), 100, 50, 10, 80, 5, 150"])
@@ -73,7 +73,7 @@ final class ZCodeProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(result.sessions.map(\.title), ["Fix the login flow", "demo"], "ZCode's name for an empty first input is no title")
     }
 
-    func testOlderSchemaWithoutTotalIsInclusive() throws {
+    func testOlderSchemaWithoutTotalIsInclusive() async throws {
         let url = try directory().appendingPathComponent("db.sqlite")
         try database(url, total: false, sessions: false, ["'legacy', 's1', 'glm-5.2', NULL, \(ms(0)), 100, 50, 10, 80, 5"])
         let result = try ZCodeSessions.read(url, since: now.addingTimeInterval(-60))

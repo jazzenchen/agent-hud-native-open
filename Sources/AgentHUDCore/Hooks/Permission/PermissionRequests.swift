@@ -1,5 +1,9 @@
 import AgentHUDSupport
 import Foundation
+import Observation
+#if canImport(Network)
+import Network
+#endif
 
 /// The requests a user is being asked about right now, and the channel their clients are waiting on.
 ///

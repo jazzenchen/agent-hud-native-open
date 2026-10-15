@@ -2,7 +2,7 @@ import XCTest
 @testable import AgentHUDCore
 
 final class GrokBotQuotaTests: XCTestCase {
-    func testPercentageUsesPercentUnitsAndKeepsObservationTime() throws {
+    func testPercentageUsesPercentUnitsAndKeepsObservationTime() async throws {
         let f = try fixture()
         try writeQuota(f)
         let quota = try XCTUnwrap(GrokBotQuota.read(in: f.directory, now: f.now))
@@ -15,7 +15,7 @@ final class GrokBotQuotaTests: XCTestCase {
         XCTAssertNotNil(quota.sourceInfo)
     }
 
-    func testAccountSwitchSignOutExpiryAndUnsupportedTeamCannotReuseCache() throws {
+    func testAccountSwitchSignOutExpiryAndUnsupportedTeamCannotReuseCache() async throws {
         let f = try fixture()
         try writeQuota(f)
         try f.writeAccount("another-account")
@@ -28,7 +28,7 @@ final class GrokBotQuotaTests: XCTestCase {
         XCTAssertNil(GrokBotQuota.read(in: f.directory, now: f.now))
     }
 
-    func testExtraBudgetIsSeparateAndFutureReadingIsRejected() throws {
+    func testExtraBudgetIsSeparateAndFutureReadingIsRejected() async throws {
         let f = try fixture()
         try writeQuota(f, extra: ["usedCents": 250, "limitCents": 1000])
         let quota = try XCTUnwrap(GrokBotQuota.read(in: f.directory, now: f.now))
@@ -40,7 +40,7 @@ final class GrokBotQuotaTests: XCTestCase {
         XCTAssertNil(GrokBotQuota.read(in: f.directory, now: f.now.addingTimeInterval(-7200)))
     }
 
-    func testZeroWalletSurvivesMissingSubscriptionPercent() throws {
+    func testZeroWalletSurvivesMissingSubscriptionPercent() async throws {
         let f = try fixture()
         var usage: [String: Any] = ["nextResetMs": NSNull(), "isSandTrial": false,
             "hasNonZeroIncludedLimit": true, "isTeamSeat": false,

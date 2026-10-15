@@ -1,9 +1,12 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import AgentHUDSupport
 import XCTest
 @testable import AgentHUDCore
 
 /// What a report view makes of a report: the same rows, balances, levels, sections, window metrics and sessions the store
 /// answers with, as the report, the agent list, the settings and the time change.
+@MainActor
 final class ReportViewTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let hour: TimeInterval = 3600
@@ -250,3 +253,4 @@ final class ReportViewTests: XCTestCase {
         return SettingsStore(defaults: defaults, defaultAgents: agents)
     }
 }
+#endif

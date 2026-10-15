@@ -1,3 +1,4 @@
+import AgentHUDSupport
 import Foundation
 #if canImport(Darwin)
 import Darwin
@@ -75,10 +76,7 @@ private final class DaemonOriginSocket {
         guard handle != WinSDK.INVALID_SOCKET else { throw Failure.unavailable }
         descriptor = Int32(truncatingIfNeeded: handle)
         do {
-            var milliseconds: DWORD = DWORD(max(1, min(timeout, 86_400) * 1000))
-            let size = DWORD(MemoryLayout<DWORD>.size)
-            guard setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, &milliseconds, size) == 0,
-                  setsockopt(handle, SOL_SOCKET, SO_SNDTIMEO, &milliseconds, size) == 0 else { throw Failure.unavailable }
+            guard UnixSocket.timeouts(descriptor, seconds: timeout) else { throw Failure.unavailable }
             let connected = UnixSocket.withAddress(path) { address, length in
                 WinSDK.connect(handle, address, length)
             }
@@ -221,7 +219,7 @@ private final class DaemonOriginSocket {
             let received = bytes.withUnsafeMutableBytes { raw in
                 WinSDK.recv(UnixSocket.handleOf(descriptor), raw.baseAddress, Int32(raw.count), 0)
             }
-            if received == WinSDK.SOCKET_ERROR {
+            if received < 0 {
                 let error = WSAGetLastError()
                 if error == WSAEINTR { continue }
                 throw remaining > 0 ? Failure.unavailable : Failure.timeout
@@ -247,7 +245,7 @@ private final class DaemonOriginSocket {
             let sent = bytes.withUnsafeBytes {
                 WinSDK.send(UnixSocket.handleOf(descriptor), $0.baseAddress!.advanced(by: offset), Int32(bytes.count - offset), 0)
             }
-            if sent == WinSDK.SOCKET_ERROR {
+            if sent < 0 {
                 if WSAGetLastError() == WSAEINTR { continue }
                 throw remaining > 0 ? Failure.unavailable : Failure.timeout
             }
@@ -257,7 +255,7 @@ private final class DaemonOriginSocket {
             if sent < 0 && (errno == EINTR || errno == EAGAIN) { continue }
             #endif
             guard sent > 0 else { throw Failure.unavailable }
-            offset += sent
+            offset += Int(sent)
         }
     }
 

@@ -1,7 +1,10 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
 /// Sources are read when they signal new data, and only the signalled sources are read.
+@MainActor
 final class CollectionSignalTests: XCTestCase, @unchecked Sendable {
     private actor Source: UsageProvider {
         nonisolated let watchedDirectories: [URL]?
@@ -212,7 +215,7 @@ final class CollectionSignalTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(reread, 2, "a result read for other hours is not reused")
     }
 
-    func testChangesNameWhatANewReportChanged() {
+    func testChangesNameWhatANewReportChanged() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let session = LiveSession(id: "s", agentId: "claude-model:opus", task: "Task", terminal: nil, startedAt: now, pctOfWindow: nil,
                                   tokensIn: 1, tokensOut: 1, observedAt: now)
@@ -239,7 +242,7 @@ final class CollectionSignalTests: XCTestCase, @unchecked Sendable {
     }
 
     @MainActor
-    func testObserversReceiveChangesUntilCancelled() {
+    func testObserversReceiveChangesUntilCancelled() async {
         let suite = "CollectionSignalTests.\(UUID())", defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = UsageStore(provider: Source(directory: nil), settings: SettingsStore(defaults: defaults))
@@ -258,7 +261,7 @@ final class CollectionSignalTests: XCTestCase, @unchecked Sendable {
 
     /// A client that keeps its log open reaches the file watch late, so recent logs are compared with their last look.
     @MainActor
-    func testARecentLogThatGrewIsReportedOnceAndAFirstLookOnlyNotesIt() throws {
+    func testARecentLogThatGrewIsReportedOnceAndAFirstLookOnlyNotesIt() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agenthud-logs-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -283,3 +286,4 @@ final class CollectionSignalTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(Set(known.keys), [quiet.path], "A session that is no longer recent is forgotten")
     }
 }
+#endif

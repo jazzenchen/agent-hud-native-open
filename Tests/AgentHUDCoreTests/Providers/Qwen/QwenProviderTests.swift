@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import AgentHUDSupport
 import Foundation
 import XCTest
@@ -113,3 +115,4 @@ final class QwenProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(handler?["timeout"].numberValue, 5000, "five seconds on every Qwen version")
     }
 }
+#endif

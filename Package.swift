@@ -6,7 +6,7 @@ import PackageDescription
 // layers, builds on both; on Windows AgentHUDOpenApp runs its hook, adapter and probe commands without the interface.
 // The SDK's SQLite3 module is likewise macOS-only, so on Windows the vendored amalgamation provides it instead.
 #if os(Windows)
-let platforms: [SupportedPlatform] = [.windows(.v10)]
+let platforms: [SupportedPlatform]? = nil
 let uiTargets: [Target] = []
 let uiTests: [Target] = []
 let desktopDependencies: [Target.Dependency] = []
@@ -18,7 +18,7 @@ let products: [Product] = [
     .executable(name: "AgentHUDOpen", targets: ["AgentHUDOpenApp"]),
 ]
 #else
-let platforms: [SupportedPlatform] = [.macOS(.v14)]
+let platforms: [SupportedPlatform]? = [.macOS(.v14)]
 let uiTargets: [Target] = [
     .target(name: "AgentHUDDesktop", dependencies: ["AgentHUDCore"], resources: [.process("Resources")], swiftSettings: [.swiftLanguageMode(.v6)]),
 ]

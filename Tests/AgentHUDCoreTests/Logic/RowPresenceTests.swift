@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
@@ -45,7 +47,7 @@ final class RowPresenceTests: XCTestCase {
     }
 
     @MainActor
-    func testWhatEachSurfaceShowsOfTheSameRows() throws {
+    func testWhatEachSurfaceShowsOfTheSameRows() async throws {
         let everyRow = agents.map(\.id)
         let bare = UsageReport(generatedAt: now, snapshots: [], sessions: [], billing: [balance], accounts: inventory)
         let fuller = UsageReport(generatedAt: now, snapshots: [], sessions: [], billing: [balance],
@@ -184,3 +186,4 @@ private actor Reads: UsageProvider {
         return reports.removeFirst()
     }
 }
+#endif

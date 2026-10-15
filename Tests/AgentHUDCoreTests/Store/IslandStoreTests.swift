@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
@@ -78,3 +80,4 @@ final class IslandStoreTests: XCTestCase {
         XCTAssertEqual(store.levels, [.ok, .ok, .warning, .critical], "a Codex alert lights the segment that shows Codex's colour")
     }
 }
+#endif

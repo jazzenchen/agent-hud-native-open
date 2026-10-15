@@ -4,7 +4,7 @@ import SQLite3
 @testable import AgentHUDCore
 
 final class OpenAgentProviderTests: XCTestCase {
-    func testAPIServiceDiscoverySeparatesKeysOAuthPlansAndProxyOverrides() throws {
+    func testAPIServiceDiscoverySeparatesKeysOAuthPlansAndProxyOverrides() async throws {
         let home = try temp()
         try write(#"{"anthropic":{"type":"api","key":"fixture"},"openai":{"type":"oauth","access":"fixture"},"kimi-for-coding":{"type":"api","key":"fixture"},"deepseek":{"type":"api","key":"fixture"},"zai-coding-plan":{"type":"api","key":"fixture"}}"#,
                   to: home.appendingPathComponent(".local/share/opencode/auth.json"))
@@ -38,7 +38,7 @@ final class OpenAgentProviderTests: XCTestCase {
         try Data(value.utf8).write(to: file)
     }
 
-    func testSharedCredentialMergesClientsButKeepsRegionProductAndScopeSeparate() throws {
+    func testSharedCredentialMergesClientsButKeepsRegionProductAndScopeSeparate() async throws {
         let kimi = credential(), open = credential(client: "OpenCode"), pi = credential(client: "Pi")
         let merged = OpenAgentCredentials.merge([kimi, open, pi])
         XCTAssertEqual(merged.count, 1)
@@ -56,7 +56,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertFalse(String(decoding: try JSONEncoder().encode(pool), as: UTF8.self).contains("fixture-key"))
     }
 
-    func testCredentialsReadNativeFilesAndHonorAPIOrProxyOverrides() throws {
+    func testCredentialsReadNativeFilesAndHonorAPIOrProxyOverrides() async throws {
         let home = try temp()
         try write(#"{"kimi-for-coding":{"type":"api","key":"shared"},"zai-coding-plan":{"type":"api","key":"zai-key"}}"#,
                   to: home.appendingPathComponent(".local/share/opencode/auth.json"))
@@ -73,7 +73,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertEqual(OpenAgentCredentials.service(provider: "", baseURL: "https://open.bigmodel.cn/api/coding/paas/v4"), .glmChina)
     }
 
-    func testExpiredKimiCredentialsAreNotRefreshedOrRewritten() throws {
+    func testExpiredKimiCredentialsAreNotRefreshedOrRewritten() async throws {
         let home = try temp(), file = home.appendingPathComponent(".kimi-code/credentials/kimi-code.json")
         let raw = #"{"access_token":"expired","expires_at":1,"refresh_token":"do-not-use"}"#
         try write(raw, to: file)
@@ -82,7 +82,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".kimi-code/device_id").path))
     }
 
-    func testKimiWindowsKeepWeeklyAndFiveHourIndependentAndDoNotFabricateMissingLimits() throws {
+    func testKimiWindowsKeepWeeklyAndFiveHourIndependentAndDoNotFabricateMissingLimits() async throws {
         let root = try json(#"{"usage":{"limit":"2000","used":"400","resetTime":"2026-09-09T00:00:00Z"},"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"200","used":"50"}}]}"#)
         let result = try OpenAgentQuotaClient.parse(root, credential: credential(), now: now)
         XCTAssertEqual(result.windows.map(\.remaining), [80, 75])
@@ -94,7 +94,7 @@ final class OpenAgentProviderTests: XCTestCase {
 
     /// Kimi's current report. The fixtures are derived from Kimi Code's own reader of `/coding/v1/usages`
     /// (`parseManagedUsagePayload`, MoonshotAI/kimi-code 21406fb4) and its membership docs, not captured from an account.
-    func testKimiReadsTheCurrentReportUnderTheEarlierWindowIds() throws {
+    func testKimiReadsTheCurrentReportUnderTheEarlierWindowIds() async throws {
         L10n.setLanguage(.en)
         defer { L10n.setLanguage(.system) }
         let earlier = try OpenAgentQuotaClient.parse(json(#"{"usage":{"limit":"2000","used":"400"},"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"200","used":"50"}}]}"#), credential: credential(), now: now)
@@ -115,7 +115,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertEqual(fallback.windows.map(\.id), [earlier.windows[0].id])
     }
 
-    func testGoOfficialUsageReadsResetTimestampsWithoutChangingPercentagesOrPeriods() throws {
+    func testGoOfficialUsageReadsResetTimestampsWithoutChangingPercentagesOrPeriods() async throws {
         let root = try json(#"""
         {"usage":{
           "rolling":{"status":"ok","percent":0.5,"resetsAt":"2026-09-07T16:54:20.000Z"},
@@ -129,7 +129,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertEqual(result.windows.map(\.duration), [18000, 604800, nil])
     }
 
-    func testGLMRegionsAndMCPStaySeparateAndInvalidResetIsOmitted() throws {
+    func testGLMRegionsAndMCPStaySeparateAndInvalidResetIsOmitted() async throws {
         let raw = #"{"success":true,"code":200,"data":{"limits":[{"type":"CREDIT_LIMIT","unit":3,"number":5,"percentage":40,"usage":100,"currentValue":20,"remaining":75,"nextResetTime":1999999999999},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":5}]}}"#
         let cn = try OpenAgentQuotaClient.parse(json(raw), credential: credential(.glmChina), now: now)
         let global = try OpenAgentQuotaClient.parse(json(raw), credential: credential(.glmGlobal), now: now)
@@ -143,7 +143,7 @@ final class OpenAgentProviderTests: XCTestCase {
 
     /// GLM credit plans. The fixture is derived from Zhipu's Coding Plan docs (credits over 5 hours and a week, MCP
     /// calls drawn from them) and the quota endpoint's fields, not captured from an account.
-    func testGLMCreditPlansAreNamedInZhipusWordsAndTokenLimitsKeepTheirs() throws {
+    func testGLMCreditPlansAreNamedInZhipusWordsAndTokenLimitsKeepTheirs() async throws {
         L10n.setLanguage(.en)
         defer { L10n.setLanguage(.system) }
         let credits = try OpenAgentQuotaClient.parse(json(#"{"success":true,"code":200,"data":{"planName":"Pro","limits":[{"type":"CREDIT_LIMIT","unit":3,"number":5,"usage":12000,"currentValue":3000,"remaining":9000,"percentage":25,"nextResetTime":1788810000000},{"type":"CREDIT_LIMIT","unit":6,"number":1,"usage":60000,"currentValue":6000,"remaining":54000,"percentage":10}]}}"#), credential: credential(.glmGlobal), now: now)
@@ -162,7 +162,7 @@ final class OpenAgentProviderTests: XCTestCase {
         {"type":"message","id":"\(entry)","timestamp":"2026-09-07T00:00:01Z","message":{"role":"assistant","provider":"\(provider)","model":"\(model)","stopReason":"stop","usage":{"input":10,"output":20,"reasoning":5,"cacheRead":30,"cacheWrite":4,"cost":{"total":0.01}}}}
         """
     }
-    func testPiForksDeduplicateButDifferentRequestsAndProviderRoutesRemainDistinct() throws {
+    func testPiForksDeduplicateButDifferentRequestsAndProviderRoutesRemainDistinct() async throws {
         let a = try XCTUnwrap(OpenAgentParser.pi(Data(piLines().utf8), path: "/a.jsonl").first)
         let copy = try XCTUnwrap(OpenAgentParser.pi(Data(piLines(session: "fork").utf8), path: "/b.jsonl").first)
         let other = try XCTUnwrap(OpenAgentParser.pi(Data(piLines(entry: "message-b").utf8), path: "/c.jsonl").first)
@@ -238,7 +238,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertNotNil(usage[luna.id]?.listCost, "the calls recorded before are priced too")
     }
 
-    func testKimiUsageRecordWinsOverStepSummaryAndLegacyStatusIsCumulative() throws {
+    func testKimiUsageRecordWinsOverStepSummaryAndLegacyStatusIsCumulative() async throws {
         let modern = """
         {"type":"llm.request","model":"kimi-code/real-model","time":1788800000000}
         {"type":"usage.record","model":"__kimi_env_model__","usageScope":"turn","time":1788800001000,"usage":{"inputOther":10,"inputCacheRead":20,"inputCacheCreation":3,"output":5}}
@@ -299,18 +299,18 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertTrue(child.turns.isEmpty)
     }
 
-    func testPartialLastLineIsRetryableButInteriorCorruptionIsReported() throws {
+    func testPartialLastLineIsRetryableButInteriorCorruptionIsReported() async throws {
         XCTAssertEqual(try OpenAgentParser.pi(Data((piLines() + "\n{unfinished").utf8), path: "/a").first?.events.count, 1)
         XCTAssertThrowsError(try OpenAgentParser.pi(Data((piLines() + "\n{broken}\n").utf8), path: "/a"))
         XCTAssertThrowsError(try OpenAgentParser.pi(Data(piLines().replacingOccurrences(of: "\"input\":10", with: "\"input\":-10").utf8), path: "/a"))
     }
 
-    func testMalformedHugeCountersAndDurationsCannotOverflow() throws {
+    func testMalformedHugeCountersAndDurationsCannotOverflow() async throws {
         XCTAssertThrowsError(try OpenAgentParser.pi(Data(piLines().replacingOccurrences(of: "\"input\":10", with: "\"input\":9223372036854775807").utf8), path: "/a"))
         XCTAssertThrowsError(try OpenAgentQuotaClient.parse(json(#"{"limits":[{"window":{"duration":1e100,"timeUnit":"TIME_UNIT_HOUR"},"detail":{"limit":10,"used":1}}]}"#), credential: credential(), now: now))
     }
 
-    func testOpenCodeSQLiteWALAndLegacyJSONHaveSameEventIdentity() throws {
+    func testOpenCodeSQLiteWALAndLegacyJSONHaveSameEventIdentity() async throws {
         let home = try temp(), dbURL = home.appendingPathComponent("opencode.db")
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(dbURL.path, &db), SQLITE_OK)
@@ -332,7 +332,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertNil(sqlite.events[0].attribution?.pool)
     }
 
-    func testOpenCodeReadsMoreRepliesThanOneStatementMayReturn() throws {
+    func testOpenCodeReadsMoreRepliesThanOneStatementMayReturn() async throws {
         let url = try temp().appendingPathComponent("opencode.db")
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
@@ -353,7 +353,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertEqual(try OpenAgentParser.openCodeSQLite(url, since: Date(timeIntervalSince1970: 1_788_800_010_000.0 / 1000)).count, 500)
     }
 
-    func testTitlesComeFromWhatEachClientKeeps() throws {
+    func testTitlesComeFromWhatEachClientKeeps() async throws {
         // OpenCode keeps its placeholder name when the title call fails.
         let reply = #"{"role":"assistant","modelID":"m","providerID":"p","time":{"created":1788800000000},"tokens":{"input":1,"output":1},"path":{"root":"/work/app"}}"#
         let failed = try OpenAgentParser.openCodeMessage(json(reply), id: "m", sessionID: "s", path: "/m.json", title: "New session - 2026-09-28T07:46:18.123Z")
@@ -376,7 +376,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertEqual(try OpenAgentParser.kimi(Data(usage.utf8), path: session.appendingPathComponent("agents/child/wire.jsonl").path).first?.title, "Kimi")
     }
 
-    func testSameRequestCannotMergeAcrossPools() {
+    func testSameRequestCannotMergeAcrossPools() async {
         let a = credential().pool, b = credential(key: "another-account").pool
         func event(_ pool: BillingPool) -> UsageEvent {
             .init(timestamp: now, agentId: "model", tokensIn: 1, tokensOut: 2, eventID: "request",
@@ -385,7 +385,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertEqual(UsageAggregation.usageUnion([[event(a)], [event(a)], [event(b)]]).count, 2)
     }
 
-    func testKimiNativeRegionalSlotsAndExplicitAPIEndpointsStaySeparate() throws {
+    func testKimiNativeRegionalSlotsAndExplicitAPIEndpointsStaySeparate() async throws {
         let home = try temp()
         XCTAssertEqual(OpenAgentCredentials.kimiStorageName(.kimiGlobal), "kimi-code-env-0e4f99c69cc27850")
         for name in ["kimi-code", "kimi-code-env-0e4f99c69cc27850"] {
@@ -403,7 +403,7 @@ final class OpenAgentProviderTests: XCTestCase {
         XCTAssertTrue(OpenAgentCredentials.discover(home: home, environment: ["KIMI_CODE_BASE_URL": "https://custom.example/coding/v1"], now: now).isEmpty)
     }
 
-    func testJSONCOverrideCannotBeMistakenForNativeProvider() throws {
+    func testJSONCOverrideCannotBeMistakenForNativeProvider() async throws {
         let home = try temp()
         try write(#"{"kimi-for-coding":{"type":"api","key":"fixture-key"}}"#,
                   to: home.appendingPathComponent(".local/share/opencode/auth.json"))

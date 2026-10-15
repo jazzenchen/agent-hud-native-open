@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows a symlink the way FSEvents reports it.
 import XCTest
 @testable import AgentHUDCore
 
@@ -108,3 +110,4 @@ final class GrokQuotaChangesTests: XCTestCase, @unchecked Sendable {
         func record() { count += 1 }
     }
 }
+#endif

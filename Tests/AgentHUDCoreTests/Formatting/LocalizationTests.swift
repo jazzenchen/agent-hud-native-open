@@ -1,7 +1,10 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 import Observation
 @testable import AgentHUDCore
 
+@MainActor
 final class LocalizationTests: XCTestCase {
     override func tearDown() {
         L10n.setLanguage(.system)
@@ -114,3 +117,4 @@ final class LocalizationTests: XCTestCase {
         }
     }
 }
+#endif

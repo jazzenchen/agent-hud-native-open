@@ -1,6 +1,9 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
+@MainActor
 final class LogoQueueVendorTests: XCTestCase {
     /// The queue is what is watched plus what has been used, and a vendor leaves it a day after its last turn.
     @MainActor
@@ -114,3 +117,4 @@ final class LogoQueueVendorTests: XCTestCase {
         XCTAssertEqual(view.queueVendors.map(\.isWorking), [false])
     }
 }
+#endif

@@ -1,8 +1,10 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import XCTest
 @testable import AgentHUDCore
 
 final class SubscriptionTests: XCTestCase {
-    func testPlanBadgesUseProviderSpecificNames() {
+    func testPlanBadgesUseProviderSpecificNames() async {
         for (id, plan, expected) in [
             ("claude-code", "max_5x", "Max x5"),
             ("claude-code", "max_20x", "Max x20"),
@@ -19,20 +21,20 @@ final class SubscriptionTests: XCTestCase {
         }
     }
 
-    func testMissingSubscriptionsDoNotShowABadge() {
+    func testMissingSubscriptionsDoNotShowABadge() async {
         let states: [SourceStatus.State] = [.ready(plan: nil), .ready(plan: ""), .installed, .notDetected, .unavailable]
         for state in states {
             XCTAssertNil(SourceStatus(id: "deepseek", name: "DeepSeek", detail: "", state: state).planLabel)
         }
     }
 
-    func testClaudeMaxUsesTheAccountTier() throws {
+    func testClaudeMaxUsesTheAccountTier() async throws {
         for (tier, expected) in [("default_claude_max_5x", "max_5x"), ("default_claude_max_20x", "max_20x")] {
             XCTAssertEqual(ClaudeSubscription.plan(type: "max", profileData: try profile(tier: tier)), expected)
         }
     }
 
-    func testClaudeMissingOrUnknownMetadataDoesNotInventAMultiplier() throws {
+    func testClaudeMissingOrUnknownMetadataDoesNotInventAMultiplier() async throws {
         let profiles: [Data?] = [nil, Data("invalid".utf8), Data("{}".utf8), try profile(tier: "future_tier"),
                                 try profile(tier: "default_claude_max_20x", organization: "claude_team")]
         for data in profiles {
@@ -43,7 +45,7 @@ final class SubscriptionTests: XCTestCase {
         XCTAssertEqual(ClaudeSubscription.plan(type: "pro", profileData: max), "pro", "the engine remains authoritative for the current plan")
     }
 
-    func testClaudeUserTierTakesPrecedenceOverOrganizationTier() throws {
+    func testClaudeUserTierTakesPrecedenceOverOrganizationTier() async throws {
         let data = try profile(tier: "default_claude_max_20x", userTier: "default_claude_max_5x")
         XCTAssertEqual(ClaudeSubscription.plan(type: "max", profileData: data), "max_5x")
         let unknown = try profile(tier: "default_claude_max_20x", userTier: "future_tier")
@@ -88,3 +90,4 @@ final class SubscriptionTests: XCTestCase {
         return try JSONSerialization.data(withJSONObject: ["oauthAccount": account])
     }
 }
+#endif

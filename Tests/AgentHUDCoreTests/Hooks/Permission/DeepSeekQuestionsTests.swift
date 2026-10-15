@@ -1,9 +1,12 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import AgentHUDSupport
 import Foundation
 import XCTest
 @testable import AgentHUDCore
 
 /// Captured questions from hosts exposing the `host.describe` / question event-stream API.
+@MainActor
 final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let port = 3080
@@ -46,7 +49,7 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
         return DeepSeekQuestions.pending(frame, port: port, now: now)
     }
 
-    func testFrameReadsAQuestionAndRefusesWhatItCannotAnswerInFull() throws {
+    func testFrameReadsAQuestionAndRefusesWhatItCannotAnswerInFull() async throws {
         let read = try XCTUnwrap(DeepSeekQuestions.Frame.read(frame()))
         XCTAssertEqual(read.rpcID, "afbc4073-a9cb-44bf-9e0e-ec41948f8505")
         XCTAssertEqual(read.sessionID, "session-85d81a47-8249-4078-9d52-8f085746740a")
@@ -69,7 +72,7 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
         ]))))
     }
 
-    func testPendingCarriesTheHarnessContextOnTheRequest() throws {
+    func testPendingCarriesTheHarnessContextOnTheRequest() async throws {
         let waiting = try pending()
         XCTAssertEqual(waiting.request.source, .deepseek)
         XCTAssertEqual(waiting.request.vendor, "DeepSeek")
@@ -86,7 +89,7 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
 
     /// An offered label goes back under `selected`, the user's own words under `custom`, a skip as an empty
     /// `selected` — the shapes the host accepted live — with every question in the batch covered.
-    func testAnswerMapsChoicesCustomWordsAndSkips() throws {
+    func testAnswerMapsChoicesCustomWordsAndSkips() async throws {
         let waiting = try pending()
         let question = waiting.request.questions[0].answerKey
         func entry(_ decision: PermissionDecision) throws -> (selected: [String], custom: String?) {
@@ -115,7 +118,7 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(skip["custom"], "skipping also omits optional custom text")
     }
 
-    func testMultiSelectPreservesLabelsAndSupplementWithoutParsingText() throws {
+    func testMultiSelectPreservesLabelsAndSupplementWithoutParsingText() async throws {
         let json = frame(payload: .object([
             "sessionId": .string("session-multi"),
             "questions": .array([
@@ -138,7 +141,7 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(entry["custom"]?.stringValue, "丙, 再想想")
     }
 
-    func testEqualQuestionTextKeepsIndependentAnswersByID() throws {
+    func testEqualQuestionTextKeepsIndependentAnswersByID() async throws {
         let questions: [ProviderJSON] = ["first", "second"].map { id in
             .object(["id": .string(id), "question": .string("Continue?"),
                      "options": .array([.object(["label": .string("Yes")]), .object(["label": .string("No")])])])
@@ -154,7 +157,7 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(answers.map { $0["selected"].arrayValue?.first?.stringValue }, ["Yes", "No"])
     }
 
-    func testFrameRequiresUniqueStableIDsAndLeavesUnreadPlansToHarness() throws {
+    func testFrameRequiresUniqueStableIDsAndLeavesUnreadPlansToHarness() async throws {
         func read(_ questions: [ProviderJSON]) -> DeepSeekQuestions.Frame? {
             DeepSeekQuestions.Frame.read(frame(payload: .object([
                 "sessionId": .string("session"), "questions": .array(questions),
@@ -180,13 +183,13 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(read([.object(question), .object(plan)]), "one unread question leaves the whole batch native")
     }
 
-    func testAnswerRefusesWhatIsNotAnAnswer() throws {
+    func testAnswerRefusesWhatIsNotAnAnswer() async throws {
         let waiting = try pending()
         XCTAssertThrowsError(try DeepSeekQuestions.answer(.allow, for: waiting))
         XCTAssertThrowsError(try DeepSeekQuestions.answer(.deny, for: waiting))
     }
 
-    func testReceiptsAcceptedAndRefused() throws {
+    func testReceiptsAcceptedAndRefused() async throws {
         XCTAssertTrue(DeepSeekQuestions.accepted(.object([
             "type": .string("server-response"), "rpcId": .string("x"),
             "result": .object(["ok": .bool(true), "value": .object(["accepted": .bool(true)])]),
@@ -215,7 +218,7 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
 
     /// A describe call decides the port is a Harness web host by its fields; a failure result or a foreign
     /// server is not.
-    func testDescribeReadsTheHostAndRefusesTheRest() throws {
+    func testDescribeReadsTheHostAndRefusesTheRest() async throws {
         XCTAssertTrue(try DeepSeekQuestions.Endpoint.describe(describe()))
         XCTAssertThrowsError(try DeepSeekQuestions.Endpoint.describe(.object([
             "type": .string("server-response"), "rpcId": .string("probe"),
@@ -294,7 +297,7 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
     }
 
     /// A source the HUD can name everywhere it names clients: its vendor, its home under `$DSH_HOME`, and no hook.
-    func testTheDeepseekSourceNamesTheClientWithoutInstallingAnything() throws {
+    func testTheDeepseekSourceNamesTheClientWithoutInstallingAnything() async throws {
         let source = PermissionHooks.Source.deepseek
         XCTAssertEqual(source.vendor, "DeepSeek")
         XCTAssertFalse(source.usesHook)
@@ -310,3 +313,4 @@ final class DeepSeekQuestionsTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(source.isInstalled(home: home))
     }
 }
+#endif

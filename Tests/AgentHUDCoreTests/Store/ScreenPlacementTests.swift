@@ -1,6 +1,9 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
+@MainActor
 final class ScreenPlacementTests: XCTestCase {
     func testLogoSizeAndEdgeDistanceBoundsAreIndependentOfSpacing() throws {
         for (size, distance, expectedSize, expectedDistance) in [
@@ -60,3 +63,4 @@ final class ScreenPlacementTests: XCTestCase {
         XCTAssertEqual(HUDMode.allCases.filter(\.isDocked), [.logos, .simple])
     }
 }
+#endif

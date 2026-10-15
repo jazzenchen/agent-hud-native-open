@@ -89,7 +89,7 @@ public struct ClaudeEngineUsageClient: Sendable {
         var environment = ProcessInfo.processInfo.environment
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         #if os(Windows)
-        environment["PATH"] = "\(home)\.local\bin;" + (environment["PATH"] ?? "")
+        environment["PATH"] = home + "\\.local\\bin;" + (environment["PATH"] ?? "")
         #else
         environment["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         #endif

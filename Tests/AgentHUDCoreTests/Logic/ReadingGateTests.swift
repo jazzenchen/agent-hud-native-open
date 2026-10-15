@@ -1,9 +1,12 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
 /// What each surface makes of one quota or balance reading: the notice that holds it back, its status level, the baselines
 /// of quota alerts and reset credits, the menu figure, the account header, the reset column, the forecast hint, and what a
 /// retained report and the settings keep of a window the read left out.
+@MainActor
 final class ReadingGateTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let account = ProviderAccount.identified(provider: "Codex", user: "a@example.com", workspace: "workspace-1")!
@@ -340,3 +343,4 @@ final class ReadingGateTests: XCTestCase {
         return SettingsStore(defaults: defaults, defaultAgents: agents)
     }
 }
+#endif

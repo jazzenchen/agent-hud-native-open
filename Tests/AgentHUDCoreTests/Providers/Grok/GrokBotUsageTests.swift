@@ -160,7 +160,7 @@ final class GrokBotUsageTests: XCTestCase {
         XCTAssertEqual(report.usage.reduce(0) { $0 + $1.cacheReadTokens }, 40)
     }
 
-    func testRestoredBillingOnlySubagentsAreHiddenEvenWithTheOldCursorClientLabel() throws {
+    func testRestoredBillingOnlySubagentsAreHiddenEvenWithTheOldCursorClientLabel() async throws {
         let child = "sand-subagent-fixture-child"
         let ids = ["cursor-account:account-a:" + child, "cursor-account:account-a:ordinary-conversation",
                    GrokBotCache.sessionID(account: "bot-account", agent: child)]
@@ -176,7 +176,7 @@ final class GrokBotUsageTests: XCTestCase {
         XCTAssertEqual(restored.sessions.count, 3, "presentation does not discard billing bookkeeping")
     }
 
-    func testBillingSubagentIDsWithNativeTranscriptOrNavigationRemainVisible() {
+    func testBillingSubagentIDsWithNativeTranscriptOrNavigationRemainVisible() async {
         let child = "sand-subagent-fixture-child"
         let path = LiveSession(id: "cursor-account:account-a:" + child, agentId: "cursor-model:ordinary-model",
             task: "Native transcript", terminal: nil, startedAt: now, pctOfWindow: nil, tokensIn: 12, tokensOut: 5,

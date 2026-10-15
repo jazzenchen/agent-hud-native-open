@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import Foundation
 import XCTest
 @testable import AgentHUDCore
@@ -150,3 +152,4 @@ final class CodexSessionOriginsTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(CodexSessionOrigins.processArguments(Data([0, 0, 0, 0])))
     }
 }
+#endif

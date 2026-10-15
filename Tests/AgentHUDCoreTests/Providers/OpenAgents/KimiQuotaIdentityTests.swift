@@ -1,12 +1,18 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import Foundation
 import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import AgentHUDCore
 
+@MainActor
 final class KimiQuotaIdentityTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     // Redacted shape of the live OAuth /me response: domain is omitted.
-    private static let profile = #"{"user_id":"fixture-account","region":"REGION_CN"}"#
-    private static let usage = #"{"usage":{"limit":"100","used":"10","resetTime":"2027-01-21T00:00:00Z"},"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","used":"20"}}],"membership":{"level":"Allegretto"}}"#
+    private nonisolated static let profile = #"{"user_id":"fixture-account","region":"REGION_CN"}"#
+    private nonisolated static let usage = #"{"usage":{"limit":"100","used":"10","resetTime":"2027-01-21T00:00:00Z"},"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","used":"20"}}],"membership":{"level":"Allegretto"}}"#
 
     private func credential(_ key: String, client: String = "Kimi", expiresAt: Date? = nil) -> OpenAgentCredential {
         OpenAgentCredentials.credential(.kimi, token: key, client: client, expiresAt: expiresAt)
@@ -222,7 +228,7 @@ final class KimiQuotaIdentityTests: XCTestCase {
         XCTAssertEqual(offline.snapshots, good.snapshots)
     }
 
-    func testExpiredJWTIsExcludedEvenWhenConfiguredAsAnAPIKey() throws {
+    func testExpiredJWTIsExcludedEvenWhenConfiguredAsAnAPIKey() async throws {
         let payload = Data("{\"exp\":\(Int(now.timeIntervalSince1970 - 1)),\"user_id\":\"unverified\"}".utf8)
             .base64EncodedString().replacingOccurrences(of: "=", with: "").replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
         let token = "eyJhbGciOiJub25lIn0.\(payload).fixture"
@@ -263,3 +269,4 @@ final class KimiQuotaIdentityTests: XCTestCase {
         }
     }
 }
+#endif

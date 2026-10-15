@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import AgentHUDSupport
 import XCTest
 @testable import AgentHUDCore
@@ -366,3 +368,4 @@ final class SessionViewTests: XCTestCase {
         return UsageStore(provider: DemoUsageProvider(), settings: SettingsStore(defaults: defaults, defaultAgents: agents ?? [quotaRow]))
     }
 }
+#endif

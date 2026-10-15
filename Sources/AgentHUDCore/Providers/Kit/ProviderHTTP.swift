@@ -31,6 +31,22 @@ struct ProviderHTTP: Sendable {
         config.timeoutIntervalForResource = request.timeoutInterval + 1
         let session = URLSession(configuration: config, delegate: Delegate(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
+        #if os(Windows)
+        // corelibs' URLSession has no async bytes; the whole answer is awaited at once under the same cap.
+        let (payload, response): (Data, URLResponse) = try await withCheckedThrowingContinuation { continuation in
+            session.dataTask(with: request) { data, response, error in
+                if let error { continuation.resume(throwing: error) }
+                else if let response { continuation.resume(returning: (data ?? Data(), response)) }
+                else { continuation.resume(throwing: ProviderFailure.format) }
+            }.resume()
+        }
+        guard let response = response as? HTTPURLResponse else { throw ProviderFailure.format }
+        guard (200..<300).contains(response.statusCode) else {
+            throw ProviderHTTPError(status: response.statusCode)
+        }
+        guard payload.count < 16 * 1024 * 1024 else { throw ProviderFailure.limit }
+        return payload
+        #else
         let (bytes, response) = try await session.bytes(for: request)
         guard let response = response as? HTTPURLResponse else { throw ProviderFailure.format }
         guard (200..<300).contains(response.statusCode) else {
@@ -42,6 +58,7 @@ struct ProviderHTTP: Sendable {
             data.append(byte)
         }
         return data
+        #endif
     }
 
     private final class Delegate: NSObject, URLSessionTaskDelegate, Sendable {

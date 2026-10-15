@@ -1,6 +1,9 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
+@MainActor
 final class RetainedUsageProviderTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -81,7 +84,7 @@ final class RetainedUsageProviderTests: XCTestCase {
         XCTAssertEqual(restarted.initialReport, saved)
     }
 
-    func testRestartCopyWithFieldsOfEarlierVersionsStillLoads() throws {
+    func testRestartCopyWithFieldsOfEarlierVersionsStillLoads() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -238,3 +241,4 @@ private actor SequenceProvider: UsageProvider {
         return reports.removeFirst()
     }
 }
+#endif

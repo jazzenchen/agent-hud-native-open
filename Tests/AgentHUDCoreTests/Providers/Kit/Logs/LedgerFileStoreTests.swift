@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import XCTest
 @testable import AgentHUDCore
 
@@ -83,7 +85,7 @@ final class LedgerFileStoreTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(again.filesRead, 0)
     }
 
-    func testAListingStoppedByItsLimitKeepsTheFilesItDidNotReach() throws {
+    func testAListingStoppedByItsLimitKeepsTheFilesItDidNotReach() async throws {
         let root = try directory()
         for name in ["a", "b", "c"] { try "a 1\n".write(to: root.appendingPathComponent("\(name).log"), atomically: true, encoding: .utf8) }
         let files = LogFiles(roots: [root], watchesChanges: false, limit: 3) { _ in true }
@@ -96,7 +98,7 @@ final class LedgerFileStoreTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(names.contains("a.log"), "a file that is gone leaves")
     }
 
-    func testAFileWhoseParseFailedWaitsBeforeItIsParsedAgain() throws {
+    func testAFileWhoseParseFailedWaitsBeforeItIsParsedAgain() async throws {
         let root = try directory(), file = root.appendingPathComponent("s.db")
         try "a".write(to: file, atomically: true, encoding: .utf8)
         final class Calls { var count = 0 }
@@ -199,3 +201,4 @@ final class LedgerFileStoreTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(total, 0)
     }
 }
+#endif

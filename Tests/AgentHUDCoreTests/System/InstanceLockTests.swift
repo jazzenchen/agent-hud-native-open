@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import Foundation
 import XCTest
 @testable import AgentHUDCore
@@ -46,3 +48,4 @@ final class InstanceLockTests: XCTestCase, @unchecked Sendable {
         }
     }
 }
+#endif

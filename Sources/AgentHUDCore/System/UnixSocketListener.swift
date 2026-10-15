@@ -119,9 +119,7 @@ public final class UnixSocketListener {
     }
 }
 #else
-import os.log
 import WinSDK
-import ucrt
 
 /// The Windows side of the same listener. WinSock speaks AF_UNIX but puts no socket file in the filesystem, so the
 /// name dies with the serving process and there is nothing to unlink; the `.lock` file still keeps a second copy of the
@@ -131,16 +129,17 @@ public final class UnixSocketListener {
     public let path: String
     public let requestLimit: Int
     private let onRequest: @MainActor (Data, UnixConnection) -> Void
-    private let log: Logger
+    /// The os_log Logger has no Windows counterpart; the category names the lines this side writes.
+    private let log: (String) -> Void
     private var server: ListeningSocket?
     /// The lock that makes this process the one serving the path.
-    private var lock: Int32 = -1
+    private var lock: LockedFile?
 
     public init(path: String, requestLimit: Int, category: String, onRequest: @escaping @MainActor (Data, UnixConnection) -> Void) {
         self.path = path
         self.requestLimit = requestLimit
         self.onRequest = onRequest
-        log = Logger(subsystem: "app.agenthud", category: category)
+        log = { NSLog("[AgentHUD] [%@] %@", category as NSString, $0 as NSString) }
     }
 
     public var isListening: Bool { server != nil }
@@ -152,24 +151,21 @@ public final class UnixSocketListener {
         guard server == nil else { return true }
         let path = path
         guard WinSock.started, UnixSocket.fits(path) else {
-            log.error("Socket path is too long for a unix socket: \(path, privacy: .public)")
+            log("Socket path is too long for a unix socket: \(path)")
             return false
         }
         try? FileManager.default.createDirectory(at: URL(fileURLWithPath: path).deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
-        let lock = ucrt._open(path + ".lock", _O_CREAT | _O_RDWR | _O_BINARY, _S_IREAD | _S_IWRITE)
-        guard lock >= 0 else {
-            log.error("Could not open the channel lock beside \(path, privacy: .public)")
+        guard let lock = LockedFile(path + ".lock") else {
+            log("Could not open the channel lock beside \(path)")
             return false
         }
-        guard ucrt._locking(lock, _LK_NBLCK, 1) == 0 else {
-            ucrt._close(lock)
-            log.info("Another instance serves \(path, privacy: .public)")
+        guard lock.isLocked else {
+            log("Another instance serves \(path)")
             return false
         }
         guard let socket = ListeningSocket(path: path) else {
-            ucrt._close(lock)
-            log.error("Could not listen on \(path, privacy: .public)")
+            log("Could not listen on \(path)")
             return false
         }
         self.lock = lock
@@ -188,8 +184,7 @@ public final class UnixSocketListener {
     public func stop() {
         server?.close()
         server = nil
-        if lock >= 0 { ucrt._close(lock) }
-        lock = -1
+        lock = nil
     }
 }
 
@@ -231,17 +226,52 @@ private final class ListeningSocket: @unchecked Sendable {
             guard accepted != WinSDK.INVALID_SOCKET else { break }
             let connection = UnixConnection(handle: accepted)
             connection.makeReady()
-            switch connection.readToEnd(limit: limit) {
-            case .success(let data):
-                if data.count <= limit {
-                    DispatchQueue.main.async { MainActor.assumeIsolated { onRequest(data, connection) } }
-                } else {
-                    connection.cancel()
-                }
-            case .failure:
+            let (data, error) = connection.readToEnd(limit: limit)
+            if error == nil, data.count <= limit {
+                DispatchQueue.main.async { MainActor.assumeIsolated { onRequest(data, connection) } }
+            } else {
                 connection.cancel()
             }
         }
     }
 }
 #endif
+
+/// A file held under an exclusive byte-range lock, in place of flock: the system lets go of the range when the
+/// process ends, also when it crashes, so a copy that is gone never keeps another from starting.
+final class LockedFile: @unchecked Sendable {
+    private let handle: HANDLE?
+    /// False when the file exists but another process holds its first byte.
+    let isLocked: Bool
+
+    init?(_ path: String) {
+        var wide = Array(path.utf16)
+        wide.append(0)
+        let handle = wide.withUnsafeBufferPointer { buffer in
+            CreateFileW(buffer.baseAddress, DWORD(GENERIC_READ) | DWORD(GENERIC_WRITE), 0, nil,
+                        DWORD(OPEN_ALWAYS), DWORD(FILE_ATTRIBUTE_NORMAL), nil)
+        }
+        guard let handle, handle != INVALID_HANDLE_VALUE else { return nil }
+        var overlapped = OVERLAPPED()
+        let locked = LockFileEx(handle, DWORD(LOCKFILE_EXCLUSIVE_LOCK) | DWORD(LOCKFILE_FAIL_IMMEDIATELY), 0, 1, 0, &overlapped)
+        self.handle = handle
+        self.isLocked = locked
+    }
+
+    /// Replaces the file's content with `data`; false when the write did not go whole.
+    func write(_ data: Data) -> Bool {
+        guard let handle, isLocked else { return false }
+        SetFilePointer(handle, 0, nil, DWORD(FILE_BEGIN))
+        guard SetEndOfFile(handle) else { return false }
+        var written: DWORD = 0
+        let ok = data.withUnsafeBytes { buffer in
+            buffer.baseAddress.map { WriteFile(handle, $0, DWORD(buffer.count), &written, nil) } ?? true
+        }
+        return ok && written == DWORD(data.count)
+    }
+
+    deinit {
+        if let handle { CloseHandle(handle) }
+    }
+}
+

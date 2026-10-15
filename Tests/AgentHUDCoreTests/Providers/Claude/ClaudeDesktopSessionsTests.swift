@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import Foundation
 import XCTest
 @testable import AgentHUDCore
@@ -76,3 +78,4 @@ final class ClaudeDesktopSessionsTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(targets, ["valid-cli": .claudeDesktopSession(id: validID)])
     }
 }
+#endif

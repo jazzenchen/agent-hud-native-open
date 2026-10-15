@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(os)
+import os
+#endif
 
 /// What a scripted demo shows right now: which sessions run, what each window reads, the turns that have ended and
 /// the requests waiting. The demo's provider builds its report from this instead of from its fixed figures.
@@ -68,6 +71,7 @@ public struct DemoStage: Equatable, Sendable {
 
 /// The stage a playing script has set, for the demo's provider to read from whichever thread it reports on.
 public enum DemoStageBox {
+    #if canImport(os)
     private static let stage = OSAllocatedUnfairLock<DemoStage?>(initialState: nil)
 
     /// Nil while no script plays: the demo then shows its fixed figures.
@@ -75,4 +79,22 @@ public enum DemoStageBox {
         get { stage.withLock { $0 } }
         set { stage.withLock { $0 = newValue } }
     }
+    #else
+    private static let box = StageBox()
+
+    public static var current: DemoStage? {
+        get { box.current }
+        set { box.current = newValue }
+    }
+
+    /// A bare static var is not concurrency-safe; the box holds the stage under a lock.
+    private final class StageBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stage: DemoStage? = nil
+        var current: DemoStage? {
+            get { lock.withLock { stage } }
+            set { lock.withLock { stage = newValue } }
+        }
+    }
+    #endif
 }

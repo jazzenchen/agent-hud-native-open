@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import XCTest
 @testable import AgentHUDCore
 
@@ -30,7 +32,7 @@ final class PiSessionObserverTests: XCTestCase, @unchecked Sendable {
         return try await provider.fetchUsage(agents: [], historyHours: 168)
     }
 
-    func testInstallHonorsCustomHomePreservesOtherExtensionsAndIsReversible() throws {
+    func testInstallHonorsCustomHomePreservesOtherExtensionsAndIsReversible() async throws {
         let home = try temporaryHome(), custom = home.appendingPathComponent("custom-agent")
         let env = ["PI_CODING_AGENT_DIR": custom.path]
         let other = custom.appendingPathComponent("extensions/other.ts")
@@ -49,7 +51,7 @@ final class PiSessionObserverTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(try String(contentsOf: occupied, encoding: .utf8), "unrelated")
     }
 
-    func testAutomaticSetupOnlyInstallsForAnExistingPiDirectory() throws {
+    func testAutomaticSetupOnlyInstallsForAnExistingPiDirectory() async throws {
         let home = try temporaryHome(), custom = home.appendingPathComponent("custom-agent")
         let env = ["PI_CODING_AGENT_DIR": custom.path]
         try PiSessionObserver.configureIfAvailable(home: home, environment: env)
@@ -59,7 +61,7 @@ final class PiSessionObserverTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(PiSessionObserver.isInstalled(home: home, environment: env))
     }
 
-    func testSettingsTellWhetherTheExtensionIsInPlaceAndWhetherThisPiReportsAnEnd() throws {
+    func testSettingsTellWhetherTheExtensionIsInPlaceAndWhetherThisPiReportsAnEnd() async throws {
         let home = try temporaryHome(), paths = OpenAgentPaths(home: home, environment: [:])
         XCTAssertEqual(PiSessionObserver.fileState(home: home, environment: [:]), .missing)
         try PiSessionObserver.configure(enabled: true, home: home, environment: [:])
@@ -270,3 +272,4 @@ final class PiSessionObserverTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(output.contains("Pi native lifecycle checks passed"), output)
     }
 }
+#endif

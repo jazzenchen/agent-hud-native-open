@@ -76,7 +76,7 @@ public enum PermissionHookClient {
         #else
         private let item: DispatchWorkItem
         init() {
-            item = DispatchWorkItem { Self.goNow() }
+            item = DispatchWorkItem { PermissionHookClient.goNow() }
             DispatchQueue.global().asyncAfter(deadline: .now() + 5, execute: item)
         }
         func cancel() { item.cancel() }

@@ -8,7 +8,7 @@ enum Executables {
         #if os(Windows)
         let names = [name, name + ".exe", name + ".cmd", name + ".bat"]
         return path.split(separator: ";").flatMap { directory in
-            names.map { URL(fileURLWithPath: String($0)).appendingPathComponent($1) }
+            names.map { URL(fileURLWithPath: String(directory)).appendingPathComponent($0) }
         }
         #else
         return path.split(separator: ":").map { URL(fileURLWithPath: String($0)).appendingPathComponent(name) }

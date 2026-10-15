@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import XCTest
 @testable import AgentHUDCore
 
@@ -5,7 +7,7 @@ final class ClaudeEngineTests: XCTestCase {
     /// Trimmed copy of a real `get_usage` response (Max plan).
     static let response = #"{"type":"control_response","response":{"subtype":"success","request_id":"agent-hud-usage","response":{"session":{"total_cost_usd":0,"total_api_duration_ms":0,"total_duration_ms":7314,"total_lines_added":0,"total_lines_removed":0,"model_usage":{}},"subscription_type":"max","rate_limits_available":true,"rate_limits":{"five_hour":{"utilization":21,"resets_at":"2026-09-07T10:20:00.182540+00:00","limit_dollars":null},"seven_day":{"utilization":70,"resets_at":"2026-09-12T18:00:00.182559+00:00"},"seven_day_opus":null,"seven_day_sonnet":null,"extra_usage":{"is_enabled":false},"limits":[{"kind":"session","group":"session","percent":21}]},"behaviors":null}}}"#
 
-    func testParsesRealResponse() throws {
+    func testParsesRealResponse() async throws {
         let parsed = try XCTUnwrap(ClaudeEngineUsage.parse(line: Self.response))
         XCTAssertTrue(parsed.rateLimitsAvailable)
         XCTAssertEqual(parsed.subscriptionType, "max")
@@ -17,7 +19,7 @@ final class ClaudeEngineTests: XCTestCase {
         XCTAssertEqual(resets.timeIntervalSince1970, DateParsing.iso8601("2026-09-07T10:20:00Z")!.timeIntervalSince1970, accuracy: 1, "microsecond offsets parse")
     }
 
-    func testModelScopedWeeklyLimits() throws {
+    func testModelScopedWeeklyLimits() async throws {
         let json = #"{"five_hour":{"utilization":21},"seven_day":{"utilization":70},"seven_day_opus":null,"limits":[{"kind":"session","group":"session","percent":21},{"kind":"weekly_all","group":"weekly","percent":70},{"kind":"weekly_scoped","group":"weekly","percent":44,"resets_at":"2026-09-12T17:59:59.652963+00:00","scope":{"model":{"id":null,"display_name":"Fable"},"surface":null}}]}"#
         let usage = try ClaudeUsage.parse(Data(json.utf8))
         XCTAssertEqual(usage.modelWeekly["fable"]?.utilizationPct, 44)
@@ -26,19 +28,19 @@ final class ClaudeEngineTests: XCTestCase {
         XCTAssertNotNil(usage.modelWeekly["fable"]?.resetsAt)
     }
 
-    func testIgnoresOtherStreamLines() throws {
+    func testIgnoresOtherStreamLines() async throws {
         XCTAssertNil(try ClaudeEngineUsage.parse(line: #"{"type":"system","subtype":"hook_started"}"#))
         XCTAssertNil(try ClaudeEngineUsage.parse(line: "not json"))
     }
 
-    func testErrorResponseThrows() {
+    func testErrorResponseThrows() async {
         let line = #"{"type":"control_response","response":{"subtype":"error","request_id":"x","error":"get_usage is not supported in this context"}}"#
         XCTAssertThrowsError(try ClaudeEngineUsage.parse(line: line)) { error in
             XCTAssertEqual(error as? ClaudeDataError, .engineFailed("get_usage is not supported in this context"))
         }
     }
 
-    func testUnavailableLimits() throws {
+    func testUnavailableLimits() async throws {
         let line = #"{"type":"control_response","response":{"subtype":"success","request_id":"x","response":{"subscription_type":null,"rate_limits_available":false,"rate_limits":null}}}"#
         let parsed = try XCTUnwrap(ClaudeEngineUsage.parse(line: line))
         XCTAssertFalse(parsed.rateLimitsAvailable)
@@ -64,7 +66,7 @@ final class ClaudeEngineTests: XCTestCase {
         XCTAssertNotEqual(ClaudeDataError.signedOut.errorDescription, ClaudeDataError.planLimitsUnavailable.errorDescription)
     }
 
-    func testLocatorPrefersNewestVersion() throws {
+    func testLocatorPrefersNewestVersion() async throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("agenthud-home-\(UUID().uuidString)", isDirectory: true)
         let versions = home.appendingPathComponent(".local/share/claude/versions", isDirectory: true)
         try FileManager.default.createDirectory(at: versions, withIntermediateDirectories: true)
@@ -182,3 +184,4 @@ final class ISO8601FastTests: XCTestCase {
         }
     }
 }
+#endif

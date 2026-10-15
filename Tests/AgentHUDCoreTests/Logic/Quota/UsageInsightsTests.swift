@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import XCTest
 @testable import AgentHUDCore
 
@@ -158,3 +160,4 @@ final class UsageInsightsTests: XCTestCase {
         return ClaudeEngineUsageClient(executable: script, workingDirectory: directory, timeout: 10)
     }
 }
+#endif

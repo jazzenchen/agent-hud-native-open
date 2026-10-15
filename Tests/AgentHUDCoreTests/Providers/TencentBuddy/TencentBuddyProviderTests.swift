@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import Foundation
 import SQLite3
 import XCTest
@@ -25,7 +27,7 @@ final class TencentBuddyProviderTests: XCTestCase, @unchecked Sendable {
         return "{" + fields.compactMap { $0 }.joined(separator: ",") + "}"
     }
 
-    func testFieldSetsMapToDisjointDimensions() throws {
+    func testFieldSetsMapToDisjointDimensions() async throws {
         let cases: [(String, [Int])] = [
             (#"{"input_tokens":24486,"output_tokens":3,"total_tokens":24489,"cache_read_input_tokens":14720}"#, [9766, 3, 14720]),
             (#"{"prompt_tokens":140732,"completion_tokens":635,"total_tokens":141367,"prompt_cache_hit_tokens":76032}"#, [64700, 635, 76032]),
@@ -44,7 +46,7 @@ final class TencentBuddyProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertThrowsError(try TencentBuddySessions.tokens(json(#"{"inputTokens":-1,"outputTokens":5}"#)))
     }
 
-    func testOnlyCompletedResponsesCountOncePerIdentity() throws {
+    func testOnlyCompletedResponsesCountOncePerIdentity() async throws {
         let url = try directory().appendingPathComponent("projects/repo/s1.jsonl")
         try write([
             line("message", role: "user", status: nil, usage: nil),
@@ -128,7 +130,7 @@ final class TencentBuddyProviderTests: XCTestCase, @unchecked Sendable {
                                   "workbuddy:s1", "workbuddy:message:m1", "workbuddy:message:sub", "workbuddy-model:glm-5.3"])
     }
 
-    func testStopHookUsesTranscriptTailOrCallbackTime() throws {
+    func testStopHookUsesTranscriptTailOrCallbackTime() async throws {
         let transcript = try directory().appendingPathComponent("s1.jsonl")
         try write([line("message", message: "earlier"), line("message", message: "final"), line("function_call", role: nil, status: nil, message: "tool")], to: transcript)
         var payload: [String: Any] = ["hook_event_name": "Stop", "session_id": "s1", "transcript_path": transcript.path, "cwd": "/Users/alice/repo", "stop_hook_active": false]
@@ -154,3 +156,4 @@ final class TencentBuddyProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertNil(try completion())
     }
 }
+#endif

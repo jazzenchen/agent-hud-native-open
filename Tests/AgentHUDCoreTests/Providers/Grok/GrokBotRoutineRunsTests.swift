@@ -5,7 +5,7 @@ import XCTest
 final class GrokBotRoutineRunsTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    func testReplyListsEachRunUnderTheBotThatOwnsItsRoutine() {
+    func testReplyListsEachRunUnderTheBotThatOwnsItsRoutine() async {
         let reply = Self.reply([
             ("bot-one", #"{"id":"daily","name":"Daily digest","runs":[{"id":"run-a","startedAt":1799999000000},{"id":"run-b"}]}"#),
             ("bot-two", #"{"id":"weekly","name":"  ","runs":[{"id":"run-c","startedAt":1799998000000}]}"#),
@@ -19,7 +19,7 @@ final class GrokBotRoutineRunsTests: XCTestCase {
         XCTAssertEqual(runs.count, 3)
     }
 
-    func testRunListedUnderTwoBotsNamesNeither() {
+    func testRunListedUnderTwoBotsNamesNeither() async {
         let reply = Self.reply([("bot-one", #"{"id":"a","runs":[{"id":"run-a"},{"id":"run-b"}]}"#),
                                 ("bot-two", #"{"id":"b","runs":[{"id":"run-a"}]}"#)])
         XCTAssertEqual(Set(GrokBotRoutineRuns.parse(reply, now: now).keys), ["run-b"])

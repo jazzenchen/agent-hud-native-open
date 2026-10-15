@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import AgentHUDSupport
 import XCTest
 @testable import AgentHUDCore
@@ -104,3 +106,4 @@ final class CodexDesktopPermissionObserverTests: XCTestCase {
                        ["parent", "child"])
     }
 }
+#endif

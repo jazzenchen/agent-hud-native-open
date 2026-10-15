@@ -51,6 +51,7 @@ enum HookProcessOrigins {
         data.count = size
         return processArguments(data)
     }
+    #endif
 
     /// KERN_PROCARGS2 puts the executable, argv, then environment in one buffer. Stop after argv; never decode environment.
     static func processArguments(_ data: Data) -> [String]? {
@@ -69,5 +70,4 @@ enum HookProcessOrigins {
         }
         return arguments
     }
-    #endif
 }

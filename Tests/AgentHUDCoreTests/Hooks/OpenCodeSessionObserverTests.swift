@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import XCTest
 @testable import AgentHUDCore
 
@@ -18,7 +20,7 @@ final class OpenCodeSessionObserverTests: XCTestCase, @unchecked Sendable {
 
     private func milliseconds(_ date: Date) -> Int64 { Int64(date.timeIntervalSince1970 * 1000) }
 
-    func testThePluginGoesIntoTheGlobalPluginDirectoryAndLeavesOtherFilesAlone() throws {
+    func testThePluginGoesIntoTheGlobalPluginDirectoryAndLeavesOtherFilesAlone() async throws {
         let home = try temporaryHome(), config = home.appendingPathComponent("xdg-config")
         let env = ["XDG_CONFIG_HOME": config.path]
         let plugin = config.appendingPathComponent("opencode/plugin/agent-hud.js")
@@ -38,7 +40,7 @@ final class OpenCodeSessionObserverTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(try String(contentsOf: plugin, encoding: .utf8), "export const Mine = async () => ({})")
     }
 
-    func testObserversGoInOnceTheirClientsHaveRun() throws {
+    func testObserversGoInOnceTheirClientsHaveRun() async throws {
         let home = try temporaryHome(), paths = OpenAgentPaths(home: home, environment: [:])
         XCTAssertEqual(SessionObservers.observedClients(home: home), [])
         SessionObservers.installObservers(home: home)
@@ -268,3 +270,4 @@ final class OpenCodeSessionObserverTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(output.contains("OpenCode plugin checks passed"), output)
     }
 }
+#endif

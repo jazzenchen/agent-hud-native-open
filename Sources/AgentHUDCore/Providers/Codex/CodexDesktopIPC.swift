@@ -30,10 +30,7 @@ public final class CodexDesktopIPC {
         do {
             // Windows has no poll over sockets here; read and send time out on the socket itself, and the deadline
             // below still bounds every call.
-            var milliseconds: DWORD = DWORD(max(1, min(timeout, 86_400) * 1000))
-            let size = DWORD(MemoryLayout<DWORD>.size)
-            guard setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, &milliseconds, size) == 0,
-                  setsockopt(handle, SOL_SOCKET, SO_SNDTIMEO, &milliseconds, size) == 0 else { throw Failure.unavailable }
+            guard UnixSocket.timeouts(descriptor, seconds: timeout) else { throw Failure.unavailable }
             let connected = UnixSocket.withAddress(path) { address, length in
                 WinSDK.connect(handle, address, length)
             }
@@ -178,7 +175,7 @@ public final class CodexDesktopIPC {
             let count = bytes.withUnsafeBytes {
                 WinSDK.send(UnixSocket.handleOf(descriptor), $0.baseAddress!.advanced(by: offset), Int32(bytes.count - offset), 0)
             }
-            if count == WinSDK.SOCKET_ERROR {
+            if count < 0 {
                 let error = WSAGetLastError()
                 if error == WSAEINTR { continue }
                 throw remaining > 0 ? Failure.unavailable : Failure.timedOut
@@ -190,7 +187,7 @@ public final class CodexDesktopIPC {
             #endif
             guard count > 0 else { throw Failure.unavailable }
             if offset == 0 { didWrite?() }
-            offset += count
+            offset += Int(count)
         }
     }
 
@@ -216,7 +213,7 @@ public final class CodexDesktopIPC {
             let size = bytes.withUnsafeMutableBytes { raw in
                 WinSDK.recv(UnixSocket.handleOf(descriptor), raw.baseAddress, Int32(raw.count), 0)
             }
-            if size == WinSDK.SOCKET_ERROR {
+            if size < 0 {
                 let error = WSAGetLastError()
                 if error == WSAEINTR { continue }
                 throw remaining > 0 ? Failure.unavailable : Failure.timedOut

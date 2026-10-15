@@ -39,7 +39,7 @@ final class HermesProviderTests: XCTestCase, @unchecked Sendable {
             """)
     }
 
-    func testUsageRowsBecomeEventsWhoseIdentityHoldsWhileCountsGrow() throws {
+    func testUsageRowsBecomeEventsWhoseIdentityHoldsWhileCountsGrow() async throws {
         let url = try directory().appendingPathComponent("state.db")
         try stateDatabase(url)
         let session = try XCTUnwrap(HermesSessions.read(url, since: now.addingTimeInterval(-86400)).sessions.first)
@@ -61,7 +61,7 @@ final class HermesProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(try HermesSessions.read(url, since: .distantPast).sessions.map(\.id), ["hermes:old", "hermes:s1"])
     }
 
-    func testOlderDatabaseTotalsKeepTheIdentityAnUpgradeSeeds() throws {
+    func testOlderDatabaseTotalsKeepTheIdentityAnUpgradeSeeds() async throws {
         let url = try directory().appendingPathComponent("state.db")
         try database(url, """
             CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, model TEXT, started_at REAL NOT NULL, input_tokens INTEGER DEFAULT 0,

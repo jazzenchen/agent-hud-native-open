@@ -185,6 +185,10 @@ public final class DeepSeekQuestionObserver {
     nonisolated static func discoverPorts(
         inspect: @Sendable (String, [String]) async throws -> String = ProviderCommand.run
     ) async -> [Int] {
+        #if os(Windows)
+        // The hosts are found through `ps`, which this port does not run.
+        return []
+        #else
         guard let output = try? await inspect("/bin/ps", ["-U", String(getuid()), "-o", "pid=,command="]) else { return [] }
         var ports: Set<Int> = []
         // Only a web profile's host asks questions; the lines of every other process are never taken apart.
@@ -198,6 +202,7 @@ public final class DeepSeekQuestionObserver {
             }
         }
         return ports.sorted()
+        #endif
     }
 
     /// The Harness entry — `dsh` or the package's `bin.js` — running its web profile, the only profile whose

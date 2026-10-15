@@ -17,7 +17,7 @@ public struct CodexAppServerClient: Sendable {
         environment["CODEX_HOME"] = dataDirectory.path
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         #if os(Windows)
-        environment["PATH"] = "\(home)\.bun\bin;\(home)\.local\bin;" + (environment["PATH"] ?? "")
+        environment["PATH"] = home + "\\.bun\\bin;" + home + "\\.local\\bin;" + (environment["PATH"] ?? "")
         #else
         environment["PATH"] = "\(home)/.bun/bin:\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (environment["PATH"] ?? "")
         #endif

@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
@@ -136,7 +138,7 @@ final class QuotaWindowInventoryTests: XCTestCase {
         XCTAssertTrue(settings.agents.isEmpty)
     }
 
-    func testCompletenessRequiresExplicitInventoryCurrentAccountAndSoundReadAndSurvivesCopies() throws {
+    func testCompletenessRequiresExplicitInventoryCurrentAccountAndSoundReadAndSurvivesCopies() async throws {
         let previous = savedReport([row(modernKeys[0], account: current)], at: now.addingTimeInterval(-60))
         let cases: [(Set<String>?, Bool, ReadingIssue?, ReadingIssue?)] = [
             (nil, true, nil, nil), ([], false, nil, nil), ([], true, .readFailed("offline"), nil), ([], true, nil, .readFailed("offline")),
@@ -163,7 +165,7 @@ final class QuotaWindowInventoryTests: XCTestCase {
         XCTAssertThrowsError(try AntigravityClient.summary(json(#"{"groups":[{"buckets":[{"remainingFraction":1}]}]}"#)))
     }
 
-    func testFormerSummaryAccountsRetireWhileCurrentLegacyWindowStateRemains() throws {
+    func testFormerSummaryAccountsRetireWhileCurrentLegacyWindowStateRemains() async throws {
         L10n.setLanguage(.en)
         defer { L10n.setLanguage(.system) }
         let old = [row(modernKeys[0], account: historical, enabled: false), row(modernKeys[2], account: historical, enabled: false),
@@ -223,3 +225,4 @@ final class QuotaWindowInventoryTests: XCTestCase {
         return defaults
     }
 }
+#endif

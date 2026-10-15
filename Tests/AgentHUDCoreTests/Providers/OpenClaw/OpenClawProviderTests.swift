@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import AgentHUDSupport
 import Foundation
 import SQLite3
@@ -52,7 +54,7 @@ final class OpenClawProviderTests: XCTestCase, @unchecked Sendable {
         return url
     }
 
-    func testDatabaseCountsResponsesOnceAndSkipsBookkeepingAndDelegatedRows() throws {
+    func testDatabaseCountsResponsesOnceAndSkipsBookkeepingAndDelegatedRows() async throws {
         let url = try agentDatabase(try directory(), events: [
             ("s1", #"{"type":"session","version":3,"id":"s1","timestamp":"2026-09-14T00:00:00.000Z","cwd":"/work/app"}"#, nil),
             ("s1", assistant("a1", response: "resp-1"), nil),
@@ -77,7 +79,7 @@ final class OpenClawProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(session.turns.isEmpty, "A window without Gateway lifecycle status has no turn")
     }
 
-    func testTheLabelTheUserGaveBeatsTheDisplayName() throws {
+    func testTheLabelTheUserGaveBeatsTheDisplayName() async throws {
         let url = try agentDatabase(try directory(), windows: [("s1", nil, "{}", nil)], events: [("s1", assistant("a1"), nil)])
         XCTAssertEqual(try OpenClawSessions.read(url, since: now.addingTimeInterval(-86400)).sessions.first?.title, "Fixture s1")
         var handle: OpaquePointer?
@@ -87,7 +89,7 @@ final class OpenClawProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(try OpenClawSessions.read(url, since: now.addingTimeInterval(-86400)).sessions.first?.title, "Release notes")
     }
 
-    func testGatewayStatusMapsToTurnsAndOnlyDoneCompletes() throws {
+    func testGatewayStatusMapsToTurnsAndOnlyDoneCompletes() async throws {
         let url = try agentDatabase(try directory(), windows: [
             ("run", "running", #"{"lifecycleRunId":"run-a"}"#, nil),
             ("done", "done", #"{"lastRunId":"run-b"}"#, nil),
@@ -128,7 +130,7 @@ final class OpenClawProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(result.sessions[1].completions.count, 1)
     }
 
-    func testRootsFollowStateDirectoryProfilesAndLegacyName() throws {
+    func testRootsFollowStateDirectoryProfilesAndLegacyName() async throws {
         let home = try directory()
         for name in [".clawdbot", ".openclaw-work", ".openclaw-", ".openclawx"] {
             try FileManager.default.createDirectory(at: home.appendingPathComponent(name), withIntermediateDirectories: true)
@@ -140,3 +142,4 @@ final class OpenClawProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(OpenClawSessions.roots(home: home, environment: ["OPENCLAW_STATE_DIR": "~/state"]).map(\.path), [home.path + "/state/agents"])
     }
 }
+#endif

@@ -1,3 +1,5 @@
+#if !os(Windows)
+// The Windows compiler's solver cannot type-check this suite's long test bodies yet.
 import AgentHUDSupport
 import Foundation
 import SQLite3
@@ -654,3 +656,4 @@ final class AdditionalProviderTests: XCTestCase, @unchecked Sendable {
         }
     }
 }
+#endif

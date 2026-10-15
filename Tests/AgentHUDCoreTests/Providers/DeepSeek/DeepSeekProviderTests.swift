@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import XCTest
 @testable import AgentHUDCore
 
@@ -5,7 +7,7 @@ final class DeepSeekProviderTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1788787140)
     private static let balanceJSON = #"{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"8.85","granted_balance":"0.00","topped_up_balance":"8.85"}]}"#
 
-    func testChunkAndFinalUsageReplaceOneAttemptAndDoNotRecountReasoningOrCache() throws {
+    func testChunkAndFinalUsageReplaceOneAttemptAndDoNotRecountReasoningOrCache() async throws {
         var transcript = DeepSeekTranscript()
         try feed(&transcript, header())
         try feed(&transcript, event("turn/start", seq: 0, data: ["turn": 1]))
@@ -25,7 +27,7 @@ final class DeepSeekProviderTests: XCTestCase {
         XCTAssertEqual(transcript.title, "Updated title")
     }
 
-    func testRetryPreservesFailedAttemptAndCountsNextModelSeparately() throws {
+    func testRetryPreservesFailedAttemptAndCountsNextModelSeparately() async throws {
         var transcript = DeepSeekTranscript()
         for line in [header(), model(seq: 0), usage(seq: 1, input: 100, output: 10, chunk: true),
                      event("llm/retry-started", seq: 2, data: ["turn": 1, "step": 1]),
@@ -35,7 +37,7 @@ final class DeepSeekProviderTests: XCTestCase {
         XCTAssertEqual(transcript.usage.map(\.model), ["deepseek-v4-flash", "deepseek-v4-pro"])
     }
 
-    func testForkUsesSeedLengthRatherThanTimestampAndDoesNotInheritLiveness() throws {
+    func testForkUsesSeedLengthRatherThanTimestampAndDoesNotInheritLiveness() async throws {
         var transcript = DeepSeekTranscript()
         for line in [header(id: "child", seed: 3, child: true), model(seq: 0),
                      event("turn/start", seq: 1, data: ["turn": 1]), usage(seq: 2),
@@ -46,7 +48,7 @@ final class DeepSeekProviderTests: XCTestCase {
         XCTAssertEqual(transcript.usage[0].model, "deepseek-v4-flash")
     }
 
-    func testEveryTurnEndReasonStopsBreathingAndAQuietOpenTurnDoesNot() throws {
+    func testEveryTurnEndReasonStopsBreathingAndAQuietOpenTurnDoesNot() async throws {
         for reason in ["completed", "aborted", "error", "blocked", "interrupted", "max-tokens"] {
             var transcript = DeepSeekTranscript()
             try feed(&transcript, header())
@@ -58,7 +60,7 @@ final class DeepSeekProviderTests: XCTestCase {
         }
     }
 
-    func testQuietOpenTurnLivesOnlyWithAProcessThatPredatesIt() throws {
+    func testQuietOpenTurnLivesOnlyWithAProcessThatPredatesIt() async throws {
         var transcript = DeepSeekTranscript()
         try feed(&transcript, header())
         try feed(&transcript, event("turn/start", seq: 0, data: ["turn": 1]))
@@ -72,11 +74,11 @@ final class DeepSeekProviderTests: XCTestCase {
         XCTAssertFalse(transcript.isLive(processStarts: [now.addingTimeInterval(-60)]))
     }
 
-    func testRuntimeProcessIDsExcludeFileDescriptorsAndInvalidValues() {
+    func testRuntimeProcessIDsExcludeFileDescriptorsAndInvalidValues() async {
         XCTAssertEqual(DeepSeekRuntime.processIDs("p42\nf21\np42\np73\np0\np-1\npinvalid\nn/profile/cordis.yml\n"), [42, 73])
     }
 
-    func testTurnObservationsFollowSourceEventsAndSurviveCacheReload() throws {
+    func testTurnObservationsFollowSourceEventsAndSurviveCacheReload() async throws {
         var transcript = DeepSeekTranscript()
         try feed(&transcript, header())
         try feed(&transcript, event("turn/start", seq: 0, data: ["turn": 1]))
@@ -101,7 +103,7 @@ final class DeepSeekProviderTests: XCTestCase {
         XCTAssertEqual(finished.observedAtMs, start.observedAtMs + 11_000)
     }
 
-    func testPackedStreamingRefreshesOnlyItsRunningTurnWithoutCopyingText() throws {
+    func testPackedStreamingRefreshesOnlyItsRunningTurnWithoutCopyingText() async throws {
         for type in ["text-chunks", "reasoning-chunks", "tool-call-chunks"] {
             var transcript = DeepSeekTranscript()
             try feed(&transcript, header())
@@ -120,7 +122,7 @@ final class DeepSeekProviderTests: XCTestCase {
         }
     }
 
-    func testDeepSeekOnlyCompletedReasonEmitsAndSeedDoesNotReplay() throws {
+    func testDeepSeekOnlyCompletedReasonEmitsAndSeedDoesNotReplay() async throws {
         let start = Date(timeIntervalSince1970: 1_788_850_000)
         for reason in ["completed", "aborted", "error", "blocked", "interrupted", "max-tokens", "unknown"] {
             var t = DeepSeekTranscript()
@@ -136,7 +138,7 @@ final class DeepSeekProviderTests: XCTestCase {
         }
     }
 
-    func testFormat3CountsEachSettledMessageAndFailedAttemptOnce() throws {
+    func testFormat3CountsEachSettledMessageAndFailedAttemptOnce() async throws {
         var t = DeepSeekTranscript()
         let prompt: [String: Any] = ["id": "u1", "role": "user", "source": ["kind": "user"], "content": [["type": "text", "text": "Ship format 3\nwith tests"]]]
         for line in [header(version: 3), event("turn/start", seq: 0, data: ["turn": 1]), event("user/message", seq: 1, data: prompt),
@@ -156,7 +158,7 @@ final class DeepSeekProviderTests: XCTestCase {
         XCTAssertFalse(String(decoding: try JSONEncoder().encode(t), as: UTF8.self).contains("private"))
     }
 
-    func testFormat3ForkStartsAtItsOwnTaggedMarkerNotAnAncestors() throws {
+    func testFormat3ForkStartsAtItsOwnTaggedMarkerNotAnAncestors() async throws {
         var t = DeepSeekTranscript()
         let parent = now.addingTimeInterval(-60).timeIntervalSince1970 * 1000
         let inherited = { (type: String, seq: Int, data: [String: Any]) in self.json(["type": type, "seq": seq, "time": parent, "data": data]) }
@@ -175,7 +177,7 @@ final class DeepSeekProviderTests: XCTestCase {
         XCTAssertTrue(t.isLive(processStarts: nil), "the fork's own turn is still running")
     }
 
-    func testFormat4ForkDatedAtItsCutStartsAtItsLastMarkerWithoutTheInheritedTurn() throws {
+    func testFormat4ForkDatedAtItsCutStartsAtItsLastMarkerWithoutTheInheritedTurn() async throws {
         var t = DeepSeekTranscript()
         let parent = now.addingTimeInterval(-60).timeIntervalSince1970 * 1000
         let inherited = { (type: String, seq: Int, data: [String: Any]) in self.json(["type": type, "seq": seq, "time": parent, "data": data]) }
@@ -578,3 +580,4 @@ final class DeepSeekProviderTests: XCTestCase {
         try handle.seekToEnd(); try handle.write(contentsOf: Data(text.utf8))
     }
 }
+#endif

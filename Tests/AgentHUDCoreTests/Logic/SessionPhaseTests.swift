@@ -1,9 +1,12 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import AgentHUDSupport
 import XCTest
 @testable import AgentHUDCore
 
 /// A session's phase: what it is on the grid of sessions the store's own tests use, how the store's answers follow it,
 /// and when a client's hook turn takes the place of a reading's phase.
+@MainActor
 final class SessionPhaseTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let hour: TimeInterval = 3600
@@ -175,3 +178,4 @@ final class SessionPhaseTests: XCTestCase {
         return UsageStore(provider: DemoUsageProvider(), settings: SettingsStore(defaults: defaults))
     }
 }
+#endif

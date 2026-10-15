@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import Foundation
 import XCTest
 @testable import AgentHUDCore
@@ -97,3 +99,4 @@ final class SessionProjectTests: XCTestCase {
         }
     }
 }
+#endif

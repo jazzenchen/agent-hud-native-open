@@ -1,6 +1,9 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
+@MainActor
 final class SessionSourceTests: XCTestCase {
     /// A session sits under the local day it was last active on, in the order given; one in flight sits under today, even
     /// when the turn it runs was last heard from before midnight.
@@ -146,3 +149,4 @@ final class SessionSourceTests: XCTestCase {
                        "a session whose model never answered has no consumer row but still belongs to Claude")
     }
 }
+#endif

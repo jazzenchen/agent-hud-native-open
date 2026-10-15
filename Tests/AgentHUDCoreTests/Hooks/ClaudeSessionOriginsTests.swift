@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import Foundation
 import XCTest
 @testable import AgentHUDCore
@@ -171,3 +173,4 @@ final class ClaudeSessionOriginsTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(FileManager.default.fileExists(atPath: inbox.path))
     }
 }
+#endif

@@ -1,6 +1,9 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
+@MainActor
 final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
     private actor CountingProvider: UsageProvider {
         private(set) var fetches = 0
@@ -123,7 +126,7 @@ final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(store.sessions.isEmpty)
     }
 
-    func testActivityAgesAtTheLiveThresholdAndTurnFreshness() {
+    func testActivityAgesAtTheLiveThresholdAndTurnFreshness() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000), ms = Int64(1_800_000_000_000)
         func report(sessions: [LiveSession] = [], turns: [SessionTurn] = []) -> UsageReport {
             UsageReport(generatedAt: now, snapshots: [], sessions: sessions, turns: turns)
@@ -142,7 +145,7 @@ final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
                        "a quiet tool call is checked when it leaves the indicator, when it goes stale, and when it counts as abandoned")
     }
 
-    func testAnAccountReadingFollowsTheWorkAndTheWindowResets() {
+    func testAnAccountReadingFollowsTheWorkAndTheWindowResets() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000), ms = Int64(1_800_000_000_000)
         let since = now.addingTimeInterval(-30)
         func report(sessions: [LiveSession] = [], turns: [SessionTurn] = [], resets: [Date?] = []) -> UsageReport {
@@ -182,7 +185,7 @@ final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
                        "work that just finished is read without waiting")
     }
 
-    func testOnlySessionsInFlightAndRunningTurnsAreReadAgainAsTheyAge() {
+    func testOnlySessionsInFlightAndRunningTurnsAreReadAgainAsTheyAge() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000), ms = Int64(1_800_000_000_000)
         func session(endedAgo: TimeInterval? = nil, readAgo: TimeInterval) -> LiveSession {
             LiveSession(id: "s", agentId: "claude-model:test", task: "Task", terminal: nil, startedAt: now.addingTimeInterval(-3600),
@@ -208,7 +211,7 @@ final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
         }
     }
 
-    func testTheAccountPaceFollowsATurnFor300SecondsAndASessionFor30Minutes() {
+    func testTheAccountPaceFollowsATurnFor300SecondsAndASessionFor30Minutes() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000), ms = Int64(1_800_000_000_000)
         let since = now.addingTimeInterval(-30)
         func session(readAgo: TimeInterval) -> LiveSession {
@@ -235,7 +238,7 @@ final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
         }
     }
 
-    func testResetDeadlineSurvivesArrivalAndRetriesOnlyAfterAnAttempt() {
+    func testResetDeadlineSurvivesArrivalAndRetriesOnlyAfterAnAttempt() async {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         let reset = start.addingTimeInterval(90)
         let report = UsageReport(generatedAt: start, snapshots: [
@@ -249,7 +252,7 @@ final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
                        "an attempted read consumes the deadline, even if the backend still returns the old window")
     }
 
-    func testResetPreemptsActiveWorkAndAnOlderExpiredWindow() {
+    func testResetPreemptsActiveWorkAndAnOlderExpiredWindow() async {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         let reset = start.addingTimeInterval(45)
         let report = UsageReport(generatedAt: start, snapshots: [
@@ -278,7 +281,7 @@ final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
         XCTAssertFalse(monitor.consumeChanges())
     }
 
-    func testMissingWatchRootPollsUntilItAppears() throws {
+    func testMissingWatchRootPollsUntilItAppears() async throws {
         let parent = FileManager.default.temporaryDirectory.appendingPathComponent("agenthud-watch-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: parent) }
@@ -381,3 +384,4 @@ final class UsageRefreshTests: XCTestCase, @unchecked Sendable {
         XCTAssertNotNil(finished.sessions.first?.endedAt)
     }
 }
+#endif

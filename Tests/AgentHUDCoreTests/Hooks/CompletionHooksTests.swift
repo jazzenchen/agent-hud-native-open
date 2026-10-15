@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import Foundation
 import XCTest
 @testable import AgentHUDCore
@@ -40,7 +42,7 @@ final class CompletionHooksTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(item.turns[0].state, .completed)
     }
 
-    func testGrokAbortedOrUnknownStopDoesNotNotify() throws {
+    func testGrokAbortedOrUnknownStopDoesNotNotify() async throws {
         for reason in ["cancelled", "max_tokens", "error", ""] {
             let directory = try directory(), url = directory.appendingPathComponent("updates.jsonl")
             let payload = try json(["method": "_x.ai/session/update", "params": ["sessionId": directory.lastPathComponent,
@@ -53,7 +55,7 @@ final class CompletionHooksTests: XCTestCase, @unchecked Sendable {
         }
     }
 
-    func testAntigravityStopRecordsEveryFinishedTurn() throws {
+    func testAntigravityStopRecordsEveryFinishedTurn() async throws {
         let directory = try directory()
         // The payload agy sends when a turn ends; `executionNum` stays 0 on every turn of a conversation.
         var payload: [String: Any] = ["conversationId": "s", "executionNum": 0, "terminationReason": "NO_TOOL_CALL",
@@ -111,7 +113,7 @@ final class CompletionHooksTests: XCTestCase, @unchecked Sendable {
         XCTAssertTrue(restarted.update(report: report, agents: agents, now: now.addingTimeInterval(2)).completions.isEmpty)
     }
 
-    func testTheRunningAppTakesOverAHandlerAnotherCopyWrote() throws {
+    func testTheRunningAppTakesOverAHandlerAnotherCopyWrote() async throws {
         let current = URL(fileURLWithPath: "/Applications/Agent HUD.app/Contents/MacOS/Agent HUD")
         // Another build still installed, a translocated copy, the disk image the app came on, and an app since deleted.
         let others = [URL(fileURLWithPath: "/Applications/Agent HUD Open.app/Contents/MacOS/Agent HUD Open"),
@@ -137,7 +139,7 @@ final class CompletionHooksTests: XCTestCase, @unchecked Sendable {
         }
     }
 
-    func testAntigravityKeepsTheEntryAsTheUserLeftItAndOnlyMovesTheCommand() throws {
+    func testAntigravityKeepsTheEntryAsTheUserLeftItAndOnlyMovesTheCommand() async throws {
         let home = try directory(), file = CompletionHooks.Source.antigravity.configuration(home: home)
         let first = URL(fileURLWithPath: "/Applications/Agent HUD.app/Contents/MacOS/Agent HUD")
         try CompletionHooks.configure(.antigravity, enabled: true, executable: first, home: home)
@@ -162,7 +164,7 @@ final class CompletionHooksTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(kept["Stop"].arrayValue?.first?["timeout"].numberValue, 30)
     }
 
-    func testInstallationPreservesOtherHooksAndCanBeRemoved() throws {
+    func testInstallationPreservesOtherHooksAndCanBeRemoved() async throws {
         let home = try directory(), executable = home.appendingPathComponent("Agent's HUD.app/Contents/MacOS/Agent HUD")
         for source in CompletionHooks.Source.allCases {
             let url = source.configuration(home: home)
@@ -181,3 +183,4 @@ final class CompletionHooksTests: XCTestCase, @unchecked Sendable {
         }
     }
 }
+#endif

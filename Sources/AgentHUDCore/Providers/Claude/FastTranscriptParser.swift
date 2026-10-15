@@ -182,14 +182,21 @@ public enum FastTranscriptParser {
 
     // MARK: Searching
 
-    /// Offset of `pattern` in `buffer`, forward via memmem or backwards by scanning from the end.
+    /// Offset of `pattern` in `buffer`, forward from the start or backwards from the end.
     private static func find(_ pattern: [UInt8], in buffer: UnsafeRawBufferPointer, backwards: Bool = false) -> Int? {
         guard let base = buffer.baseAddress, buffer.count >= pattern.count, !pattern.isEmpty else { return nil }
         if !backwards {
-            return pattern.withUnsafeBytes { needle -> Int? in
-                guard let hit = memmem(base, buffer.count, needle.baseAddress, needle.count) else { return nil }
-                return base.distance(to: hit)
+            let first = pattern[0]
+            var start = 0
+            while start + pattern.count <= buffer.count {
+                if buffer[start] == first {
+                    var offset = 1
+                    while offset < pattern.count, buffer[start + offset] == pattern[offset] { offset += 1 }
+                    if offset == pattern.count { return start }
+                }
+                start += 1
             }
+            return nil
         }
         let first = pattern[0]
         var index = buffer.count - pattern.count

@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
@@ -9,7 +11,7 @@ final class NativePermissionRequestsTests: XCTestCase {
               cwd: "/tmp/project", at: at)
     }
 
-    func testNativeSnapshotTracksOnlyTheRequestsTheClientStillWaitsFor() {
+    func testNativeSnapshotTracksOnlyTheRequestsTheClientStillWaitsFor() async {
         let queue = PermissionRequests(), item = request()
         queue.updateNativeRequests([item], source: .antigravity) { _, _ in XCTFail("reading must not answer") }
         queue.updateNativeRequests([request()], source: .antigravity) { _, _ in XCTFail("reading must not answer") }
@@ -20,7 +22,7 @@ final class NativePermissionRequestsTests: XCTestCase {
         XCTAssertTrue(queue.pending.isEmpty, "a choice made in Antigravity removes the card")
     }
 
-    func testLeavingKeepsTheNativePromptUnansweredWithoutRepeatingTheCard() {
+    func testLeavingKeepsTheNativePromptUnansweredWithoutRepeatingTheCard() async {
         let queue = PermissionRequests(), item = request()
         var replies = 0
         let answer: @MainActor (PermissionRequest, PermissionDecision) async throws -> Void = { _, _ in replies += 1 }
@@ -47,7 +49,7 @@ final class NativePermissionRequestsTests: XCTestCase {
         XCTAssertTrue(queue.pending.isEmpty, "a refresh while the client applies the answer does not repeat it")
     }
 
-    func testEventStreamDismissalNeedsAnExplicitSettlementFromItsOwnSource() {
+    func testEventStreamDismissalNeedsAnExplicitSettlementFromItsOwnSource() async {
         let queue = PermissionRequests(), item = request()
         let answer: @MainActor (PermissionRequest, PermissionDecision) async throws -> Void = { _, _ in XCTFail("reading must not answer") }
         queue.updateNativeRequests([item], source: .antigravity, preservesDismissals: true, answer: answer)
@@ -65,7 +67,7 @@ final class NativePermissionRequestsTests: XCTestCase {
         XCTAssertTrue(queue.pending.isEmpty)
     }
 
-    func testFailedReadingPreservesDismissalUntilACompleteSnapshotSettlesIt() {
+    func testFailedReadingPreservesDismissalUntilACompleteSnapshotSettlesIt() async {
         let queue = PermissionRequests(), item = request()
         let answer: @MainActor (PermissionRequest, PermissionDecision) async throws -> Void = { _, _ in XCTFail("reading must not answer") }
         queue.updateNativeRequests([item], source: .antigravity, answer: answer)
@@ -133,3 +135,4 @@ final class NativePermissionRequestsTests: XCTestCase {
         XCTAssertTrue(queue.pending.isEmpty)
     }
 }
+#endif

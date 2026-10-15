@@ -91,9 +91,9 @@ final class PermissionTranscriptWatch: @unchecked Sendable {
         source.resume()
         #else
         let timer = DispatchSource.makeTimerSource(queue: queue)
+        source = timer
         timer.schedule(deadline: .now(), repeating: 0.25)
         timer.setEventHandler { [weak self] in self?.follow() }
-        source = timer
 
         _ = lines(in: (try? ProviderFiles.tail(handle, bytes: Self.history)) ?? Data())
 

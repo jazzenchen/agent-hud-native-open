@@ -1,6 +1,9 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
+@MainActor
 final class DemoClockTests: XCTestCase {
     private let shanghai = TimeZone(identifier: "Asia/Shanghai")!
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -51,3 +54,4 @@ final class DemoClockTests: XCTestCase {
         XCTAssertEqual(store.pausedUntil, fixed.addingTimeInterval(60))
     }
 }
+#endif

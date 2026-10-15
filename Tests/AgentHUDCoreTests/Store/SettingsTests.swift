@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
@@ -450,7 +452,7 @@ final class UsageStoreTests: XCTestCase {
         return UsageStore(provider: DemoUsageProvider(), settings: SettingsStore(defaults: defaults, defaultAgents: rows))
     }
 
-    func testRowsNoProviderReportsAreHiddenButKeepTheirSwitch() {
+    func testRowsNoProviderReportsAreHiddenButKeepTheirSwitch() async {
         let store = makeStore()
         let all = store.settings.agents
         func report(listing rows: [AgentDescriptor]) -> UsageReport {
@@ -517,7 +519,7 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(store.maxUsedPct, 93)
     }
 
-    func testAPIBillingReplacesQuotaRowAndFollowsAgentToggle() throws {
+    func testAPIBillingReplacesQuotaRowAndFollowsAgentToggle() async throws {
         let store = makeStore()
         let deepseek = AgentDescriptor(id: "deepseek", vendor: "DeepSeek", model: "Harness", source: L10n.sourceDeepSeekSessions, enabled: true)
         let claude = sixRows[0]
@@ -545,7 +547,7 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(store.rows.map(\.id), [claude.id])
     }
 
-    func testTokenChartsIncludeAllModelsRegardlessOfQuotaSwitches() {
+    func testTokenChartsIncludeAllModelsRegardlessOfQuotaSwitches() async {
         let store = makeStore()
         let hour = Calendar.current.dateInterval(of: .hour, for: Date())!.start
         let usage = [("claude-opus", 100), ("codex", 200), ("antigravity", 900)].map { id, tokens in
@@ -567,7 +569,7 @@ final class UsageStoreTests: XCTestCase {
         }
     }
 
-    func testQuotaForecastUsesOnlyTheHoveredWindowsInsights() throws {
+    func testQuotaForecastUsesOnlyTheHoveredWindowsInsights() async throws {
         let store = makeStore()
         let now = Date()
         let snapshots = ["claude-opus", "claude-sonnet", "codex"].map {
@@ -590,7 +592,7 @@ final class UsageStoreTests: XCTestCase {
                       "hiding the reset column does not hide the hover forecast")
     }
 
-    func testQuotaTokenRateUsesOnlyMappedConsumersInTheObservedCurrentCycle() throws {
+    func testQuotaTokenRateUsesOnlyMappedConsumersInTheObservedCurrentCycle() async throws {
         let weekly = AgentDescriptor(id: "claude-weekly", vendor: "Claude", model: "Weekly", source: "", enabled: true)
         let store = UsageStore(provider: DemoUsageProvider(), settings: SettingsStore(defaults: UserDefaults(suiteName: "AgentHUDTests.\(UUID().uuidString)")!,
                                                                                       defaultAgents: sixRows + [weekly]))
@@ -619,7 +621,7 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertEqual(store.levels, [.ok, .ok, .ok, .ok, .ok, .warning])
     }
 
-    func testQuotaSettingsDoNotGateConsumersOrSessions() {
+    func testQuotaSettingsDoNotGateConsumersOrSessions() async {
         let store = makeStore()
         let now = Date()
         let opus = AgentDescriptor(id: "claude-opus", vendor: "Claude", model: "Opus", source: "", enabled: true)
@@ -658,7 +660,7 @@ final class UsageStoreTests: XCTestCase {
         XCTAssertTrue(store.subscriptions.isEmpty)
     }
 
-    func testSessionListCoversTheLastWeekWhateverTheChartRange() {
+    func testSessionListCoversTheLastWeekWhateverTheChartRange() async {
         let store = makeStore()
         let now = Date()
         func session(_ id: String, startedHoursAgo: Double, endedHoursAgo: Double? = nil) -> LiveSession {
@@ -682,3 +684,4 @@ final class UsageStoreTests: XCTestCase {
         }
     }
 }
+#endif

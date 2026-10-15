@@ -13,17 +13,17 @@ import WinSDK
 /// application answers and then closes. The listener owns reading; this type carries the handle, the state callback
 /// and the answer.
 public final class UnixConnection: @unchecked Sendable {
-    public enum State: Equatable {
+    public enum State: Equatable, Sendable {
         case setup, preparing, ready, cancelled, failed(Int32)
     }
 
     /// Mirrors the one completion the channel asks for; the code is a WinSock error, nil on success.
-    public enum Completion {
+    public enum Completion: Sendable {
         case contentProcessed(@Sendable (Int32?) -> Void)
     }
 
     private let lock = NSLock()
-    private var handle: SOCKET?
+    private var handle: SOCKET
     /// Set by the receiver at any time; fired from then on when the connection ends, like NWConnection's handler,
     /// which a receiver that arrives late also only sees from the next change on.
     public var stateUpdateHandler: (@Sendable (State) -> Void)?
@@ -42,28 +42,27 @@ public final class UnixConnection: @unchecked Sendable {
 
     /// Closes the socket; a handler set before or after sees one `.cancelled`.
     public func cancel() {
-        let fired = close()
-        if fired { fire(.cancelled) }
+        if close() { fire(.cancelled) }
     }
 
-    /// Sends all of `content`, then reports; false's code is a WinSock error. The channel's answers are small, so a
-    /// blocking send on a side queue cannot hold up anything that matters.
+    /// Sends all of `content`, then reports; the error is a WinSock code, nil on success. The channel's answers are
+    /// small, so a blocking send on a side queue cannot hold up anything that matters.
     public func send(content: Data, completion: Completion) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return return0(completion) }
+            guard let self else {
+                if case .contentProcessed(let report) = completion { report(nil) }
+                return
+            }
             let error = content.withUnsafeBytes { buffer -> Int32? in
                 guard let base = buffer.baseAddress else { return nil }
                 var sent = 0
-                self.lock.lock()
-                let handle = self.handle
-                self.lock.unlock()
-                guard handle != WinSDK.INVALID_SOCKET else { return WSAENOTSOCK }
+                let handle = self.lock.withLock { self.handle }
+                guard handle != WinSDK.INVALID_SOCKET else { return 10038 } // WSAENOTSOCK
                 while sent < buffer.count {
-                    // UnsafeRawPointer arithmetic in byte units; SOCKET's integer width is fine for a cast back.
                     let written = WinSDK.send(handle, base + sent, Int32(buffer.count - sent), 0)
-                    if written == WinSDK.SOCKET_ERROR { return WSAGetLastError() }
-                    if written == 0 { return WSAECONNABORTED }
-                    sent += written
+                    if written < 0 { return WSAGetLastError() }
+                    if written == 0 { return 10053 } // WSAECONNABORTED
+                    sent += Int(written)
                 }
                 return nil
             }
@@ -73,52 +72,42 @@ public final class UnixConnection: @unchecked Sendable {
     }
 
     /// Reads from the socket until the peer stops writing or `limit` is passed; the listener runs this on its own
-    /// thread. Nil's code is a WinSock error.
-    func readToEnd(limit: Int) -> Result<Data, Int32> {
+    /// thread. The error is a WinSock code, nil when the peer closed the connection.
+    func readToEnd(limit: Int) -> (data: Data, error: Int32?) {
         var response = Data()
         var buffer = [UInt8](repeating: 0, count: 4096)
         while response.count <= limit {
-            let read = buffer.withUnsafeMutableBytes { raw -> Int in
-                self.lock.lock()
-                let handle = self.handle
-                self.lock.unlock()
-                guard handle != WinSDK.INVALID_SOCKET else { return -1 }
-                return WinSDK.recv(handle, raw.baseAddress, Int32(raw.count), 0)
+            let handle = lock.withLock { self.handle }
+            guard handle != WinSDK.INVALID_SOCKET else { return (response, 10038) }
+            let read = buffer.withUnsafeMutableBytes { raw in
+                WinSDK.recv(handle, raw.baseAddress, Int32(raw.count), 0)
             }
-            if read == WinSDK.SOCKET_ERROR {
-                let error = WSAGetLastError()
-                if error == WSAEINTR { continue }
-                return .failure(error)
+            if read < 0 {
+                return (response, WSAGetLastError())
             }
             if read == 0 { break }
-            response.append(contentsOf: buffer[..<read])
+            response.append(contentsOf: buffer[..<Int(read)])
         }
-        return .success(response)
+        return (response, nil)
     }
 
     /// Closes the handle once; true when this call was the one that ended the connection.
     @discardableResult
     private func close() -> Bool {
-        lock.lock()
-        let handle = handle
-        handle = WinSDK.INVALID_SOCKET
-        lock.unlock()
+        let handle = lock.withLock { () -> SOCKET in
+            let current = self.handle
+            if current != WinSDK.INVALID_SOCKET { self.handle = WinSDK.INVALID_SOCKET }
+            return current
+        }
         guard handle != WinSDK.INVALID_SOCKET else { return false }
-        WinSDK.shutdown(handle, SD_SEND)
         WinSDK.closesocket(handle)
         return true
     }
 
     private func fire(_ state: State) {
-        lock.lock()
-        let handler = stateUpdateHandler
-        lock.unlock()
+        let handler = lock.withLock { stateUpdateHandler }
         handler?(state)
     }
-}
-
-private func return0(_ completion: UnixConnection.Completion) {
-    if case .contentProcessed(let report) = completion { report(nil) }
 }
 
 /// WinSock housekeeping for the channel: the library must be started once per process before any socket call.

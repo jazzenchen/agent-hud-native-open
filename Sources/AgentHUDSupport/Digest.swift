@@ -74,7 +74,7 @@ private enum SHA256 {
             }
             for i in 0..<8 { h[i] &+= v[i] }
         }
-        return h.flatMap { [$0 >> 24, $0 >> 16, $0 >> 8, $0].map(UInt8.init) }
+        return h.flatMap { [$0 >> 24, $0 >> 16, $0 >> 8, $0].map { UInt8(truncatingIfNeeded: $0) } }
     }
 
     private static func rotr(_ value: UInt32, _ count: UInt32) -> UInt32 {
@@ -111,7 +111,7 @@ private enum SHA1 {
             }
             for i in 0..<5 { h[i] &+= v[i] }
         }
-        return h.flatMap { [$0 >> 24, $0 >> 16, $0 >> 8, $0].map(UInt8.init) }
+        return h.flatMap { [$0 >> 24, $0 >> 16, $0 >> 8, $0].map { UInt8(truncatingIfNeeded: $0) } }
     }
 
     private static func rotl(_ value: UInt32, _ count: UInt32) -> UInt32 {

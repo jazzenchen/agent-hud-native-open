@@ -1,3 +1,5 @@
+#if !os(Windows)
+// These follow SIGTERM and SIGKILL, which the Windows side replaces with termination.
 import XCTest
 @testable import AgentHUDCore
 
@@ -89,3 +91,4 @@ final class ChildProcessTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 1)
     }
 }
+#endif

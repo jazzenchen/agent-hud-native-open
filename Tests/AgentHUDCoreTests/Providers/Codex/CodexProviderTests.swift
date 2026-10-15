@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import AgentHUDSupport
 import XCTest
 @testable import AgentHUDCore
@@ -12,7 +14,7 @@ final class CodexProviderTests: XCTestCase {
     static let resets = #"{"availableCount":3,"credits":[{"id":"later","status":"available","expiresAt":1791092020},{"id":"unknown","status":"available","expiresAt":null},{"id":"first","status":"available","expiresAt":1789949974}]}"#
     static let limitsWithResets = String(limits.dropLast()) + ",\"rateLimitResetCredits\":" + resets + "}"
 
-    func testResetCreditsDecodeUnixExpiryAndSortUnknownLast() throws {
+    func testResetCreditsDecodeUnixExpiryAndSortUnknownLast() async throws {
         let limits = try decode(Self.limitsWithResets)
         let resets = try XCTUnwrap(limits.rateLimitResetCredits)
         XCTAssertEqual(resets.availableCount, 3)
@@ -22,7 +24,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(limits.rows.count, 3, "earned resets are not another quota window")
     }
 
-    func testResetCreditsDistinguishUnavailableZeroAndPartialDetails() throws {
+    func testResetCreditsDistinguishUnavailableZeroAndPartialDetails() async throws {
         XCTAssertNil(try decode().rateLimitResetCredits)
         XCTAssertNil(try decode(#"{"rateLimitResetCredits":null}"#).rateLimitResetCredits)
         let zero = try XCTUnwrap(decode(#"{"rateLimitResetCredits":{"availableCount":0,"credits":[]}}"#).rateLimitResetCredits)
@@ -35,7 +37,7 @@ final class CodexProviderTests: XCTestCase {
         }
     }
 
-    func testActualMultiBucketResponseAndWeeklyPrimary() throws {
+    func testActualMultiBucketResponseAndWeeklyPrimary() async throws {
         let limits = try decode()
         XCTAssertEqual(limits.rows.count, 3, "missing secondary does not invent a 5-hour window")
         XCTAssertEqual(limits.rows.first?.id, "codex", "existing preferences survive discovery")
@@ -46,14 +48,14 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(limits.rows.first?.window.resetAt?.timeIntervalSince1970, 1789377360)
     }
 
-    func testLegacyEmptyAndMissingAreDistinct() throws {
+    func testLegacyEmptyAndMissingAreDistinct() async throws {
         XCTAssertEqual(try decode(#"{"rateLimits":{"primary":{"usedPercent":25,"windowDurationMins":300}}}"#).rows.first?.window.remainingPct, 75)
         XCTAssertTrue(try decode(#"{"rateLimits":{"primary":{"usedPercent":25}},"rateLimitsByLimitId":{}}"#).rows.isEmpty)
         XCTAssertTrue(try decode(#"{"rateLimits":{"primary":null,"secondary":null}}"#).rows.isEmpty)
         XCTAssertThrowsError(try decode(#"{"rateLimits":{"primary":{"windowDurationMins":300}}}"#), "missing usage is not zero")
     }
 
-    func testDesktopAndCLIHaveSameTokensAndImmediateEndState() throws {
+    func testDesktopAndCLIHaveSameTokensAndImmediateEndState() async throws {
         for (origin, source, expected) in [("Codex Desktop", "vscode", "Desktop"), ("codex_cli_rs", "cli", "CLI"), ("Codex Desktop", "exec", "CLI · exec")] {
             var t = CodexTranscript()
             ingest(&t, type: "session_meta", payload: ["id":"session", "cwd":"/project", "source":source, "originator":origin])
@@ -198,7 +200,7 @@ final class CodexProviderTests: XCTestCase {
                        "a host change during the async daemon lookup is applied to this report")
     }
 
-    func testForkHistoryIsDeduplicatedButInternalModelUsageIsIncluded() {
+    func testForkHistoryIsDeduplicatedButInternalModelUsageIsIncluded() async {
         var t = CodexTranscript()
         ingest(&t, type: "session_meta", payload: ["id":"child", "timestamp":"2026-09-07T09:00:00Z", "source":["subagent":["thread_spawn":["parent_thread_id":"parent"]]]])
         ingest(&t, type: "session_meta", payload: ["id":"parent", "timestamp":"2026-09-07T07:00:00Z", "source":"cli"])
@@ -216,7 +218,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(guardian.usage.first?.output, 1000)
     }
 
-    func testFirstValidMetadataAndOrdinalBoundaryKeepRestampedParentHistoryInherited() throws {
+    func testFirstValidMetadataAndOrdinalBoundaryKeepRestampedParentHistoryInherited() async throws {
         var t = CodexTranscript()
         ingest(&t, type: "session_meta", payload: ["cwd": "/invalid"])
         ingest(&t, type: "session_meta", payload: [
@@ -253,7 +255,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertNil(reopened.completions)
     }
 
-    func testCodexRetainsEachSuccessfulTurnAndIgnoresCancellationTimeoutAndInheritedHistory() throws {
+    func testCodexRetainsEachSuccessfulTurnAndIgnoresCancellationTimeoutAndInheritedHistory() async throws {
         let start = Date(timeIntervalSince1970: 1_788_850_000)
         var t = CodexTranscript()
         ingest(&t, type: "session_meta", payload: ["id": "s", "source": "cli"], at: start)
@@ -279,7 +281,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(CodexTranscript.self, from: JSONSerialization.data(withJSONObject: oldCache)).completions)
     }
 
-    func testReadsReasoningCacheWritesWindowsTurnStartsAndCompactions() {
+    func testReadsReasoningCacheWritesWindowsTurnStartsAndCompactions() async {
         var transcript = CodexTranscript()
         let lines = [
             #"{"timestamp":"2026-09-07T06:00:00.000Z","type":"session_meta","payload":{"id":"c-1","timestamp":"2026-09-07T06:00:00.000Z","cwd":"/p","source":"cli"}}"#,
@@ -300,7 +302,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(transcript.drainMarks().map(\.kind), [.prompt, .compaction])
     }
 
-    func testSubagentsNeverProduceUserFacingCompletions() {
+    func testSubagentsNeverProduceUserFacingCompletions() async {
         let start = Date(timeIntervalSince1970: 1_788_850_000)
         var t = CodexTranscript()
         ingest(&t, type: "session_meta", payload: ["id": "child", "source": ["subagent": ["other": "guardian"]]], at: start)
@@ -308,7 +310,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertNil(t.completions)
     }
 
-    func testCompletionUsesTheFinalAnswerAndKeepsItOutOfTheLedger() throws {
+    func testCompletionUsesTheFinalAnswerAndKeepsItOutOfTheLedger() async throws {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         var value = CodexTranscript()
         ingest(&value, type: "session_meta", payload: ["id": "session", "source": "cli"], at: start)
@@ -331,7 +333,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertTrue(restored.completions?.allSatisfy { $0.message == nil } == true)
     }
 
-    func testCompletionFallbackRequiresAnExplicitFinalMessageFromItsOwnTurn() {
+    func testCompletionFallbackRequiresAnExplicitFinalMessageFromItsOwnTurn() async {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         var value = CodexTranscript()
         ingest(&value, type: "session_meta", payload: ["id": "session", "source": "cli"], at: start)
@@ -358,7 +360,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(value.completions?.last?.message, String(paragraph.prefix(599)) + "…", "a long final paragraph retains its beginning before clipping")
     }
 
-    func testLateCompletionDoesNotEndTheNextTurn() {
+    func testLateCompletionDoesNotEndTheNextTurn() async {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         var value = CodexTranscript()
         ingest(&value, type: "session_meta", payload: ["id": "session", "source": "cli"], at: start)
@@ -375,7 +377,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertFalse(value.isLive(now: start.addingTimeInterval(16), modifiedAt: start.addingTimeInterval(15)))
     }
 
-    func testOnlyExplicitIdentifiedTurnsAreReportedAndRetainSourceTime() throws {
+    func testOnlyExplicitIdentifiedTurnsAreReportedAndRetainSourceTime() async throws {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         var value = CodexTranscript()
         ingest(&value, type: "session_meta", payload: ["id": "session", "source": "cli"], at: start)
@@ -400,7 +402,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(value.sessionTurns.last, ended)
     }
 
-    func testInheritedTurnsAreSuppressedAndChildTurnsRemainAvailableToTheirDetail() {
+    func testInheritedTurnsAreSuppressedAndChildTurnsRemainAvailableToTheirDetail() async {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         var value = CodexTranscript()
         ingest(&value, type: "session_meta", payload: ["id": "session", "source": "cli"], at: start.addingTimeInterval(10))
@@ -412,7 +414,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(child.sessionTurns.map(\.turnID), ["child-turn"])
     }
 
-    func testTitleIsTheFirstOwnPromptInCurrentAndLegacyRollouts() {
+    func testTitleIsTheFirstOwnPromptInCurrentAndLegacyRollouts() async {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         let prompt = { (parts: [[String: Any]]) -> [String: Any] in
             ["type": "item_completed", "turn_id": "t", "item": ["type": "UserMessage", "id": "u", "content": parts]]
@@ -514,7 +516,7 @@ final class CodexProviderTests: XCTestCase {
                        "initialize\ninitialized\naccount/rateLimits/read\naccount/read\n")
     }
 
-    func testClientsTheCatalogDoesNotNameAreShownAsWritten() {
+    func testClientsTheCatalogDoesNotNameAreShownAsWritten() async {
         for (origin, source, expected) in [("codex_mcp_server", "mcp", "codex_mcp_server"), ("vibearound", "vscode", "vibearound"),
                                            ("codex_vscode", "vscode", "IDE"), ("Codex Desktop", "vscode", "Desktop")] {
             var t = CodexTranscript()
@@ -530,7 +532,7 @@ final class CodexProviderTests: XCTestCase {
     /// Every name Codex gives one of its clients files the session under that client: the desktop app signed in to a work
     /// workspace writes codex_work_desktop, and Codex's own code knows the desktop app as codex_desktop and its CLI as
     /// codex_cli_rs and codex-cli.
-    func testEachOriginatorOfOneClientFilesItsSessionsUnderThatClient() {
+    func testEachOriginatorOfOneClientFilesItsSessionsUnderThatClient() async {
         let cases: [(origin: String, client: String, name: String)] = [
             ("Codex Desktop", "Desktop", "Codex Desktop"), ("codex_work_desktop", "Desktop", "Codex Desktop"),
             ("codex_desktop", "Desktop", "Codex Desktop"), ("codex_vscode", "IDE", "Codex IDE extension"), ("codex-tui", "CLI", "Codex CLI"),
@@ -547,7 +549,7 @@ final class CodexProviderTests: XCTestCase {
                        "one entry in the sessions filter")
     }
 
-    func testWindowNamesComeFromTheCatalogOrTheService() throws {
+    func testWindowNamesComeFromTheCatalogOrTheService() async throws {
         L10n.setLanguage(.en)
         defer { L10n.setLanguage(.system) }
         let limits = try decode(#"{"rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":3,"windowDurationMins":300}},"base_model_inference":{"limitName":"gpt-reserve","primary":{"usedPercent":0,"windowDurationMins":10080}},"codex_next":{"limitName":"Next Model","primary":{"usedPercent":5,"windowDurationMins":10080}}}}"#)
@@ -560,14 +562,14 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(short["codex:codex_next:primary"], "Model", "the last word of a name the catalog does not know")
     }
 
-    func testOnlyTheCodexBucketCoversEveryModel() throws {
+    func testOnlyTheCodexBucketCoversEveryModel() async throws {
         let limits = try decode(#"{"rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":3,"windowDurationMins":300},"secondary":{"usedPercent":9,"windowDurationMins":10080}},"base_model_inference":{"limitName":"gpt-reserve","primary":{"usedPercent":0,"windowDurationMins":10080}}}}"#)
         XCTAssertEqual(limits.rows.map(\.id), ["codex", "codex:codex:secondary", "codex:base_model_inference:primary"])
         XCTAssertEqual(limits.rows.map(\.descriptor.allModels), [true, true, false])
         XCTAssertEqual(limits.rows(home: "").map(\.descriptor.allModels), [true, true, false], "an account's rows keep the flag")
     }
 
-    func testLocatorWorksWithoutDesktopOrWithoutCLI() throws {
+    func testLocatorWorksWithoutDesktopOrWithoutCLI() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let apps = dir.appendingPathComponent("Applications")
@@ -584,7 +586,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertEqual(CodexLocator.find(home: dir, applications: apps, path: "", registered: []), desktop)
     }
 
-    func testLocatorPrefersTheDesktopEngineWhereCurrentBuildsKeepIt() throws {
+    func testLocatorPrefersTheDesktopEngineWhereCurrentBuildsKeepIt() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let apps = dir.appendingPathComponent("Applications")
@@ -599,7 +601,7 @@ final class CodexProviderTests: XCTestCase {
                        "an installed CLI can be older than the app's engine and leave out accountId")
     }
 
-    func testLocatorFindsTheAppUnderItsBundleIDWhateverItIsCalled() throws {
+    func testLocatorFindsTheAppUnderItsBundleIDWhateverItIsCalled() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let renamed = dir.appendingPathComponent("Elsewhere/Renamed.app")
@@ -771,3 +773,4 @@ final class CodexProviderTests: XCTestCase {
         ingest(&t, payload: ["type":"token_count", "info":["total_token_usage":["input_tokens":input,"cached_input_tokens":cached,"output_tokens":output]]], at: at, ordinal: ordinal)
     }
 }
+#endif

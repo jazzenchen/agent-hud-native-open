@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import AgentHUDSupport
 import Foundation
 import XCTest
@@ -247,3 +249,4 @@ final class CopilotProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(hooks["agentStop"].arrayValue?.last?["bash"].stringValue, "'\(executable.path)' --completion-hook copilot")
     }
 }
+#endif

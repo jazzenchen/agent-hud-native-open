@@ -111,14 +111,27 @@ public enum UnixSocket {
             var sent = 0
             while sent < buffer.count {
                 let written = WinSDK.send(handle, base + sent, Int32(buffer.count - sent), 0)
-                if written == WinSDK.SOCKET_ERROR {
+                if written < 0 {
                     if WSAGetLastError() == WSAEINTR { continue }
                     return false
                 }
                 if written == 0 { return false }
-                sent += written
+                sent += Int(written)
             }
             return true
+        }
+    }
+
+    /// Bounds both directions of the socket by `seconds`; Windows has no poll here, so the socket times out itself.
+    static func timeouts(_ descriptor: Int32, seconds: TimeInterval) -> Bool {
+        let handle = handleOf(descriptor)
+        guard handle != WinSDK.INVALID_SOCKET else { return false }
+        var milliseconds = DWORD(max(1, min(seconds, 86_400) * 1000))
+        return withUnsafeMutableBytes(of: &milliseconds) { raw in
+            let size = DWORD(raw.count)
+            let pointer = raw.baseAddress?.assumingMemoryBound(to: CChar.self)
+            return WinSDK.setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, pointer, Int32(size)) == 0
+                && WinSDK.setsockopt(handle, SOL_SOCKET, SO_SNDTIMEO, pointer, Int32(size)) == 0
         }
     }
 
@@ -131,14 +144,20 @@ public enum UnixSocket {
             let read = buffer.withUnsafeMutableBytes { raw in
                 WinSDK.recv(handle, raw.baseAddress, Int32(raw.count), 0)
             }
-            if read == WinSDK.SOCKET_ERROR {
+            if read < 0 {
                 if WSAGetLastError() == WSAEINTR { continue }
                 break
             }
             if read == 0 { break }
-            response.append(contentsOf: buffer[..<read])
+            response.append(contentsOf: buffer[..<Int(read)])
         }
         return response
+    }
+
+    /// Half-closes the writing side, so the other side sees the request is whole while still being able to answer.
+    public static func halfClose(_ descriptor: Int32) {
+        let handle = handleOf(descriptor)
+        if handle != WinSDK.INVALID_SOCKET { WinSDK.shutdown(handle, sdSend) }
     }
 
     /// Closes a descriptor this type made.
@@ -153,7 +172,7 @@ public enum UnixSocket {
     static func handleOf(_ descriptor: Int32) -> SOCKET {
         // The channel's types keep their macOS width, so a descriptor rides in an Int32; sockets this app makes get
         // small handles, and the cast back sign-extends the same bits.
-        SOCKET(bitPattern: UInt(bitPattern: Int(descriptor)))
+        SOCKET(UInt64(bitPattern: Int64(descriptor)))
     }
 
     /// A `SOCKADDR_UN` holding `path`, built byte by byte because the address family and layout are all this needs.

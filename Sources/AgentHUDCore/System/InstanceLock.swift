@@ -2,8 +2,6 @@ import Foundation
 
 #if canImport(Darwin)
 import Darwin
-#else
-import ucrt
 #endif
 
 /// The lock that lets only one Agent HUD run at a time.
@@ -38,17 +36,12 @@ public final class InstanceLock: Sendable {
         #endif
     }
 
-    private let descriptor: Int32
+    #if os(Windows)
+    private let file: LockedFile
 
-    private init(descriptor: Int32) { self.descriptor = descriptor }
+    private init(file: LockedFile) { self.file = file }
 
-    deinit {
-        #if os(Windows)
-        ucrt._close(descriptor)
-        #else
-        close(descriptor)
-        #endif
-    }
+    deinit {}
 
     /// Takes the lock at `url` and writes `executable` into it, so that a launch it turns away can say which copy runs.
     public static func claim(at url: URL = sharedURL, executable: URL? = Bundle.main.executableURL) -> Claim {
@@ -58,27 +51,39 @@ public final class InstanceLock: Sendable {
             NSLog("[AgentHUD] No instance lock at %@: %@", url.path, error.localizedDescription)
             return .unavailable
         }
-        #if os(Windows)
-        // Closed on exec has no Windows meaning: descriptors opened without _O_NOINHERIT are the inheritable ones, and
-        // CreateProcess calls do not pass handles on by default.
-        let descriptor = ucrt._open(url.path, _O_CREAT | _O_RDWR | _O_BINARY | _O_NOINHERIT, _S_IREAD | _S_IWRITE)
-        guard descriptor >= 0 else {
-            NSLog("[AgentHUD] No instance lock at %@: %@", url.path, String(cString: strerror(errno)))
+        guard let file = LockedFile(url.path) else {
+            NSLog("[AgentHUD] No instance lock at %@", url.path)
             return .unavailable
         }
-        guard ucrt._locking(descriptor, _LK_NBLCK, 1) == 0 else {
-            let failure = errno
-            ucrt._close(descriptor)
-            if failure == EACCES { return .held(by: holder(at: url)) }
-            NSLog("[AgentHUD] No instance lock at %@: %@", url.path, String(cString: strerror(failure)))
+        guard file.isLocked else { return .held(by: holder(at: url)) }
+        if !file.write(Data((executable?.path ?? "").utf8)) {
+            NSLog("[AgentHUD] Could not name this copy in the instance lock at %@", url.path)
+        }
+        return .acquired(InstanceLock(file: file))
+    }
+
+    /// The application whose executable the holder wrote. Nil while the holder has not written it yet.
+    static func holder(at url: URL) -> URL? {
+        guard let data = try? Data(contentsOf: url), data.count <= 4096 else { return nil }
+        let path = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard path.hasPrefix("\\\\") || (path.count > 2 && path[path.index(after: path.startIndex)] == ":") else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+    #else
+    private let descriptor: Int32
+
+    private init(descriptor: Int32) { self.descriptor = descriptor }
+
+    deinit { close(descriptor) }
+
+    /// Takes the lock at `url` and writes `executable` into it, so that a launch it turns away can say which copy runs.
+    public static func claim(at url: URL = sharedURL, executable: URL? = Bundle.main.executableURL) -> Claim {
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        } catch {
+            NSLog("[AgentHUD] No instance lock at %@: %@", url.path, error.localizedDescription)
             return .unavailable
         }
-        let path = Array((executable?.path ?? "").utf8)
-        let written = ucrt._chsize(descriptor, 0) == 0
-            && path.withUnsafeBytes { ucrt._write(descriptor, $0.baseAddress, Int32($0.count)) } == Int32(path.count)
-        if !written { NSLog("[AgentHUD] Could not name this copy in the instance lock: %@", String(cString: strerror(errno))) }
-        return .acquired(InstanceLock(descriptor: descriptor))
-        #else
         // Closed on exec: a client's engine this app starts must not inherit the lock and hold it after the app is gone.
         let descriptor = open(url.path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else {
@@ -97,7 +102,6 @@ public final class InstanceLock: Sendable {
             && path.withUnsafeBytes { pwrite(descriptor, $0.baseAddress, $0.count, 0) } == path.count
         if !written { NSLog("[AgentHUD] Could not name this copy in the instance lock: %@", String(cString: strerror(errno))) }
         return .acquired(InstanceLock(descriptor: descriptor))
-        #endif
     }
 
     /// The application whose executable the holder wrote: `…/Name.app` for one that runs in a bundle. Nil while the
@@ -105,10 +109,6 @@ public final class InstanceLock: Sendable {
     static func holder(at url: URL) -> URL? {
         guard let data = try? Data(contentsOf: url), data.count <= 4096 else { return nil }
         let path = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        #if os(Windows)
-        guard path.hasPrefix("\\") || (path.count > 2 && path[path.index(after: path.startIndex)] == ":") else { return nil }
-        return URL(fileURLWithPath: path)
-        #else
         guard path.hasPrefix("/") else { return nil }
         let executable = URL(fileURLWithPath: path)
         let folder = executable.deletingLastPathComponent()
@@ -116,6 +116,6 @@ public final class InstanceLock: Sendable {
         let inBundle = folder.lastPathComponent == "MacOS" && folder.deletingLastPathComponent().lastPathComponent == "Contents"
             && bundle.pathExtension == "app"
         return inBundle ? bundle : executable
-        #endif
     }
+    #endif
 }

@@ -19,7 +19,7 @@ final class GrokWalletQuotaTests: XCTestCase {
 
     private func json(_ text: String) throws -> ProviderJSON { try .read(Data(text.utf8)) }
 
-    func testUnifiedBillingWithZeroWalletsKeepsWeeklyUsageUnknown() throws {
+    func testUnifiedBillingWithZeroWalletsKeepsWeeklyUsageUnknown() async throws {
         let quota = try GrokClient.parse(json(#"{"config":{"isUnifiedBillingUser":true,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-09-01T00:00:00Z","end":"2026-09-08T00:00:00Z"},"prepaidBalance":{},"onDemandCap":{"val":0},"onDemandUsed":{}}}"#))
         XCTAssertEqual(quota.windows.map(\.id), ["grok"])
         XCTAssertNil(quota.windows[0].remaining)
@@ -33,7 +33,7 @@ final class GrokWalletQuotaTests: XCTestCase {
         XCTAssertNil(quota.notice)
     }
 
-    func testWalletCentsAreExactAndIndependentFromSubscription() throws {
+    func testWalletCentsAreExactAndIndependentFromSubscription() async throws {
         let quota = try GrokClient.parse(json(#"{"config":{"creditUsagePercent":12.5,"prepaidBalance":{"val":"9007199254740993"},"onDemandCap":{"val":5000},"onDemandUsed":{"val":300}}}"#))
         XCTAssertEqual(quota.windows.map(\.remaining), [87.5, 94])
         XCTAssertEqual(quota.wallets[0].balance, Decimal(string: "90071992547409.93"))
@@ -44,7 +44,7 @@ final class GrokWalletQuotaTests: XCTestCase {
         XCTAssertNil(quota.sourceInfo)
     }
 
-    func testSignedCLIAccountingAmountsKeepTheirPositiveDollarValues() throws {
+    func testSignedCLIAccountingAmountsKeepTheirPositiveDollarValues() async throws {
         let quota = try GrokClient.parse(json(#"{"config":{"creditUsagePercent":12.5,"prepaidBalance":{"val":-500},"onDemandCap":{"val":"-5000"},"onDemandUsed":{"val":-300}}}"#))
         XCTAssertEqual(quota.wallets, [AccountWallet(kind: .prepaid, balance: 5), AccountWallet(kind: .onDemand, used: 3, limit: 50)])
         XCTAssertEqual(quota.windows.map(\.remaining), [87.5, 94])
@@ -53,7 +53,7 @@ final class GrokWalletQuotaTests: XCTestCase {
         XCTAssertNil(GrokClient.dollars(cents: .integer(-500)), "the Bot's nonnegative cache fields have a separate contract")
     }
 
-    func testMissingAndMalformedWalletsDoNotBecomeZeroOrDiscardQuota() throws {
+    func testMissingAndMalformedWalletsDoNotBecomeZeroOrDiscardQuota() async throws {
         for wallet in ["null", "42", #"{"val":null}"#, #"{"val":true}"#,
                        #"{"val":1.5}"#, #"{"val":"invalid"}"#, #"{"unexpected":0}"#] {
             let quota = try GrokClient.parse(json("{\"config\":{\"creditUsagePercent\":25,\"prepaidBalance\":\(wallet),\"onDemandCap\":\(wallet),\"onDemandUsed\":\(wallet)}}"))
@@ -71,7 +71,7 @@ final class GrokWalletQuotaTests: XCTestCase {
         XCTAssertEqual(limitOnly.windows.map(\.remaining), [75, nil])
     }
 
-    func testMissingNullAndInvalidPercentageRemainUnknownButExplicitZeroIsKnown() throws {
+    func testMissingNullAndInvalidPercentageRemainUnknownButExplicitZeroIsKnown() async throws {
         for percent in ["null", "-1", #""not-a-percentage""#] {
             let quota = try GrokClient.parse(json("{\"config\":{\"creditUsagePercent\":\(percent),\"currentPeriod\":{\"type\":\"USAGE_PERIOD_TYPE_MONTHLY\"}}}"))
             XCTAssertNil(quota.windows[0].remaining)

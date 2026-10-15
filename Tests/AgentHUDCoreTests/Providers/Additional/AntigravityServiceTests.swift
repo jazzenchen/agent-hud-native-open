@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import XCTest
 @testable import AgentHUDCore
 
@@ -6,7 +8,7 @@ final class AntigravityServiceTests: XCTestCase, @unchecked Sendable {
         (1...count).map { "\($0) /Applications/Antigravity.app/Contents/Resources/language_server --csrf_token fixture-\($0)" }.joined(separator: "\n")
     }
 
-    func testDiscoveryKeepsCandidateBoundariesPriorityAndQuotedFlagsAmongUnrelatedProcesses() {
+    func testDiscoveryKeepsCandidateBoundariesPriorityAndQuotedFlagsAmongUnrelatedProcesses() async {
         let unrelated = (100...2_099).map {
             "\($0) /usr/local/bin/node /opt/workers/worker-\($0).js --argument=synthetic"
         }.joined(separator: "\n")
@@ -76,3 +78,4 @@ final class AntigravityServiceTests: XCTestCase, @unchecked Sendable {
         } catch { XCTAssertEqual(error.localizedDescription, ProviderFailure.format.localizedDescription) }
     }
 }
+#endif

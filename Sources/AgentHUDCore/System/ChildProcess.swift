@@ -187,11 +187,12 @@ public final class ChildProcess: @unchecked Sendable {
 }
 #else
 import Foundation
-import ucrt
 import WinSDK
 
-/// The Windows side of the same child. Dispatch cannot watch pipe file descriptors here, so each pipe gets a thread
-/// that asks the pipe what it holds before reading; reading ends when the child exits and the pipes ran dry.
+/// The Windows side of the same child: the pipes and the process are made with the Windows API, because a pipe's
+/// handle cannot be taken out of Foundation here to be drained the way the macOS side drains its descriptors. Each
+/// pipe gets a thread that asks the pipe what it holds before reading; reading ends when the child exits and the
+/// pipes ran dry, so a grandchild holding a pipe open cannot stall the caller either.
 public final class ChildProcess: @unchecked Sendable {
     public struct Output: Sendable {
         public var status: Int32?
@@ -204,13 +205,15 @@ public final class ChildProcess: @unchecked Sendable {
 
     private enum Condition { case line, exit }
 
-    private let process = Process()
     private let stdoutLimit: Int
     private let queue = DispatchQueue(label: "app.agenthud.child-process")
-    /// Whether the child has exited, so a drain thread can stop; set from `queue`, polled from the drain threads.
-    private let exitedBox = Locked(false)
+    private var process: HANDLE?
+    private var stdinWrite: HANDLE?
+    private var stdoutRead: HANDLE?
+    private var stderrRead: HANDLE?
+    /// Set once the child has exited, so the drain threads can stop.
+    private let exitedBox = LockedFlag()
     // Confined to `queue` after init.
-    private var input: FileHandle?
     private var collected = Output()
     private var lineStart = 0
     private var waiter: (id: Int, condition: Condition, continuation: CheckedContinuation<Void, Never>)?
@@ -221,33 +224,66 @@ public final class ChildProcess: @unchecked Sendable {
     public init(_ executable: URL, _ arguments: [String], environment: [String: String]? = nil, directory: URL? = nil,
                 input: Bool = false, stdoutLimit: Int) throws {
         self.stdoutLimit = stdoutLimit
-        process.executableURL = executable
-        process.arguments = arguments
-        if let environment { process.environment = environment }
-        if let directory { process.currentDirectoryURL = directory }
-        let stdin = input ? Pipe() : nil, stdout = Pipe(), stderr = Pipe()
-        process.standardInput = stdin ?? FileHandle.nullDevice
-        process.standardOutput = stdout
-        process.standardError = stderr
-        if let stdin { self.input = stdin.fileHandleForWriting }
-        process.terminationHandler = { [self] _ in
-            queue.async {
-                exitedBox.set()
-                self.exited()
-            }
+
+        /// One pipe, whose `child` end stays inheritable for the child and whose other end does not leak into it.
+        func pipe(childTakesRead: Bool) throws -> (read: HANDLE, write: HANDLE) {
+            var read: HANDLE? , write: HANDLE?
+            guard CreatePipe(&read, &write, nil, 0) else { throw CocoaError(.fileNoSuchFile) }
+            let ours = childTakesRead ? write! : read!
+            SetHandleInformation(ours, HANDLE_FLAG_INHERIT, 0)
+            return (read!, write!)
         }
-        do {
-            try process.run()
-        } catch {
-            process.terminationHandler = nil
-            throw error
+
+        let stdin = input ? try pipe(childTakesRead: true) : nil
+        let stdout = try pipe(childTakesRead: false), stderr = try pipe(childTakesRead: false)
+        self.stdinWrite = stdin?.write
+        self.stdoutRead = stdout.read
+        self.stderrRead = stderr.read
+
+        var startup = STARTUPINFOW()
+        startup.cb = DWORD(MemoryLayout<STARTUPINFOW>.size)
+        startup.dwFlags = STARTF_USESTDHANDLES
+        startup.hStdInput = stdin?.read ?? (try? nullHandle())
+        startup.hStdOutput = stdout.write
+        startup.hStdError = stderr.write
+        var information = PROCESS_INFORMATION()
+        let command = ([quote(executable.path)] + arguments.map(quote)).joined(separator: " ") + "\0"
+        var wide = Array(command.utf16)
+        var environmentBlock: [UInt16]? = nil
+        if let environment {
+            var merged = ProcessInfo.processInfo.environment
+            for (key, value) in environment { merged[key] = value }
+            environmentBlock = merged.sorted { $0.key < $1.key }.flatMap { Array("\($0.key)=\($0.value)\0".utf16) } + [0]
         }
-        for (pipe, isStdout) in [(stdout, true), (stderr, false)] {
-            let handle = pipe.fileHandleForReading, fd = handle.fileDescriptor
-            let thread = Thread { [weak self] in self?.drain(fd: fd, pipe: ucrt._get_osfhandle(fd), isStdout: isStdout) }
+        var workingDirectory = directory.map { Array(($0.path + "\0").utf16) }
+        guard let commandPointer = wide.withUnsafeMutableBufferPointer({ $0.baseAddress }) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let environmentPointer = environmentBlock?.withUnsafeMutableBufferPointer { $0.baseAddress }
+        let directoryPointer = workingDirectory?.withUnsafeMutableBufferPointer { $0.baseAddress }
+        let spawned = CreateProcessW(nil, commandPointer, nil, nil, true, DWORD(CREATE_UNICODE_ENVIRONMENT),
+                                      environmentPointer, directoryPointer, &startup, &information)
+        // The child's ends of the pipes and its thread handles belong to it now.
+        CloseHandle(stdout.write)
+        CloseHandle(stderr.write)
+        if let stdin { CloseHandle(stdin.read) }
+        guard spawned else { throw CocoaError(.fileNoSuchFile) }
+        self.process = information.hProcess
+        CloseHandle(information.hThread)
+
+        for (pipe, isStdout) in [(stdout.read, true), (stderr.read, false)] {
+            // A raw pointer cannot cross into a Thread closure; the box carries it.
+            let end = PipeEnd(pipe)
+            let thread = Thread { [weak self] in self?.drain(end.handle, isStdout: isStdout) }
             thread.stackSize = 128 * 1024
             thread.start()
         }
+        Thread { [weak self] in
+            guard let self, let process else { return }
+            while WaitForSingleObject(process, 500) == WAIT_TIMEOUT { }
+            self.exitedBox.set()
+            self.queue.async { self.exited() }
+        }.start()
     }
 
     public static func run(_ executable: URL, _ arguments: [String], environment: [String: String]? = nil,
@@ -259,11 +295,15 @@ public final class ChildProcess: @unchecked Sendable {
         return child.output
     }
 
+    /// Writes to stdin. Requests are small, so a child that does not read cannot block the caller.
     public func write(_ data: Data) throws {
-        try queue.sync {
-            guard let input else { throw POSIXError(.EPIPE) }
-            try input.write(contentsOf: data)
+        let handle = queue.sync { stdinWrite }
+        guard let handle else { throw POSIXError(.EPIPE) }
+        var written: DWORD = 0
+        let ok = data.withUnsafeBytes { buffer in
+            buffer.baseAddress.map { WriteFile(handle, $0, DWORD(buffer.count), &written, nil) } ?? true
         }
+        guard ok, written == DWORD(data.count) else { throw POSIXError(.EPIPE) }
     }
 
     public func line(before deadline: Date) async throws -> String? {
@@ -281,21 +321,16 @@ public final class ChildProcess: @unchecked Sendable {
         try await wait(until: deadline, for: .exit)
     }
 
-    /// Closes stdin and asks the child to stop, then terminates it outright if it outlives the grace period.
+    /// Closes stdin and terminates the child outright once the grace period passes; Windows has no gentle signal.
     public func stop() {
         queue.async { [self] in
-            try? input?.close()
-            input = nil
+            if let stdinWrite { CloseHandle(stdinWrite) }
+            self.stdinWrite = nil
             guard collected.status == nil, !stopping else { return }
             stopping = true
-            if process.isRunning { process.terminate() }
             queue.asyncAfter(deadline: .now() + Self.grace) { [weak self] in
-                guard let self, collected.status == nil, process.isRunning else { return }
-                let process = OpenProcess(PROCESS_TERMINATE, 0, DWORD(process.processIdentifier))
-                if let process {
-                    TerminateProcess(process, 1)
-                    CloseHandle(process)
-                }
+                guard let self, collected.status == nil, let process else { return }
+                TerminateProcess(process, 1)
             }
         }
     }
@@ -331,24 +366,24 @@ public final class ChildProcess: @unchecked Sendable {
     }
 
     /// Runs on the pipe's own thread: reads what the pipe holds, and stops once the child is gone and the pipe ran dry.
-    /// A grandchild that inherited the pipe can keep it open past the child's exit, so EOF alone is not the end.
-    private func drain(fd: Int32, pipe: Int, isStdout: Bool) {
+    private func drain(_ handle: HANDLE, isStdout: Bool) {
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
             var available: DWORD = 0
-            let peek = pipe != INVALID_HANDLE_VALUE
-                && PeekNamedPipe(HANDLE(bitPattern: Int(pipe)), nil, 0, nil, &available, nil)
-            guard peek else { break }
+            guard PeekNamedPipe(handle, nil, 0, nil, &available, nil) else { break }
             if available == 0 {
-                if exitedBox.get() { break }
+                if exitedBox.value { break }
                 Sleep(10)
                 continue
             }
             // The pipe says what it holds, so this read returns without waiting for more.
-            let asked = Int32(min(Int(available), buffer.count))
-            let count = buffer.withUnsafeMutableBytes { ucrt._read(fd, $0.baseAddress?.assumingMemoryBound(to: CChar.self), asked) }
-            guard count > 0 else { break }
-            let chunk = Data(buffer[..<count])
+            var read: DWORD = 0
+            let asked = DWORD(min(Int(available), buffer.count))
+            let ok = buffer.withUnsafeMutableBytes { raw in
+                ReadFile(handle, raw.baseAddress, asked, &read, nil)
+            }
+            guard ok, read > 0 else { break }
+            let chunk = Data(buffer[..<Int(read)])
             queue.sync { absorb(chunk, isStdout: isStdout) }
         }
     }
@@ -365,20 +400,48 @@ public final class ChildProcess: @unchecked Sendable {
     }
 
     private func exited() {
-        process.terminationHandler = nil
-        collected.status = process.terminationStatus
-        try? input?.close()
-        input = nil
+        collected.status = exitCode()
+        if let stdinWrite { CloseHandle(stdinWrite) }
+        self.stdinWrite = nil
         wake()
+    }
+
+    /// The child's exit code, or 0 while it runs.
+    private func exitCode() -> Int32 {
+        guard let process else { return 0 }
+        var code: DWORD = 0
+        guard GetExitCodeProcess(process, &code) else { return 0 }
+        return Int32(truncatingIfNeeded: code)
+    }
+
+    /// A handle on the NUL device, standing in for /dev/null.
+    private func nullHandle() throws -> HANDLE {
+        let path = Array("NUL\0".utf16)
+        guard let handle = path.withUnsafeBufferPointer({ buffer in
+            CreateFileW(buffer.baseAddress, DWORD(GENERIC_READ) | DWORD(GENERIC_WRITE), DWORD(FILE_SHARE_READ) | DWORD(FILE_SHARE_WRITE),
+                        nil, DWORD(OPEN_EXISTING), DWORD(FILE_ATTRIBUTE_NORMAL), nil)
+        }), handle != INVALID_HANDLE_VALUE else { throw CocoaError(.fileNoSuchFile) }
+        return handle
+    }
+
+    /// cmd-style quoting, which the child's own runtime takes apart as one argument.
+    private func quote(_ argument: String) -> String {
+        guard argument.contains(where: { " \t\"".contains($0) }) else { return argument }
+        return "\"" + argument.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 }
 
 /// A set-once flag the drain threads poll.
-private final class Locked: @unchecked Sendable {
+private final class LockedFlag: @unchecked Sendable {
     private let lock = NSLock()
-    private var value: Bool
-    init(_ value: Bool) { self.value = value }
-    func get() -> Bool { lock.withLock { value } }
-    func set() { lock.withLock { value = true } }
+    private var flag = false
+    var value: Bool { lock.withLock { flag } }
+    func set() { lock.withLock { flag = true } }
+}
+
+/// A pipe's read end, carried across a thread boundary.
+private final class PipeEnd: @unchecked Sendable {
+    let handle: HANDLE
+    init(_ handle: HANDLE) { self.handle = handle }
 }
 #endif

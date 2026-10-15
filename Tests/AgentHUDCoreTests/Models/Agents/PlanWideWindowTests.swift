@@ -14,13 +14,13 @@ final class PlanWideWindowTests: XCTestCase {
     private static let cursor = #"{"membershipType":"pro","individualUsage":{"plan":{"enabled":true,"totalPercentUsed":10,"autoPercentUsed":20,"apiPercentUsed":30},"overall":{"enabled":true,"used":10,"limit":100},"onDemand":{"enabled":true,"used":5,"limit":50}},"teamUsage":{"pooled":{"enabled":true,"used":1,"limit":10}}}"#
     private static let glm = #"{"success":true,"code":200,"data":{"planName":"Pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":25},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":25},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":5}]}}"#
 
-    func testCursorsModelPoolsLimitSomeOfThePlansModels() throws {
+    func testCursorsModelPoolsLimitSomeOfThePlansModels() async throws {
         XCTAssertEqual(flags(try CursorClient.parseQuota(json(Self.cursor))), [
             "cursor": true, "cursor:models": false, "cursor:third-party": false, "cursor:personal": true, "cursor:team": true, "cursor:extra": true,
         ])
     }
 
-    func testAntigravityGroupsLimitTheirModelsWhereTheAccountHasSeveral() throws {
+    func testAntigravityGroupsLimitTheirModelsWhereTheAccountHasSeveral() async throws {
         let gemini = #"{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","displayName":"Five Hour Limit","remainingFraction":0.5},{"bucketId":"gemini-7d","displayName":"Weekly Limit","remainingFraction":0.75}]}"#
         let others = #"{"displayName":"Claude and GPT models","buckets":[{"bucketId":"third-party-7d","displayName":"Weekly Limit","remainingFraction":1}]}"#
         XCTAssertEqual(flags(try AntigravityClient.summary(json(#"{"groups":[\#(gemini)]}"#))),
@@ -37,7 +37,7 @@ final class PlanWideWindowTests: XCTestCase {
                        ["antigravity:legacy:gemini": false, "antigravity:legacy:claude-gpt": false])
     }
 
-    func testCopilotsChatAndCompletionsLimitOneFeature() throws {
+    func testCopilotsChatAndCompletionsLimitOneFeature() async throws {
         let requests = try json(#"{"quota_snapshots":{"premium_interactions":{"entitlement":300,"remaining":150,"unlimited":false},"chat":{"entitlement":50,"remaining":40,"unlimited":false},"completions":{"entitlement":2000,"remaining":1000,"unlimited":false},"agent":{"entitlement":10,"remaining":5,"unlimited":false}}}"#)
         XCTAssertEqual(flags(try CopilotClient.parse(requests)), [
             "copilot:premium_interactions": true, "copilot:chat": false, "copilot:completions": false, "copilot:agent": true,
@@ -51,7 +51,7 @@ final class PlanWideWindowTests: XCTestCase {
         XCTAssertEqual(flags(try CopilotClient.parse(limited)), ["copilot:chat": false, "copilot:completions": false], "a Free plan's counts")
     }
 
-    func testPoolsArePlanWideExceptGLMsMCPWindow() throws {
+    func testPoolsArePlanWideExceptGLMsMCPWindow() async throws {
         let glm = OpenAgentCredentials.credential(.glmChina, token: "fixture-key", client: "Claude")
         XCTAssertEqual(try OpenAgentQuotaClient.parse(json(Self.glm), credential: glm, now: now).windows.map(\.allModels), [true, true, false],
                        "MCP calls, not the plan's models")

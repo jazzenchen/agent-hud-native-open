@@ -1,3 +1,5 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
@@ -90,3 +92,4 @@ final class CurrentAccountInventoryTests: XCTestCase {
         accounts: Dictionary(grouping: observations, by: { $0.account.provider }))
     }
 }
+#endif

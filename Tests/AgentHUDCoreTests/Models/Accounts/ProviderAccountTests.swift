@@ -1,12 +1,15 @@
+#if !os(Windows)
+// XCTest on Windows cannot register MainActor-isolated suites; this one runs on the macOS runner.
 import XCTest
 @testable import AgentHUDCore
 
+@MainActor
 final class ProviderAccountTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let accountA = ProviderAccount.identified(provider: "Codex", user: "a@example.com", workspace: "workspace-1")!
     private let accountB = ProviderAccount.identified(provider: "Codex", user: "b@example.com", workspace: "workspace-1")!
 
-    func testAccountIdsIgnoreEvidenceAndSeparateUsersWorkspacesAndHomes() throws {
+    func testAccountIdsIgnoreEvidenceAndSeparateUsersWorkspacesAndHomes() async throws {
         let confirmed = try XCTUnwrap(ProviderAccount.identified(provider: "Grok", user: "u", workspace: "t"))
         let local = try XCTUnwrap(ProviderAccount.identified(provider: "Grok", user: "u", workspace: "t", evidence: .credential))
         XCTAssertEqual(confirmed.id, local.id, "confirming an identity later keeps the storage key")
@@ -23,7 +26,7 @@ final class ProviderAccountTests: XCTestCase {
         XCTAssertEqual(poolRow.account?.id, pool.id, "pool rows keep their existing ids")
     }
 
-    func testCodexRowsBelongToTheSignedInWorkspaceMember() throws {
+    func testCodexRowsBelongToTheSignedInWorkspaceMember() async throws {
         let json = #"{"accountId":"workspace-1","rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":10,"windowDurationMins":300}}},"account":{"type":"chatgpt","email":"A@Example.com","planType":"team"}}"#
         let limits = try JSONDecoder().decode(CodexRateLimits.self, from: Data(json.utf8))
         XCTAssertEqual(limits.providerAccount(home: ""), accountA, "email case does not split an account")
@@ -34,7 +37,7 @@ final class ProviderAccountTests: XCTestCase {
         XCTAssertEqual(anonymous.providerAccount(home: "work").evidence, .unresolved)
     }
 
-    func testOlderPiAccountReadingsRestoreTheirDisplayClient() throws {
+    func testOlderPiAccountReadingsRestoreTheirDisplayClient() async throws {
         let account = AccountObservation(account: accountA, home: "pi:alternate", client: "Pi", observedAt: now)
         var saved = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(account)) as? [String: Any])
         saved["client"] = nil
@@ -131,7 +134,7 @@ final class ProviderAccountTests: XCTestCase {
     }
 
     @MainActor
-    func testSettingsAndQuotaSectionsShareOneSummaryPerAccountAcrossClientHomes() throws {
+    func testSettingsAndQuotaSectionsShareOneSummaryPerAccountAcrossClientHomes() async throws {
         let otherWorkspace = ProviderAccount.identified(provider: "Codex", user: "a@example.com", workspace: "workspace-2")!
         let old = AccountObservation(account: accountA, label: "a@example.com", plan: "plus", observedAt: now, isCurrent: false)
         let current = AccountObservation(account: accountA, home: "pi:", label: "a@example.com", plan: "plus",
@@ -227,7 +230,7 @@ final class ProviderAccountTests: XCTestCase {
     }
 
     @MainActor
-    func testSettingsMoveToTheFirstAccountAndLaterAccountsInheritSwitches() {
+    func testSettingsMoveToTheFirstAccountAndLaterAccountsInheritSwitches() async {
         let suite = "ProviderAccountTests.\(UUID().uuidString)", defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = SettingsStore(defaults: defaults, defaultAgents: [
@@ -247,7 +250,7 @@ final class ProviderAccountTests: XCTestCase {
         XCTAssertEqual(settings.agents.map(\.id), ["claude-session", accountB.windowID("codex")], "retired accounts leave the settings")
     }
 
-    func testSwitchingAccountsIsNeitherAResetNorAnExhaustion() {
+    func testSwitchingAccountsIsNeitherAResetNorAnExhaustion() async {
         var tracker = QuotaAlertTracker()
         let agents = [descriptor(accountA), descriptor(accountB)]
         func update(_ current: ProviderAccount, remaining: Double, elapsed: Double) -> QuotaAlertTracker.Update {
@@ -325,3 +328,4 @@ private actor Sequence: UsageProvider {
         return reports.removeFirst()
     }
 }
+#endif

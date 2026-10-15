@@ -22,7 +22,7 @@ final class UnknownQuotaReadingTests: XCTestCase {
         }
     }
 
-    func testObservedUnknownKeepsResetAndObservationWithoutNumericSurfaces() throws {
+    func testObservedUnknownKeepsResetAndObservationWithoutNumericSurfaces() async throws {
         let unknown = report(remaining: nil)
         let view = ReportView(report: unknown, agents: [agent], settings: Settings(), now: now)
         let row = try XCTUnwrap(view.rows.first)
@@ -53,7 +53,7 @@ final class UnknownQuotaReadingTests: XCTestCase {
         }
     }
 
-    func testUnknownDoesNotForecastFromEarlierNumericSamples() throws {
+    func testUnknownDoesNotForecastFromEarlierNumericSamples() async throws {
         let samples = [QuotaSample(agentId: agent.id, timestamp: now.addingTimeInterval(-3600), remainingPct: 80),
                        QuotaSample(agentId: agent.id, timestamp: now, remainingPct: 60)]
         let known = try XCTUnwrap(report(remaining: 60).snapshot(for: agent.id))
@@ -69,7 +69,7 @@ final class UnknownQuotaReadingTests: XCTestCase {
         XCTAssertEqual(QuotaMath.outlook(snapshot: unknown, insights: oldInsights, now: now), .noEstimate)
     }
 
-    func testUnknownBreaksAlertBaselineWithoutInventingZeroOrReset() {
+    func testUnknownBreaksAlertBaselineWithoutInventingZeroOrReset() async {
         var tracker = QuotaAlertTracker()
         func update(_ remaining: Double?, _ elapsed: Double) -> QuotaAlertTracker.Update {
             tracker.update(report: report(remaining: remaining, elapsed: elapsed), agents: [agent], now: now.addingTimeInterval(elapsed))
@@ -91,7 +91,7 @@ final class UnknownQuotaReadingTests: XCTestCase {
         XCTAssertTrue(update(100, 360).alerts.isEmpty, "unknown must not be mistaken for an exhausted value before recovery")
     }
 
-    func testSnapshotsDecodeEarlierNumbersAndPersistUnknownValues() throws {
+    func testSnapshotsDecodeEarlierNumbersAndPersistUnknownValues() async throws {
         let legacy = Data(#"{"agentId":"codex","remainingPct":60,"updatedAt":0}"#.utf8)
         XCTAssertEqual(try JSONDecoder().decode(UsageSnapshot.self, from: legacy).remainingPct, 60)
         for payload in [#"{"agentId":"codex","remainingPct":null,"updatedAt":0}"#,

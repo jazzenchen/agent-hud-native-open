@@ -309,9 +309,7 @@ final class UsageCollector {
             guard let directories = source.directories else { continue }
             let prefixes = directories.flatMap { url -> [String] in
                 let path = url.standardizedFileURL.path
-                guard let real = realpath(path, nil) else { return [path] }
-                defer { free(real) }
-                let resolved = String(cString: real)
+                let resolved = url.resolvingSymlinksInPath().path
                 return path == resolved ? [path] : [path, resolved]
             }
             if paths.contains(where: { path in prefixes.contains { path == $0 || path.hasPrefix($0 + "/") } }) {

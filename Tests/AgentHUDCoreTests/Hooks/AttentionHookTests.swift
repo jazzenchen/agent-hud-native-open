@@ -1,3 +1,5 @@
+#if !os(Windows)
+// This suite follows macOS filesystem, process or hook-command semantics.
 import AgentHUDSupport
 import Foundation
 import XCTest
@@ -136,3 +138,4 @@ final class AttentionHookTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(try Data(contentsOf: settings), Data(#"{"hooks": "everything off"}"#.utf8))
     }
 }
+#endif

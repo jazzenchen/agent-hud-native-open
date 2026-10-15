@@ -34,7 +34,7 @@ final class WalletAccountObservationTests: XCTestCase {
         XCTAssertEqual(extraSamples.map(\.remainingPct), [100])
     }
 
-    func testWalletAndProvenanceSurviveReportCacheUntilConfirmedSignOut() throws {
+    func testWalletAndProvenanceSurviveReportCacheUntilConfirmedSignOut() async throws {
         let account = ProviderAccount.identified(provider: "Grok", user: "fixture", workspace: nil)!
         let observation = AccountObservation(account: account, client: "Grok Bot", observedAt: now,
             wallets: [AccountWallet(kind: .prepaid, balance: 0, observedAt: now.addingTimeInterval(-60)),
@@ -47,7 +47,7 @@ final class WalletAccountObservationTests: XCTestCase {
         XCTAssertEqual(signedOut.accounts?["Grok"], [])
     }
 
-    func testOlderAccountCacheRemainsReadableWithoutWalletsOrSourceInfo() throws {
+    func testOlderAccountCacheRemainsReadableWithoutWalletsOrSourceInfo() async throws {
         let account = ProviderAccount.identified(provider: "Grok", user: "fixture", workspace: nil)!
         let observation = AccountObservation(account: account, observedAt: now)
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(observation)) as? [String: Any])
