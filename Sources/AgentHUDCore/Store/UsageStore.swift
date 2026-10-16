@@ -228,6 +228,9 @@ public final class UsageStore {
     /// `view.queueVendors`.
     public var queueVendors: [(vendor: String, isWorking: Bool)] { view.queueVendors }
 
+    /// `view.queueMarks`.
+    public var queueMarks: [ReportView.QueueMark] { view.queueMarks }
+
     /// `view.workingVendors`.
     public var workingVendors: Set<String> { view.workingVendors }
 

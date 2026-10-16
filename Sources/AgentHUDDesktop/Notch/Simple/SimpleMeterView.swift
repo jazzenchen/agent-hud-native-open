@@ -14,6 +14,7 @@ struct SimpleMeterView: View {
     @Environment(\.hudLook) private var look
     /// Glass drawn as its stand-in, in a preview or a picture of the panel.
     @Environment(\.drawsGlassStandIn) private var glassStandIn
+    @Environment(\.botLogos) private var botLogos
 
     private var theme: Theme { look.theme }
 
@@ -55,11 +56,10 @@ struct SimpleMeterView: View {
                         .stroke(tint, style: StrokeStyle(lineWidth: config.ringWidth, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
-                if config.bots {
-                    BotMark(vendor: item.vendor, size: config.logo, phase: item.attention.phase(working: item.isWorking), staysBot: false)
-                } else {
-                    AgentLogo(vendor: item.vendor, size: config.logo)
-                }
+                // With bots off the mark is its logo, wearing a waiting request's or a badge's sign still.
+                BotMark(vendor: item.vendor, size: config.logo, state: item.shown, cue: item.cue, staysBot: false,
+                        resumes: config.resumes)
+                    .environment(\.botLogos, botLogos && config.bots)
             }
             .frame(width: config.mark, height: config.mark)
             if config.showsNumbers {

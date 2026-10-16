@@ -185,6 +185,7 @@ final class CopilotProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(Set(item.events.map(\.model)), ["gpt-5.4"])
         XCTAssertEqual(item.turns.map(\.turnID), ["u1", "u2", "u3"])
         XCTAssertEqual(item.turns.map(\.state), [.completed, .ended, .ended])
+        XCTAssertEqual(item.turns.map(\.outcome), [.completed, .interrupted, nil], "an abort is the user's stop; a shutdown says nothing")
         XCTAssertEqual(item.turns[0].observedAtMs, 1788825605000)
         XCTAssertTrue(item.completions.isEmpty, "Completions come from the agentStop hook")
     }

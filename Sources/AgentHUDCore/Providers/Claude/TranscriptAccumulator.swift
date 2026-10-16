@@ -31,9 +31,13 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
         var observedAt: Date
         /// What the agent said, kept only while the app runs: the ledger stores no conversation text.
         var message: String?
-        enum CodingKeys: String, CodingKey { case startedAt, state, observedAt }
+        /// Why the turn ended, when the log said.
+        var outcome: TurnOutcome?
+        enum CodingKeys: String, CodingKey { case startedAt, state, observedAt, outcome }
     }
     private var currentTurn: Turn?
+    /// What the main log says its turn is busy with: open calls, the kind of work they do, its newest line.
+    private var activity: SessionActivity?
     private var completions: [SessionCompletion]?
     /// Prompts and compactions read since the store last took them.
     private var marks: [UsageLedger.Mark] = []
@@ -41,6 +45,8 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
     /// A response that neither requests a tool nor was cut off ends the turn and returns control to the user.
     /// Interruptions leave no such line; API errors are synthetic messages without one.
     static let completedStopReasons: Set<String> = ["end_turn", "stop_sequence"]
+    /// The errors of an API error message that mean a usage limit stopped the turn rather than a failure.
+    static let limitErrors: Set<String> = ["rate_limit", "billing_error"]
     /// Enough for every turn a poll can observe; the notification tracker ignores older ones anyway.
     static let retainedCompletions = 32
     static let retainedUsageKeys = 512
@@ -85,13 +91,22 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
             // a main log records prompts, compactions, completions and the answer.
             if isSubagent || !event.isSidechain {
                 if !isSubagent, event.isCompaction { marks.append(.init(.compaction, at: event.timestamp)) }
+                if !isSubagent { note(event) }
                 if event.isPrompt {
                     // Claude Code records an interruption as a user line; that turn is over without a completion.
-                    let interrupted = event.text?.hasPrefix("[Request interrupted") == true
+                    let interrupted = Self.isInterruption(event)
                     if !interrupted, !isSubagent { marks.append(.init(.prompt, at: event.timestamp)) }
                     if event.timestamp >= (currentTurn?.observedAt ?? .distantPast) {
                         currentTurn = Turn(startedAt: interrupted ? currentTurn?.startedAt : event.timestamp,
-                            state: interrupted ? .ended : .running, observedAt: event.timestamp)
+                            state: interrupted ? .ended : .running, observedAt: event.timestamp, outcome: interrupted ? .interrupted : nil)
+                    }
+                } else if let error = event.apiError {
+                    // Claude Code writes a message in the model's place when the API failed, and the turn is over: held up
+                    // by a usage limit until it lifts or the next prompt, or failed. No Stop hook summary follows it.
+                    if (currentTurn?.state ?? .running) == .running, event.timestamp >= (currentTurn?.observedAt ?? .distantPast) {
+                        currentTurn = Turn(startedAt: currentTurn?.startedAt, state: .ended, observedAt: event.timestamp,
+                                           message: currentTurn?.message,
+                                           outcome: Self.limitErrors.contains(error) ? .limited(resetsAt: event.limitResetsAt) : .failed)
                     }
                 } else if event.role == .assistant, event.model != "<synthetic>" {
                     if let reason = event.stopReason, Self.completedStopReasons.contains(reason) {
@@ -104,18 +119,20 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
                         }
                         if !duplicate, event.timestamp >= (currentTurn?.observedAt ?? .distantPast) {
                             currentTurn = Turn(startedAt: currentTurn?.startedAt, state: .completed, observedAt: event.timestamp,
-                                               message: currentTurn?.message)
+                                               message: currentTurn?.message, outcome: .completed)
                         }
                     } else if isSubagent, event.returnsStructuredOutput, event.timestamp >= (currentTurn?.observedAt ?? .distantPast) {
                         // A workflow agent hands back its result and stops without an end_turn.
-                        currentTurn = Turn(startedAt: currentTurn?.startedAt, state: .completed, observedAt: event.timestamp)
+                        currentTurn = Turn(startedAt: currentTurn?.startedAt, state: .completed, observedAt: event.timestamp,
+                                           outcome: .completed)
                     } else if currentTurn == nil {
                         // A partial legacy transcript can show work, but cannot invent a prompt start time.
                         currentTurn = Turn(startedAt: nil, state: .running, observedAt: event.timestamp)
                     } else if currentTurn?.state != .running, event.timestamp > currentTurn!.observedAt {
                         // Claude Code woke the agent without a prompt: a sub-agent's report, a queued notification or a
-                        // Stop hook's feedback. The turn that stopped is being worked on again.
+                        // Stop hook's feedback. The turn that stopped is being worked on again, and has not ended yet.
                         currentTurn?.state = .running
+                        currentTurn?.outcome = nil
                     }
                 } else if event.isStop, currentTurn?.state == .running, event.timestamp >= currentTurn!.observedAt {
                     // Claude Code ran the Stop hooks or timed the turn once the agent stopped: a turn no end_turn
@@ -162,7 +179,38 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
                                            tokensOut: event.outputTokens, cacheReadTokens: event.cacheReadTokens,
                                            cacheWriteTokens: event.cacheCreationTokens, reasoningTokens: event.thinkingTokens))
         }
+        activity?.settle()
         return added
+    }
+
+    /// An interruption, which Claude Code records as a user line of its own.
+    static func isInterruption(_ event: TranscriptEvent) -> Bool { event.text?.hasPrefix("[Request interrupted") == true }
+
+    /// Takes a main-log line into what the turn is busy with: a prompt that starts a turn starts it afresh, a call opens
+    /// until its result comes back, and the line says what the conversation's newest line is. Only a retry's own line says
+    /// the client is retrying the API.
+    private mutating func note(_ event: TranscriptEvent) {
+        var activity = self.activity ?? SessionActivity()
+        if event.isPrompt {
+            guard event.timestamp >= (currentTurn?.observedAt ?? .distantPast) else { return }
+            activity.startTurn()
+            activity.line = Self.isInterruption(event) ? .context : .prompt
+        } else if let id = event.toolUseID {
+            activity.open(id, work: event.toolName.flatMap(SessionActivity.work(ofTool:)), at: event.timestamp)
+            activity.line = .call
+        } else if let id = event.toolResultID {
+            activity.close(id, at: event.timestamp)
+            activity.line = .result
+        } else if event.apiError != nil {
+            activity.line = .error
+        } else if event.role == .assistant, event.model != "<synthetic>" {
+            activity.line = event.isThinking ? .thinking
+                : event.stopReason.map(Self.completedStopReasons.contains) == true ? .answer : .text
+        } else if event.role == .user {
+            activity.line = .context
+        }
+        activity.retrying = event.retryAttempt != nil
+        self.activity = activity
     }
 
     public var isEmpty: Bool { startedAt == nil }
@@ -197,6 +245,7 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
         outputByAgent.merge(older.outputByAgent, uniquingKeysWith: +)
         modelsSeen.merge(older.modelsSeen) { max($0, $1) }
         currentTurn = currentTurn ?? older.currentTurn
+        activity = activity ?? older.activity
         if let earlier = older.completions {
             let ids = Set((completions ?? []).map(\.id))
             completions = Array((earlier.filter { !ids.contains($0.id) } + (completions ?? [])).suffix(Self.retainedCompletions))
@@ -267,8 +316,9 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
                 SessionTurn(provider: "claude", sessionID: sessionId ?? fileName,
                     turnID: String(RecordCoding.milliseconds(turn.startedAt ?? turn.observedAt)), state: turn.state,
                     startedAtMs: turn.startedAt.map(RecordCoding.milliseconds), observedAtMs: RecordCoding.milliseconds(turn.observedAt),
-                    message: turn.message)
-            }
+                    message: turn.message, outcome: turn.outcome)
+            },
+            activity: isSubagent ? nil : activity
         )
     }
 }

@@ -1,31 +1,63 @@
 import SwiftUI
 import AgentHUDCore
 
-/// What looking at an agent's own card does to its mark, on a dock that separates its agents.
+/// What an agent's own card does to its mark, on a dock that separates its agents.
 enum MarkAttention: Equatable, Sendable {
     /// Nobody is looking at this agent's card: the mark follows its agent.
     case none
-    /// Its card is open, a hover's peek or a click's whole panel: the mark is its bot, watching the pointer, until
-    /// the card closes.
+    /// Its card is open, a hover's peek or a click's whole panel: the mark is under the pointer until the card closes.
+    /// A resting mark comes up and greets; a busy one keeps to its work and turns its eyes.
     case opened
+    /// A card from its agent is up beside it, this way: a mark whose agent waits on the user turns to it.
+    case facesCard(BotFacing)
 
-    func phase(working: Bool) -> BotPhase {
+    /// The mark's state with this on top of what its agents do.
+    func state(of base: BotState) -> BotState {
+        var state = base
         switch self {
-        case .none: working ? .working : .idle
-        case .opened: .opened
+        case .none: break
+        case .opened: state.hovered = true
+        case .facesCard(let facing): state.facing = facing
         }
+        return state
     }
 }
 
 /// One mark in the queue. The queue shows one mark per vendor, not per agent: two Claude windows are
-/// one Claude, and the mark's bot wakes when any of them is working.
+/// one Claude, and the mark's bot shows what the session it follows is doing (`MarkDirector`).
 struct LogoQueueItem: Identifiable, Equatable {
     let vendor: String
     /// Any agent of this vendor has a running session.
     let isWorking: Bool
+    /// What the mark shows of its agents: the director's state for it, or with no director plain work while any of
+    /// them works.
+    var state: BotState
+    /// The newest event of its agents, for the mark to play once if it hears of it in time.
+    var cue: BotCue? = nil
     /// Whether this agent's card is the one being looked at.
     var attention = MarkAttention.none
     var id: String { vendor }
+
+    init(vendor: String, isWorking: Bool, state: BotState? = nil, cue: BotCue? = nil) {
+        self.vendor = vendor
+        self.isWorking = isWorking
+        self.state = state ?? BotState(look: isWorking ? .plain : .idle)
+        self.cue = cue
+    }
+
+    /// What the mark is told: its agents' state with its card's attention on top.
+    var shown: BotState { attention.state(of: state) }
+
+    /// The item with what the director says its mark shows, by mark key; an item the director has nothing for is left
+    /// as it is.
+    @MainActor
+    func directed(by directions: [String: MarkDirector.Direction]) -> LogoQueueItem {
+        guard let direction = directions[AgentArtwork.markKey(vendor)] else { return self }
+        var item = self
+        item.state = direction.state
+        item.cue = direction.cue
+        return item
+    }
 
     /// Collapses agents onto the mark they are drawn with, keeping the order they were watched in. Two
     /// Claude windows are one Claude; so are Codex and ChatGPT, which share OpenAI's artwork — a second
@@ -59,6 +91,8 @@ struct LogoQueueConfig: Equatable {
     var workingSeconds: Double
     /// Working agents stay bots; idle agents occasionally become bots for a few seconds.
     var bots: Bool
+    /// The dock comes back after a card hid it: its bots, built again, take up their looks at once (`DockMemory`).
+    var resumes = false
 
     init(items: [LogoQueueItem], placement: ScreenPlacement, settings: AgentHUDCore.Settings) {
         self.items = items
@@ -110,6 +144,8 @@ struct LogoQueueView: NSViewRepresentable {
 
 /// Lays stationary marks out along the edge and follows their bots through the shared clock.
 final class LogoQueueLayerView: NSView {
+    /// The seed of the bots built from here on, fixed only to replay their acts in a test.
+    var seed: UInt64?
     private(set) var marks: [CALayer] = []
     /// One per mark, for the marks that have a bot. A bot's layer sits over its mark and takes its place
     /// while the bot is out; the mark comes back when the bot has settled into the logo again.
@@ -118,6 +154,15 @@ final class LogoQueueLayerView: NSView {
     private var bleed: CGFloat = 1
     /// Alpha bounds in each baked bitmap, including its outline, normalized with y running down.
     private var visibleBounds: [CGRect] = []
+    /// The still sign over each mark that shows only its logo, with bots off or motion reduced: a waiting request's or
+    /// a badge's, a picture that never moves. Nil where there is none.
+    private(set) var signs: [CALayer?] = []
+    /// What each of them shows, and where it stands from its mark's top left.
+    private var signed: [(sign: BotSign, frame: CGRect)?] = []
+    /// Each mark's logo box, its top left, as last laid out.
+    private var origins: [CGPoint] = []
+    /// The newest event each mark was handed, by vendor, so a mark built again never plays one twice.
+    private var played: [String: BotCue] = [:]
     /// Where each bot sits on the screen, for its gaze, worked out once for a layout and a window frame.
     private var places: [CGPoint?] = []
     private var placedIn: CGRect?
@@ -155,21 +200,27 @@ final class LogoQueueLayerView: NSView {
             || applied?.config.logo != config.logo
             || applied?.config.bots != config.bots || applied?.config.workingSeconds != config.workingSeconds
         let regrounded = applied.map { $0.light != light } ?? false
+        // Bots built again while bots were out pick up where they were, as a dock back from under a card does.
+        let botsWereOut = applied.map { $0.config.bots && $0.animates } ?? false
         applied = (config, light, scale, animates, previewsMotion)
         if reshaped || regrounded {
             // Marks drawn again for another ground alone fade into it, as the surface behind them moves to its new
             // colours. A queue that changes otherwise is laid out again at once, as it always has been.
             if regrounded, !reshaped, animates, let layer { IslandAnimation.fadeLook(of: layer) }
-            build(config: config, light: light, scale: scale)
+            build(config: config, light: light, scale: scale, awake: config.resumes || botsWereOut && config.bots)
         }
         matchDisplay()
         position(config: config)
         animate(config: config, animates: animates, previewsMotion: previewsMotion)
     }
 
-    private func build(config: LogoQueueConfig, light: Bool, scale: CGFloat) {
+    /// - awake: the marks' bots were out before: each takes up its look at once (`BotActor`).
+    private func build(config: LogoQueueConfig, light: Bool, scale: CGFloat, awake: Bool) {
         marks.forEach { $0.removeFromSuperlayer() }
         actors.forEach { $0?.layer.removeFromSuperlayer() }
+        signs.forEach { $0?.removeFromSuperlayer() }
+        signs = Array(repeating: nil, count: config.items.count)
+        signed = Array(repeating: nil, count: config.items.count)
         let side = Int((config.logo * scale).rounded())
         // One device pixel at any size: a hairline reads as the mark's own edge, anything thicker as a
         // border drawn around it.
@@ -190,7 +241,8 @@ final class LogoQueueLayerView: NSView {
         }
         actors = config.items.map { item in
             guard config.bots, let form = BotForm.form(for: item.vendor, ground: light ? .light : .dark) else { return nil }
-            let actor = BotActor(form: form, staysBot: false, period: config.workingSeconds)
+            let actor = BotActor(form: form, staysBot: false, period: config.workingSeconds,
+                                 seed: seed ?? UInt64.random(in: 0...UInt64.max), awake: awake)
             actor.resize(side: config.logo, scale: scale, outline: outline)
             layer?.addSublayer(actor.layer)
             return actor
@@ -207,6 +259,7 @@ final class LogoQueueLayerView: NSView {
         let lead = max(0, ((config.edge.isHorizontal ? bounds.width : bounds.height) - run) / 2)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        origins = []
         for (index, mark) in marks.enumerated() {
             let along = lead + CGFloat(index) * step
             var origin = config.edge.isHorizontal
@@ -231,6 +284,10 @@ final class LogoQueueLayerView: NSView {
             if index < actors.count {
                 actors[index]?.layer.position = CGPoint(x: origin.x + config.logo / 2, y: origin.y + config.logo / 2)
             }
+            origins.append(origin)
+            if index < signs.count, let sign = signs[index], let placed = signed[index] {
+                sign.frame = placed.frame.offsetBy(dx: origin.x, dy: origin.y)
+            }
         }
         CATransaction.commit()
         placedIn = nil
@@ -246,13 +303,51 @@ final class LogoQueueLayerView: NSView {
         let now = CACurrentMediaTime()
         for index in marks.indices {
             let item = index < config.items.count ? config.items[index] : nil
-            let phase: BotPhase = !animates ? .idle : previewsMotion ? .working
-                : item.map { $0.attention.phase(working: $0.isWorking) } ?? .idle
-            if let actor = index < actors.count ? actors[index] : nil {
-                actor.set(phase, at: now)
+            let actor = index < actors.count ? actors[index] : nil
+            let state = !animates ? BotState() : previewsMotion ? BotState(look: .plain) : item?.shown ?? BotState()
+            actor?.set(state, at: now)
+            // An event the mark hears of too late is let go, as the bot itself would let it go.
+            if let item, let cue = item.cue, played[item.id] != cue {
+                played[item.id] = cue
+                if animates, -cue.at.timeIntervalSinceNow <= BotEvent.freshness { actor?.play(cue.event, at: now) }
             }
+            let stands = animates && actor != nil
+            wear(stands ? nil : item?.shown.stillSign, at: index, vendor: item?.vendor, config: config)
+            if !stands { marks[index].opacity = stillOpacity(at: index) }
         }
         followBots()
+    }
+
+    /// How strongly the mark at `index` shows while it is its still logo, with bots off or motion reduced: half for no
+    /// news, which needs no motion to say.
+    private func stillOpacity(at index: Int) -> Float {
+        guard let items = applied?.config.items, index < items.count else { return 1 }
+        return items[index].shown.look == .noNews ? 0.5 : 1
+    }
+
+    /// Lays `sign` over the mark at `index` as a still picture of its own, or takes the one there away; a logo that
+    /// shows for its bot wears none, since the bot carries it.
+    private func wear(_ sign: BotSign?, at index: Int, vendor: String?, config: LogoQueueConfig) {
+        guard index < signs.count, signed[index]?.sign != sign, let applied else { return }
+        signs[index]?.removeFromSuperlayer()
+        signs[index] = nil
+        signed[index] = nil
+        let ground: HUDLook.Appearance = applied.light ? .light : .dark
+        guard let sign, let vendor,
+              let still = BotSigns.still(sign, form: BotForm.form(for: vendor, ground: ground), side: config.logo,
+                                         scale: applied.scale, ground: ground) else { return }
+        let layer = CALayer()
+        layer.contents = still.image
+        layer.contentsScale = applied.scale
+        layer.contentsGravity = .resize
+        // A still sign: nothing about it ever moves.
+        layer.actions = ["contents": NSNull(), "position": NSNull(), "bounds": NSNull(), "hidden": NSNull(),
+                         "opacity": NSNull()]
+        let origin = index < origins.count ? origins[index] : .zero
+        layer.frame = still.frame.offsetBy(dx: origin.x, dy: origin.y)
+        self.layer?.addSublayer(layer)
+        signs[index] = layer
+        signed[index] = (sign, still.frame)
     }
 
     override func viewDidMoveToWindow() {
@@ -272,7 +367,7 @@ final class LogoQueueLayerView: NSView {
         guard applied?.animates == true else {
             for (index, actor) in actors.enumerated() {
                 actor?.layer.isHidden = true
-                marks[index].opacity = 1
+                marks[index].opacity = stillOpacity(at: index)
             }
             return nil
         }

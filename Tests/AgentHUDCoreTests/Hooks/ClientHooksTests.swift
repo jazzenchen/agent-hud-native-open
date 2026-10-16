@@ -45,8 +45,9 @@ final class ClientHooksTests: XCTestCase, @unchecked Sendable {
         let qwen = home.appendingPathComponent(".qwen/settings.json")
         XCTAssertEqual(try commands(claude), ["'\(executable.path)' --attention-hook claude", "'\(executable.path)' --permission-hook claude",
                                               "'\(executable.path)' --session-origin-hook claude", "'\(executable.path)' --session-origin-hook claude",
+                                              "'\(executable.path)' --session-origin-hook claude",
                                               "~/bin/lint", "~/bin/prompt-log", "~/bin/session-log"],
-                       "approval, notification and both origin callbacks beside the user's hooks, all the running copy's")
+                       "approval, notification, both origin callbacks and compaction, which runs the origin command, beside the user's hooks, all the running copy's")
         let installed = try ProviderJSON.read(Data(contentsOf: claude))
         for event in ClaudeSessionOrigins.events {
             XCTAssertEqual((installed["hooks"][event].arrayValue ?? []).flatMap { $0["hooks"].arrayValue ?? [] }

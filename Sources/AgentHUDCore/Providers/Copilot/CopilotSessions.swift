@@ -78,10 +78,10 @@ enum CopilotSessions: LocalSessionLayout {
         var started = false, model: String?, snapshots: [(event: String, date: Date, key: String, model: String?, counts: [Int])] = []
         var active: (id: String, started: Int64, observed: Int64)?
         func concrete(_ value: ProviderJSON) -> String? { value.stringValue.flatMap { $0 == "auto" || $0.isEmpty ? nil : $0 } }
-        func observe(_ state: SessionTurn.State, _ turn: (id: String, started: Int64, observed: Int64)) {
+        func observe(_ state: SessionTurn.State, _ turn: (id: String, started: Int64, observed: Int64), outcome: TurnOutcome? = nil) {
             session.turns.removeAll { $0.turnID == turn.id }
             session.turns.append(.init(provider: AdditionalSource.copilot.vendor, sessionID: id, turnID: turn.id, state: state,
-                                       startedAtMs: turn.started, observedAtMs: turn.observed))
+                                       startedAtMs: turn.started, observedAtMs: turn.observed, outcome: outcome))
         }
         try events(url, types: logTypes) { json in
             guard let type = json["type"].stringValue, let date = DateParsing.internet(json["timestamp"].stringValue) else { return }
@@ -104,10 +104,15 @@ enum CopilotSessions: LocalSessionLayout {
                     active = turn; observe(.running, turn)
                 }
             case "abort" where main:
-                if var turn = active { turn.observed = ms; observe(.ended, turn); active = nil }
+                if var turn = active { turn.observed = ms; observe(.ended, turn, outcome: .interrupted); active = nil }
             case "hook.start" where main && data["hookType"].stringValue == "agentStop":
+                // The stop's reason says how the agent ended; one that is neither an answer nor an error ends it without one.
                 if var turn = active {
-                    turn.observed = ms; observe(data["input"]["stopReason"].stringValue == "end_turn" ? .completed : .ended, turn); active = nil
+                    let reason = data["input"]["stopReason"].stringValue
+                    turn.observed = ms
+                    observe(reason == "end_turn" ? .completed : .ended, turn,
+                            outcome: reason == "end_turn" ? .completed : reason == "error" ? .failed : nil)
+                    active = nil
                 }
             case "session.shutdown":
                 if var turn = active { turn.observed = ms; observe(.ended, turn); active = nil }

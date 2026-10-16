@@ -512,8 +512,10 @@ final class SessionSourceRuleTests: XCTestCase, @unchecked Sendable {
         func stop(_ reason: String, subagent: Bool = false) -> String {
             line("hook.start", -380, id: "h", subagent: subagent, data: ["hookType": "agentStop", "input": ["stopReason": reason]])
         }
-        func copilot(_ id: String, _ state: SessionTurn.State, started: TimeInterval, observed: TimeInterval) -> SessionTurn {
-            SessionTurn(provider: "GitHub Copilot", sessionID: "copilot:s1", turnID: id, state: state, startedAtMs: ms(started), observedAtMs: ms(observed))
+        func copilot(_ id: String, _ state: SessionTurn.State, started: TimeInterval, observed: TimeInterval,
+                     outcome: TurnOutcome? = nil) -> SessionTurn {
+            SessionTurn(provider: "GitHub Copilot", sessionID: "copilot:s1", turnID: id, state: state, startedAtMs: ms(started), observedAtMs: ms(observed),
+                        outcome: outcome)
         }
         // A prompt opens the turn at -990; the agent's loop last observed it at -980.
         let opening = [line("session.start", -1000, id: "e0", data: ["context": ["cwd": "/work"]]),
@@ -531,9 +533,10 @@ final class SessionSourceRuleTests: XCTestCase, @unchecked Sendable {
             ("the agent's own turn end", [line("assistant.turn_end", -380, id: "l2")], [copilot("u1", .running, started: -990, observed: -380)]),
             ("a sub-agent's stop and abort", [stop("end_turn", subagent: true), line("abort", -380, id: "a", subagent: true)],
              [copilot("u1", .running, started: -990, observed: -980)]),
-            ("the agent's stop at the end of its turn", [stop("end_turn")], [copilot("u1", .completed, started: -990, observed: -380)]),
+            ("the agent's stop at the end of its turn", [stop("end_turn")],
+             [copilot("u1", .completed, started: -990, observed: -380, outcome: .completed)]),
             ("the agent's stop for another reason", [stop("max_tokens")], [copilot("u1", .ended, started: -990, observed: -380)]),
-            ("an abort", [line("abort", -380, id: "a")], [copilot("u1", .ended, started: -990, observed: -380)]),
+            ("an abort", [line("abort", -380, id: "a")], [copilot("u1", .ended, started: -990, observed: -380, outcome: .interrupted)]),
             ("a shutdown", [line("session.shutdown", -380, id: "sd")], [copilot("u1", .ended, started: -990, observed: -380)]),
         ]
         for item in cases {
@@ -545,7 +548,8 @@ final class SessionSourceRuleTests: XCTestCase, @unchecked Sendable {
         let session = try XCTUnwrap(CopilotSessions.read(file).sessions.first), now = base
         let report = try await AdditionalUsageProvider(source: .copilot, readQuota: { ProviderQuota() }, readSessions: { _ in ProviderSessions(sessions: [session]) },
                                                        history: QuotaHistoryStore(), clock: { now }).fetchUsage(agents: [], historyHours: 24)
-        XCTAssertEqual(report.turns, [copilot("u1", .running, started: -990, observed: -980), copilot("u2", .completed, started: -860, observed: -380)])
+        XCTAssertEqual(report.turns, [copilot("u1", .running, started: -990, observed: -980),
+                                      copilot("u2", .completed, started: -860, observed: -380, outcome: .completed)])
         XCTAssertEqual(report.sessions.map(\.isLive), [false])
     }
 

@@ -194,12 +194,16 @@ enum OpenAgentParser {
                 }
                 if type == "llm.request" { requestModel = concrete(line["model"].stringValue); return }
                 if type == "turn.ended", let turn = line["turnId"].countValue, let at = ProviderDate.milliseconds(line["time"]) {
-                    let success = line["reason"].stringValue == "completed" && line["error"] == .null
+                    let failed = line["error"] != .null
+                    let success = line["reason"].stringValue == "completed" && !failed
                     let position = session.turns.firstIndex { $0.turnID == String(turn) }
                     let start = position.flatMap { session.turns[$0].startedAtMs }
                     if agent == "main" {
+                        // An error the turn carries is a failure and a cancelled turn the user's stop; any other end that is
+                        // not a completion has no reason.
                         let finished = SessionTurn(provider: "Kimi", sessionID: session.id, turnID: String(turn),
-                            state: success ? .completed : .ended, startedAtMs: start, observedAtMs: RecordCoding.milliseconds(at))
+                            state: success ? .completed : .ended, startedAtMs: start, observedAtMs: RecordCoding.milliseconds(at),
+                            outcome: success ? .completed : failed ? .failed : line["reason"].stringValue == "cancelled" ? .interrupted : nil)
                         if let position { session.turns[position] = finished } else { session.turns.append(finished) }
                     }
                     session.end = max(session.end ?? at, at)

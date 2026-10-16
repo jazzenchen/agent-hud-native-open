@@ -23,6 +23,8 @@ final class IslandController {
     private let settings: SettingsStore
     private let additionalHUDControls: @MainActor (@escaping @MainActor () -> Void) -> AnyView
     private(set) var huds: [String: ScreenHUD] = [:]
+    /// What each mark shows, decided once for every screen.
+    private let directions: MarkDirections
     /// Display order, so the primary HUD is stable rather than whatever the dictionary yields.
     private var order: [String] = []
     private var systemIsLight = SystemAppearance.isLight
@@ -41,12 +43,17 @@ final class IslandController {
         }
     }
 
+    /// - startedAt: the app's start, before which nothing that happened to an agent is news (`IslandEventTracker`).
     init(store: UsageStore, settings: SettingsStore,
-         additionalHUDControls: @escaping @MainActor (@escaping @MainActor () -> Void) -> AnyView = { _ in AnyView(EmptyView()) }) {
+         additionalHUDControls: @escaping @MainActor (@escaping @MainActor () -> Void) -> AnyView = { _ in AnyView(EmptyView()) },
+         startedAt: Date? = nil) {
         self.store = store
         self.settings = settings
         self.additionalHUDControls = additionalHUDControls
+        directions = MarkDirections(startedAt: startedAt ?? store.clock(), clock: store.clock)
+        directions.read(store.queueMarks)
         rebuild()
+        directions.onChange = { [weak self] in self?.apply(animated: true) }
 
         observers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
@@ -72,7 +79,10 @@ final class IslandController {
             Task { @MainActor in self?.apply(animated: true) }
         })
         trackChanges({ [weak self] in self?.inputs }, onChange: { [weak self] in
-            self?.apply(animated: true)
+            guard let self else { return }
+            // The marks read first, so every screen draws what they now say.
+            self.directions.read(self.store.queueMarks)
+            self.apply(animated: true)
         })
         startPointerMonitors()
     }
@@ -98,6 +108,8 @@ final class IslandController {
         let draftedGlows: [String: GlowSettings]
         /// The panel's width in each screen's layout, by screen key, a draft included: a change resizes an open panel.
         let widths: [String: Int]
+        /// What each mark's sessions are doing and wait on, for the marks' director.
+        let marks: [ReportView.QueueMark]
     }
 
     private var inputs: Inputs {
@@ -111,7 +123,8 @@ final class IslandController {
                       draftedGlows: Dictionary(order.filter { layout.hasStyleDraft($0) }.map { ($0, settings.effectiveGlow(on: $0)) },
                                                uniquingKeysWith: { first, _ in first }),
                       widths: Dictionary(order.map { ($0, layout.effective(for: $0).style.panelWidth) },
-                                         uniquingKeysWith: { first, _ in first }))
+                                         uniquingKeysWith: { first, _ in first }),
+                      marks: store.queueMarks)
     }
 
     // MARK: Screens
@@ -135,7 +148,8 @@ final class IslandController {
         }
         for (index, key) in keys.enumerated() where huds[key] == nil {
             let hud = ScreenHUD(key: key, screen: screens.indices.contains(index) ? screens[index] : nil,
-                                store: store, settings: settings, additionalHUDControls: additionalHUDControls)
+                                store: store, settings: settings, additionalHUDControls: additionalHUDControls,
+                                directions: directions)
             hud.systemIsLight = systemIsLight
             hud.drawsGlassStandIn = drawsGlassStandIn
             hud.onOpenStats = { [weak self] in self?.onOpenStats?() }

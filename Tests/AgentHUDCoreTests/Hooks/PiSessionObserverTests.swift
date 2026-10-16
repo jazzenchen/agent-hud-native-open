@@ -135,6 +135,20 @@ final class PiSessionObserverTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(cached.turns, completed.turns, "A poll must not manufacture a newer source timestamp")
     }
 
+    func testARunEndsInterruptedOrFailedByItsStopReasonAndNeverLimited() throws {
+        func ended(_ reason: String?) throws -> TurnOutcome? {
+            var record = try JSONSerialization.jsonObject(with: JSONEncoder().encode(observation(.ended))) as! [String: Any]
+            record["stopReason"] = reason
+            return try PiSessionObserver.read(JSONSerialization.data(withJSONObject: record)).turn.outcome
+        }
+        XCTAssertEqual(try ended("aborted"), .interrupted)
+        XCTAssertEqual(try ended("error"), .failed, "a 429 is only in the error's wording, so it is a failure like any other")
+        XCTAssertNil(try ended("length"))
+        XCTAssertNil(try ended(nil), "an extension from before the reason, or a shutdown, says nothing")
+        XCTAssertEqual(observation(.completed).turn.outcome, .completed)
+        XCTAssertNil(observation(.running).turn.outcome)
+    }
+
     func testErrorsStaleRunsAndHistoricalCompletionDoNotFinishNewRun() async throws {
         var running = observation(.running).session
         running.turns.insert(observation(.completed, age: 600, turnID: "old").turn, at: 0)
@@ -240,6 +254,9 @@ final class PiSessionObserverTests: XCTestCase, @unchecked Sendable {
         emit('session_shutdown');
         assert.equal(rows().filter(r => r.state === 'completed').length, 1);
         assert.equal(rows().filter(r => r.state === 'ended').length, 4);
+        assert.deepEqual(rows().filter(r => r.state === 'ended').map(r => r.stopReason ?? 'none').sort(), ['aborted', 'error', 'length', 'none'],
+          'a settled run says how it ended; a shutdown says nothing');
+        assert.equal(first.stopReason, undefined, 'a running run has no stop reason yet');
         assert.ok(cleared >= 5);
         assert.equal(JSON.stringify(rows()).includes('private prompt'), false);
         assert.equal(JSON.stringify(rows()).includes('usage'), false);

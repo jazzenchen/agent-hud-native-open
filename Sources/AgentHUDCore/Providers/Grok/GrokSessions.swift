@@ -70,6 +70,8 @@ enum GrokSessions: LocalSessionLayout {
             ?? workspace.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Grok CLI"
         var session = ProviderSession(id: id, title: title, workspace: workspace, path: url.path, client: "Grok CLI")
         var seen = Set<String>(), turnID: String?, turnStart: Date?, incomplete = false, hasContextOnly = false
+        // The whole log is read each time, so the turn's newest call is the newest one this read brought in.
+        var activity = SessionActivity()
         try ProviderFiles.lines(url) { json, line in
             guard let method = json["method"].stringValue,
                   method == "session/update" || method == "_x.ai/session/update" else { return }
@@ -85,6 +87,11 @@ enum GrokSessions: LocalSessionLayout {
             if kind == "user_message_chunk", turnID == nil {
                 turnID = meta["promptId"].stringValue ?? eventID
                 turnStart = ProviderDate.milliseconds(meta["turnStartMs"]) ?? date
+                activity.startTurn()
+                activity.line = .prompt
+            }
+            if turnID != nil, kind == "tool_call" || kind == "tool_call_update", let call = update["toolCallId"].stringValue {
+                Self.note(call, update: update, isUpdate: kind == "tool_call_update", at: date, into: &activity)
             }
             // Older user updates lack a prompt id; the following agent/tool update supplies the client's real turn id.
             if let previous = turnID, let observed = meta["promptId"].stringValue, observed != previous {
@@ -113,16 +120,54 @@ enum GrokSessions: LocalSessionLayout {
             if let turnID { session.turns.removeAll { $0.turnID == turnID } }
             session.turns.removeAll { $0.turnID == completedID }
             let succeeded = update["stop_reason"].stringValue == "end_turn"
+            // A cancelled turn is the user's stop; one that stopped for any other reason ends without one.
             session.turns.append(.init(provider: "Grok", sessionID: id, turnID: completedID, state: succeeded ? .completed : .ended,
-                startedAtMs: turnStart.map(RecordCoding.milliseconds), observedAtMs: RecordCoding.milliseconds(date)))
+                startedAtMs: turnStart.map(RecordCoding.milliseconds), observedAtMs: RecordCoding.milliseconds(date),
+                outcome: succeeded ? .completed : update["stop_reason"].stringValue == "cancelled" ? .interrupted : nil))
+            activity.endTurn()
             if succeeded {
                 session.completions.append(.init(sessionID: id, vendor: "Grok", turnID: completedID, task: title,
                     model: model, startedAt: turnStart, completedAt: date, client: "Grok CLI"))
             }
             turnID = nil; turnStart = nil
         }
+        activity.settle()
+        session.activity = activity
         return ProviderSessions(sessions: [session], notice: incomplete || (hasContextOnly && session.events.isEmpty)
             ? L10n.text("部分 Grok 旧会话只有上下文计数，无法还原实际 Token 消耗", "Some older Grok sessions only report context size, not token consumption") : nil)
+    }
+
+    /// A tool call of a running turn, or an update of one: the call opens with what its kind or its tool says it does, an
+    /// update that names a kind says it better, and one that says it finished closes it.
+    private static func note(_ call: String, update: ProviderJSON, isUpdate: Bool, at date: Date, into activity: inout SessionActivity) {
+        let status = update["status"].stringValue
+        if status == "completed" || status == "failed" {
+            activity.close(call, at: date)
+            activity.line = .result
+            return
+        }
+        let open = activity.calls.first { $0.id == call }
+        guard !isUpdate || (open != nil && update["kind"].stringValue != nil) else { return }
+        let tool = update["_meta"]["x.ai/tool"]
+        activity.open(call, work: work(kind: update["kind"].stringValue ?? tool["kind"].stringValue,
+                                       name: tool["name"].stringValue ?? update["title"].stringValue), at: open?.at ?? date)
+        activity.line = .call
+    }
+
+    /// What a Grok tool call does, by the kind the agent protocol gives it, else by its tool's name; nil for any other.
+    static func work(kind: String?, name: String?) -> SessionActivity.Work? {
+        switch kind {
+        case "execute": return .shell
+        case "edit", "delete", "move": return .edit
+        case "read", "search", "fetch", "list": return .read
+        default: break
+        }
+        switch name {
+        case "run_terminal_command": return .shell
+        case "read_file", "list_dir", "grep", "glob", "web_fetch", "web_search": return .read
+        case "edit_file", "write_file", "create_file", "search_replace": return .edit
+        default: return nil
+        }
     }
 
     /// The messages the inference log is read for, as quoted strings; the rest of the log is not decoded.

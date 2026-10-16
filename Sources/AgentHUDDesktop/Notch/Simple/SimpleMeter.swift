@@ -11,11 +11,19 @@ struct SimpleMeterItem: Identifiable, Equatable {
     let level: StatusLevel?
     /// Any agent that shares this mark has a session running.
     var isWorking = false
+    /// What the mark shows of its agents, as the director says (`MarkDirector`): plain work while any of them works,
+    /// with no director.
+    var state = BotState()
+    /// The newest event of its agents, for the mark to play once if it hears of it in time.
+    var cue: BotCue? = nil
     /// Whether this agent's card is the one being looked at.
     var attention = MarkAttention.none
     /// An agent billed by use has no window to be a share of: its balance stands where the percentage would.
     var balance: String? = nil
     var id: String { vendor }
+
+    /// What the mark is told: its agents' state with its card's attention on top.
+    var shown: BotState { attention.state(of: state) }
 
     /// What the number says: whole percent used, a balance, or a dash before the first reading.
     var label: String { usedPct.map { "\(Int($0.rounded()))%" } ?? balance ?? "–" }
@@ -43,8 +51,10 @@ struct SimpleMeterItem: Identifiable, Equatable {
     /// follows them, as balances follow windows in the menu: its mark, an empty ring and the balance.
     ///
     /// - working: the vendors with a session running, as a logo queue is told them.
+    /// - directions: what the director says each mark shows, by mark key, which a dock's marks are told the same.
     @MainActor
-    static func items(rows: [AgentRow], balances: [Balance] = [], working: [String] = []) -> [SimpleMeterItem] {
+    static func items(rows: [AgentRow], balances: [Balance] = [], working: [String] = [],
+                      directions: [String: MarkDirector.Direction] = [:]) -> [SimpleMeterItem] {
         let busy = Set(working.map(AgentArtwork.markKey))
         var order: [String] = []
         var vendors: [String: String] = [:]
@@ -59,16 +69,18 @@ struct SimpleMeterItem: Identifiable, Equatable {
                   used > (tightest[key]?.used ?? -1) else { continue }
             tightest[key] = (used, level)
         }
+        func state(_ key: String) -> BotState { directions[key]?.state ?? BotState(look: busy.contains(key) ? .plain : .idle) }
         var items = order.map {
             SimpleMeterItem(vendor: vendors[$0] ?? $0, usedPct: tightest[$0]?.used, level: tightest[$0]?.level,
-                            isWorking: busy.contains($0))
+                            isWorking: busy.contains($0), state: state($0), cue: directions[$0]?.cue)
         }
         for balance in balances {
             let key = AgentArtwork.markKey(balance.vendor)
             guard vendors[key] == nil else { continue }
             vendors[key] = balance.vendor
             items.append(SimpleMeterItem(vendor: balance.vendor, usedPct: nil, level: balance.level,
-                                         isWorking: busy.contains(key), balance: balance.text))
+                                         isWorking: busy.contains(key), state: state(key), cue: directions[key]?.cue,
+                                         balance: balance.text))
         }
         return items
     }
@@ -92,6 +104,8 @@ struct SimpleMeterConfig: Equatable {
     /// Marks turn into bots while their agents work, as a logo queue's do: Settings' `botLogos` on screen. A picture
     /// leaves it off, since a still has no motion to show.
     var bots: Bool
+    /// The panel comes back after a card hid it: its bots take up their looks at once (`DockMemory`).
+    var resumes = false
 
     init(items: [SimpleMeterItem], placement: ScreenPlacement, bots: Bool = false) {
         self.items = items

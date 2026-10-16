@@ -131,6 +131,8 @@ struct ProviderSession: Sendable {
     var completions: [SessionCompletion] = []
     var accountWide = false
     var navigationTarget: SessionNavigationTarget? = nil
+    /// What the session's log says its turn is busy with, from a reader whose log records each tool call.
+    var activity: SessionActivity? = nil
 
     /// When the session last did something: its last activity, else its newest event.
     var lastSeen: Date? { lastActivity ?? events.map(\.timestamp).max() }

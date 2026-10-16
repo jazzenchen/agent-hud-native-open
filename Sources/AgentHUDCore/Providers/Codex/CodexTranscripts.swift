@@ -60,7 +60,9 @@ public struct CodexTranscript: Codable, Sendable {
         var message: String?
         /// An explicitly final answer, kept apart from the agent's progress messages.
         var finalMessage: String?
-        enum CodingKeys: String, CodingKey { case id, startedAt, state, observedAt }
+        /// Why the turn ended, when the rollout said.
+        var outcome: TurnOutcome?
+        enum CodingKeys: String, CodingKey { case id, startedAt, state, observedAt, outcome }
     }
     /// How much of an agent message is kept; readers truncate it further.
     static let messageLength = 2048
@@ -76,21 +78,31 @@ public struct CodexTranscript: Codable, Sendable {
     private var inheritedThroughOrdinal: Int?
     /// Turn starts and compactions read since the store last took them.
     private var marks: [UsageLedger.Mark] = []
+    /// What the running turn is busy with: the calls still waiting for their output and the kind of work they do.
+    public private(set) var activity: SessionActivity?
 
     public init() {}
 
     /// - offset: where the line begins in its rollout, which keys the usage it reports.
     public mutating func ingest(_ line: Data, at offset: Int? = nil) {
+        // A call the model made and its output are read from their first bytes alone: an output can run to megabytes.
+        let head = line.prefix(1024)
+        if head.range(of: Self.responseItem) != nil {
+            noteCall(line, head: head)
+            return
+        }
         // Rollouts can contain multi-MB tool outputs. Inspect the envelope before decoding.
         guard Self.envelopes.contains(where: { line.range(of: $0) != nil }) else { return }
         // A completed item counts as a prompt or an answer. A tool's call and its output, most of a long rollout's bytes
         // with its screenshots and page dumps, only date the turn, which their first bytes do without decoding them.
-        let head = line.prefix(1024)
         if head.range(of: Self.itemCompleted) != nil, head.range(of: Self.itemType) != nil,
            head.range(of: Self.userItem) == nil, head.range(of: Self.agentItem) == nil {
             if let timestamp = Self.timestamp(in: head), timestamp >= (startedAt ?? .distantPast),
                let index = turns?.indices.last, turns?[index].state == .running, timestamp > turns![index].observedAt {
                 turns?[index].observedAt = timestamp
+                // A file changed or an image viewed is recorded only once done, which says what the turn does all the same.
+                if head.range(of: Self.fileChangeItem) != nil { activity?.did(.edit, at: timestamp) }
+                else if head.range(of: Self.imageViewItem) != nil { activity?.did(.read, at: timestamp) }
             }
             return
         }
@@ -184,13 +196,18 @@ public struct CodexTranscript: Codable, Sendable {
                 if !(turns ?? []).contains(where: { $0.id == turnID && (turnID != nil || ($0.state == .running && $0.startedAt == timestamp)) }),
                    timestamp >= (turns?.last?.startedAt ?? .distantPast) {
                     turns = Array(((turns ?? []) + [Turn(id: turnID, startedAt: timestamp, state: .running, observedAt: timestamp)]).suffix(32))
+                    var started = activity ?? SessionActivity()
+                    started.startTurn()
+                    started.line = .prompt
+                    activity = started
                 }
             case "task_complete":
                 lastActivityAt = max(lastActivityAt ?? timestamp, timestamp)
                 // Codex also closes a turn that failed (a usage limit, for one) with `task_complete`, and records the
                 // failure as a structured `error`. That turn ended without an answer: like an abort, it is no completion.
                 let failed = Self.carriesError(payload["error"])
-                let finished = finishTurn(payload["turn_id"] as? String, state: failed ? .ended : .completed, at: timestamp)
+                let finished = finishTurn(payload["turn_id"] as? String, state: failed ? .ended : .completed,
+                                          outcome: failed ? Self.outcome(ofError: payload["error"]) : .completed, at: timestamp)
                 if !failed, let id, !isSubagent, !isInternal {
                     let answer = (payload["last_agent_message"] as? String).flatMap {
                         $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
@@ -206,7 +223,9 @@ public struct CodexTranscript: Codable, Sendable {
                 }
             case "turn_aborted":
                 lastActivityAt = max(lastActivityAt ?? timestamp, timestamp)
-                _ = finishTurn(payload["turn_id"] as? String, state: .ended, at: timestamp)
+                // Only the user's own stop says why; any other abort ends the turn without a reason.
+                _ = finishTurn(payload["turn_id"] as? String, state: .ended,
+                               outcome: payload["reason"] as? String == "interrupted" ? .interrupted : nil, at: timestamp)
             case "user_message":
                 if task == nil, let text = payload["message"] as? String {
                     task = SessionTitle.from(text)
@@ -330,7 +349,7 @@ public struct CodexTranscript: Codable, Sendable {
         SessionPhase.SourceEvidence(turn: turns?.last.map { turn in
             SessionTurn(provider: "codex", sessionID: id ?? "", turnID: turn.id ?? "", state: turn.state,
                         startedAtMs: turn.startedAt.map(RecordCoding.milliseconds),
-                        observedAtMs: RecordCoding.milliseconds(turn.observedAt), message: turn.message)
+                        observedAtMs: RecordCoding.milliseconds(turn.observedAt), message: turn.message, outcome: turn.outcome)
         }, lastWriteAt: isInternal ? nil : lastEventAt)
     }
 
@@ -343,7 +362,7 @@ public struct CodexTranscript: Codable, Sendable {
             guard let turnID = turn.id, !turnID.isEmpty else { return nil }
             return SessionTurn(provider: "codex", sessionID: id, turnID: turnID, state: turn.state,
                 startedAtMs: turn.startedAt.map(RecordCoding.milliseconds), observedAtMs: RecordCoding.milliseconds(turn.observedAt),
-                message: turn.message)
+                message: turn.message, outcome: turn.outcome)
         }
     }
 
@@ -360,21 +379,92 @@ public struct CodexTranscript: Codable, Sendable {
         return (value as? String)?.isEmpty != true
     }
 
-    private mutating func finishTurn(_ id: String?, state: SessionTurn.State, at date: Date) -> Turn? {
+    /// How a turn's structured error ended it, by the kind Codex names in `codex_error_info`: a usage limit, which lifts
+    /// when its window resets, or any other failure, such as an overloaded server.
+    static func outcome(ofError value: Any?) -> TurnOutcome {
+        let info = (value as? [String: Any])?["codex_error_info"]
+        let kind = info as? String ?? (info as? [String: Any])?.keys.first
+        return kind == "usage_limit_exceeded" ? .limited(resetsAt: nil) : .failed
+    }
+
+    private mutating func finishTurn(_ id: String?, state: SessionTurn.State, outcome: TurnOutcome?, at date: Date) -> Turn? {
         if let index = turns?.lastIndex(where: { $0.id == id }) {
             guard date >= turns![index].observedAt else { return nil }
             // A terminal observation is final. Repeated lines do not change its timestamp or outcome.
             guard turns![index].state == .running else { return turns![index] }
-            turns?[index].state = state; turns?[index].observedAt = date
+            turns?[index].state = state; turns?[index].observedAt = date; turns?[index].outcome = outcome
+            if index == turns!.indices.last { activity?.endTurn() }
             return turns![index]
         }
         // A terminal-only log still identifies its turn, but cannot provide a start time.
         guard turns?.last?.state != .running else { return nil }
-        let value = Turn(id: id, startedAt: nil, state: state, observedAt: date)
+        var value = Turn(id: id, startedAt: nil, state: state, observedAt: date)
+        value.outcome = outcome
         turns = Array(((turns ?? []) + [value]).suffix(32))
         return value
     }
 
+    /// A call the model made, or its output, while a turn runs: an open call says what the turn does until its output
+    /// comes back. Only the line's first bytes are read, but for a function call's id, which follows its arguments.
+    private mutating func noteCall(_ line: Data, head: Data) {
+        guard let timestamp = Self.timestamp(in: head), timestamp >= (startedAt ?? .distantPast),
+              let index = turns?.indices.last, turns?[index].state == .running,
+              let type = Self.string(after: Self.payloadType, in: head) else { return }
+        // A local shell call has no name: it is the shell.
+        let isCall = type == "function_call" || type == "custom_tool_call" || type == "local_shell_call"
+        guard isCall || type == "function_call_output" || type == "custom_tool_call_output",
+              let id = Self.string(after: Self.callID, in: line) else { return }
+        if timestamp > turns![index].observedAt { turns?[index].observedAt = timestamp }
+        var activity = self.activity ?? SessionActivity()
+        if isCall {
+            let name = type == "local_shell_call" ? "shell" : Self.string(after: Self.callName, in: head)
+            activity.open(id, work: name.flatMap { Self.work(ofCall: $0, namespace: Self.string(after: Self.callNamespace, in: head)) },
+                          at: timestamp)
+            activity.line = .call
+        } else {
+            activity.close(id, at: timestamp)
+            activity.line = .result
+        }
+        self.activity = activity
+    }
+
+    /// Ends one read of the rollout (`SessionActivity.settle()`).
+    mutating func settleActivity() { activity?.settle() }
+
+    /// The tools Codex starts, messages and waits on its sub-agents with.
+    static let collaborationCalls: Set<String> = ["spawn_agent", "wait_agent", "send_message", "followup_task", "list_agents", "wait",
+                                                  "interrupt_agent"]
+
+    /// What a Codex call does, by its tool's name: its shell, its other commands and MCP tools, its sub-agents and its
+    /// questions; the tools of older rollouts that edit or view files too. Nil for any other tool.
+    static func work(ofCall name: String, namespace: String?) -> SessionActivity.Work? {
+        switch name {
+        case "exec", "shell", "shell_command", "exec_command", "write_stdin": return .shell
+        case "js", "js_reset": return .command
+        case "apply_patch": return .edit
+        case "view_image": return .read
+        case "request_user_input_async": return .question
+        case _ where collaborationCalls.contains(name): return .agents
+        case _ where name.hasPrefix("mcp__") || namespace?.hasPrefix("mcp__") == true: return .command
+        default: return nil
+        }
+    }
+
+    /// The JSON string that follows `key` in `data`, without unescaping: ids and names never carry escapes.
+    private static func string(after key: Data, in data: Data) -> String? {
+        guard let start = data.range(of: key)?.upperBound,
+              let end = data[start...].firstIndex(of: UInt8(ascii: "\"")) else { return nil }
+        return String(decoding: data[start..<end], as: UTF8.self)
+    }
+
+    private static let responseItem = Data(#""type":"response_item""#.utf8)
+    /// A response item's type is the first thing Codex writes of its payload.
+    private static let payloadType = Data(#""payload":{"type":""#.utf8)
+    private static let callID = Data(#""call_id":""#.utf8)
+    private static let callName = Data(#""name":""#.utf8)
+    private static let callNamespace = Data(#""namespace":""#.utf8)
+    private static let fileChangeItem = Data(#""item":{"type":"FileChange""#.utf8)
+    private static let imageViewItem = Data(#""item":{"type":"ImageView""#.utf8)
     private static let itemCompleted = Data(#""type":"item_completed""#.utf8)
     /// The item's type is the first thing Codex writes of it; a line written otherwise is decoded whole.
     private static let itemType = Data(#""item":{"type":""#.utf8)
@@ -482,6 +572,7 @@ enum CodexRollouts: TailLog {
             defer { position += line.count + 1 }
             if !line.isEmpty { transcript.ingest(line, at: position) }
         }
+        transcript.settleActivity()
         return transcript.drainUsage()
     }
 

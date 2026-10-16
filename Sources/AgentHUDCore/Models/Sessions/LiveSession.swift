@@ -36,6 +36,9 @@ public struct LiveSession: Hashable, Codable, Sendable, Identifiable {
     public let lastActivityAt: Date?
     /// Source-owned destination for returning to this session on this Mac; never encoded in a session report.
     public let navigationTarget: SessionNavigationTarget?
+    /// What the session's log says its turn is busy with, from the clients whose logs record each tool call; nil for every
+    /// other client. It changes with every call, so it stays on this Mac and is never encoded in a session report.
+    public let activity: SessionActivity?
 
     public init(
         id: String,
@@ -58,7 +61,8 @@ public struct LiveSession: Hashable, Codable, Sendable, Identifiable {
         subagentSessions: [LiveSession]? = nil,
         lastActivityAt: Date? = nil,
         navigationTarget: SessionNavigationTarget? = nil,
-        usageKey: String? = nil
+        usageKey: String? = nil,
+        activity: SessionActivity? = nil
     ) {
         self.id = id
         self.agentId = agentId
@@ -81,6 +85,7 @@ public struct LiveSession: Hashable, Codable, Sendable, Identifiable {
         self.subagentSessions = subagentSessions.flatMap { $0.isEmpty ? nil : $0 }
         self.lastActivityAt = lastActivityAt
         self.navigationTarget = navigationTarget
+        self.activity = activity
     }
 
     /// Whether the source that read this session said a turn was still in flight. The log's own silence does not end

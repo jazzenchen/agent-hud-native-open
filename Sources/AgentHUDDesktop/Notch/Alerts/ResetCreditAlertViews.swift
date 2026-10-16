@@ -24,7 +24,7 @@ struct ResetCreditAlertCompactView: View {
         Button(action: onOpen) {
             HStack(spacing: 0) {
                 HStack(spacing: s(8)) {
-                    AgentLogo(vendor: grant.account.account.provider, size: s(17))
+                    ReminderMarkView(vendor: grant.account.account.provider, size: s(17), mark: .credit)
                     Text(grant.account.account.provider)
                         .font(.ui(t(13), .semibold)).foregroundStyle(theme.alertText).lineLimit(1)
                 }
@@ -58,7 +58,7 @@ struct ResetCreditAlertDetailView: View {
         let copy = ResetCreditAlertCopy(grant: grant)
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 9) {
-                AgentLogo(vendor: grant.account.account.provider, size: 22)
+                ReminderMarkView(vendor: grant.account.account.provider, size: 22, mark: .credit)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(grant.account.account.provider).font(.ui(13, .semibold)).foregroundStyle(theme.alertText)
                     Text(grant.account.displayName).font(.ui(10)).foregroundStyle(theme.alertInk(0.42))

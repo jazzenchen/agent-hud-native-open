@@ -10,7 +10,7 @@ enum IslandAnimation {
 
     /// Cross-fades what `layer` draws now into what it is given next, on the island's curve: a change of look in layers
     /// that are drawn for one ground and do not fade with a colour, such as a blur, a dock's marks or a reminder's bot.
-    static func fadeLook(of layer: CALayer) {
+    static func fadeLook(of layer: CALayer, duration: TimeInterval = duration) {
         let fade = CATransition()
         fade.type = .fade
         fade.duration = duration

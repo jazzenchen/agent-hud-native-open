@@ -23,14 +23,21 @@ public enum ClaudeTranscriptParser {
         }
         var text: String?
         var isToolResult = false
+        var resultID: String?
         if role == .user, let content = message?["content"] {
             if let string = content as? String {
                 text = string
             } else if let blocks = content as? [[String: Any]] {
                 text = blocks.first { ($0["type"] as? String) == "text" }?["text"] as? String
                 isToolResult = blocks.contains { ($0["type"] as? String) == "tool_result" }
+                resultID = blocks.first { ($0["type"] as? String) == "tool_result" }?["tool_use_id"] as? String
             }
         }
+        let block = role == .assistant ? (message?["content"] as? [[String: Any]])?.first : nil
+        let call = block?["type"] as? String == "tool_use" ? block : nil
+        let apiError = role == .assistant && object["isApiErrorMessage"] as? Bool == true ? object["error"] as? String : nil
+        let resetsAt = apiError == nil ? nil : ((object["quotaLimits"] as? [String: Any])?["resetsAt"] as? Double)
+        let isRetry = object["type"] as? String == "system" && object["subtype"] as? String == "api_error"
         let isMeta = object["isMeta"] as? Bool ?? false
         let isSummary = object["isCompactSummary"] as? Bool ?? false
         let details = usage?["output_tokens_details"] as? [String: Any]
@@ -55,7 +62,11 @@ public enum ClaudeTranscriptParser {
             isCompaction: object["type"] as? String == "system" && object["subtype"] as? String == "compact_boundary",
             isStop: object["type"] as? String == "system" && ["stop_hook_summary", "turn_duration"].contains(object["subtype"] as? String),
             entrypoint: object["entrypoint"] as? String,
-            returnsStructuredOutput: calls.contains { $0["type"] as? String == "tool_use" && $0["name"] as? String == "StructuredOutput" }
+            returnsStructuredOutput: calls.contains { $0["type"] as? String == "tool_use" && $0["name"] as? String == "StructuredOutput" },
+            toolName: call?["name"] as? String, toolUseID: call?["id"] as? String, toolResultID: resultID,
+            isThinking: ["thinking", "redacted_thinking"].contains(block?["type"] as? String),
+            apiError: apiError, limitResetsAt: resetsAt.map { Date(timeIntervalSince1970: $0) },
+            retryAttempt: isRetry ? object["retryAttempt"] as? Int : nil
         )
     }
 

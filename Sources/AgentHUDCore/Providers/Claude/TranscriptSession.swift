@@ -22,6 +22,8 @@ public struct TranscriptSession: Hashable, Sendable, Identifiable {
     public var completions: [SessionCompletion] = []
     /// True after a prompt or a working assistant, false after `end_turn` or an interruption, nil when never observed.
     public var turn: SessionTurn? = nil
+    /// What a main log says its turn is busy with; nil for a sub-agent's log and one with no line of its session yet.
+    public var activity: SessionActivity? = nil
 
     /// Whether this log has its session in flight at `now`, by the transcript rule of `SessionPhase.read(_:rule:at:)`
     /// without sub-agents. The limits are `SessionPhase.Limits`; `threshold` and `abandonedAfter` are not read.

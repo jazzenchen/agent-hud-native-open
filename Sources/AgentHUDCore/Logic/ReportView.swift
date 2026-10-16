@@ -334,12 +334,13 @@ public struct ReportView: Sendable {
     }
 
     /// What sessions are read against: the vendor of each agent id, the report's turns and newest turn event by session,
-    /// and when each session's client last asked for approval among the requests still waiting.
+    /// when each session's client last asked for approval among the requests still waiting, and what each asks for.
     private struct Index: Sendable {
         var vendors: [String: String] = [:]
         var turns: [String: [SessionTurn]] = [:]
         var lastTurnEvents: [String: Date] = [:]
         var requests: [String: Date] = [:]
+        var attention: [String: [AttentionRequest]] = [:]
 
         /// A vendor comes from the consumers, then the settings rows, then the report's own rows.
         init(report: UsageReport?, agents: [AgentDescriptor], approvals: [PermissionRequest], waiting: [String: Date] = [:]) {
@@ -355,7 +356,29 @@ public struct ReportView: Sendable {
                 requests[request.sessionID] = request.at
             }
             for (session, since) in waiting where since > requests[session] ?? .distantPast { requests[session] = since }
+            for request in approvals { attention[request.sessionID, default: []].append(AttentionRequest(request)) }
+            // A client that says it waits without a request on the HUD waits for an approval.
+            for (session, since) in waiting where attention[session] == nil {
+                attention[session] = [AttentionRequest(id: "waiting:" + session, sessionID: session, kind: .permission, at: since)]
+            }
         }
+    }
+
+    /// The requests a session waits on, waited longest first: those on the HUD and the waits its client reports. A
+    /// session waiting for approval by its own source's account, such as Claude Code's notification hook, waits since its
+    /// turn says; an open call of its own asking the user, as Codex Desktop makes one, is a question. Nil while live
+    /// status is off.
+    func requests(of session: Session) -> [AttentionRequest] {
+        guard session.liveStatus else { return [] }
+        var requests = index.attention[session.id] ?? []
+        if requests.isEmpty, session.phase.state == .waitingForApproval {
+            requests.append(AttentionRequest(id: "waiting:" + session.id, sessionID: session.id, kind: .permission,
+                                             at: session.turn.map { RecordCoding.date($0.observedAtMs) } ?? session.lastEventAt))
+        }
+        if session.phase.isInFlight, let asked = session.session.activity?.askedAt, !requests.contains(where: { $0.kind == .question }) {
+            requests.append(AttentionRequest(id: "asking:" + session.id, sessionID: session.id, kind: .question, at: asked))
+        }
+        return requests.sorted(by: AttentionRequest.waitedLonger)
     }
 
     /// The newest of a session's turns: the one that started last, a turn without a start counting from when it was

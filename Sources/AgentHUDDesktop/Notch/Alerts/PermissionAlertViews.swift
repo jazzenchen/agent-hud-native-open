@@ -72,7 +72,7 @@ struct PermissionAlertCompactView: View {
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: s(8)) {
-                BotMark(vendor: request.vendor, size: s(17), phase: .asking)
+                ReminderMarkView(vendor: request.vendor, size: s(17), mark: .request(request))
                 Text(request.project ?? request.vendor)
                     .font(.ui(t(13), .semibold)).lineLimit(1).minimumScaleFactor(0.78)
             }.frame(width: wings?.leading ?? s(IslandController.alertWingWidth), alignment: .leading)

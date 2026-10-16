@@ -63,10 +63,24 @@ public enum PiSessionObserver {
         let startedAtMs: Int64
         let observedAtMs: Int64
         var navigationTarget: SessionNavigationTarget? = nil
+        /// The stop reason of the run's last assistant message, written once the run settles; absent from extensions that
+        /// predate it.
+        var stopReason: String? = nil
 
         var turn: SessionTurn {
             .init(provider: "Pi", sessionID: sessionID, turnID: turnID, state: state,
-                  startedAtMs: startedAtMs, observedAtMs: observedAtMs)
+                  startedAtMs: startedAtMs, observedAtMs: observedAtMs, outcome: outcome)
+        }
+
+        /// How the run ended, by Pi's stop reason: an abort is the user's stop and an error a failure. Pi says a usage
+        /// limit only in an error's wording, so a limit is never told apart; a run that ended for any other reason, or
+        /// whose session shut down, ends without one.
+        var outcome: TurnOutcome? {
+            switch state {
+            case .completed: .completed
+            case .ended: stopReason == "aborted" ? .interrupted : stopReason == "error" ? .failed : nil
+            case .running, .waitingForApproval: nil
+            }
         }
 
         var session: OpenAgentSession {
@@ -115,7 +129,7 @@ public enum PiSessionObserver {
           ? { kind: "iTermSession", id } : undefined;
       }
 
-      function publish(ctx, state = "running") {
+      function publish(ctx, state = "running", stopReason) {
         if (!active) return;
         const sessionID = "pi:" + ctx.sessionManager.getSessionId();
         const record = {
@@ -123,7 +137,7 @@ public enum PiSessionObserver {
           workspace: ctx.cwd, title: ctx.sessionManager.getSessionName() || "Pi",
           model: ctx.model?.id, providerID: ctx.model?.provider,
           turnID: active.id, state, startedAtMs: active.startedAtMs, observedAtMs: Date.now(),
-          navigationTarget: navigationTarget(),
+          navigationTarget: navigationTarget(), stopReason,
         };
         try {
           mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -135,8 +149,8 @@ public enum PiSessionObserver {
         } catch { /* Observability must never interrupt Pi's agent loop. */ }
       }
 
-      function finish(ctx, state) {
-        publish(ctx, state);
+      function finish(ctx, state, stopReason) {
+        publish(ctx, state, stopReason);
         clearInterval(heartbeat);
         heartbeat = undefined;
         active = undefined;
@@ -172,7 +186,8 @@ public enum PiSessionObserver {
       });
       pi.on("tool_execution_start", (_event, ctx) => publish(ctx));
       pi.on("tool_execution_end", (_event, ctx) => publish(ctx));
-      pi.on("agent_settled", (_event, ctx) => finish(ctx, lastStopReason === "stop" ? "completed" : "ended"));
+      // The last message's stop reason says how the run ended: an answer, the user's abort or an error.
+      pi.on("agent_settled", (_event, ctx) => finish(ctx, lastStopReason === "stop" ? "completed" : "ended", lastStopReason));
       pi.on("session_shutdown", (_event, ctx) => finish(ctx, "ended"));
     }
     """#

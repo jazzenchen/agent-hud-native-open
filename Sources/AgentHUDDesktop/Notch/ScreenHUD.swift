@@ -34,6 +34,10 @@ final class ScreenHUD {
     var systemIsLight = SystemAppearance.isLight
     /// Set by the coordinator while the HUD is recorded: glass is then drawn as its stand-in (`IslandRootView`).
     var drawsGlassStandIn = false
+    /// What the director says each mark shows, shared by every screen; nil marks show plain work while their agents work.
+    private let directions: MarkDirections?
+    /// What this screen's dock remembers across the cards that hide it.
+    private var dock = DockMemory()
     let glow: GlowWindowController
     let island: IslandWindowController
     private var machine = HoverMachine() {
@@ -279,9 +283,11 @@ final class ScreenHUD {
          openSession: @escaping @MainActor (SessionNavigationTarget) async -> Bool = SessionNavigator.open,
          additionalHUDControls: @escaping @MainActor (@escaping @MainActor () -> Void) -> AnyView = { _ in AnyView(EmptyView()) },
          renderMaterials: @escaping @Sendable (GlowWindowController.PreparationInputs) async -> GlowWindowController.PreparedImages
-            = { GlowWindowController.render($0) }) {
+            = { GlowWindowController.render($0) },
+         directions: MarkDirections? = nil) {
         self.key = key
         self.store = store
+        self.directions = directions
         self.settings = settings
         self.openSession = openSession
         self.mouseLocation = mouseLocation
@@ -883,7 +889,8 @@ final class ScreenHUD {
 
     /// What this screen's resting HUD shows of the agents, under the agents the layout it draws lists.
     var agents: ScreenAgents {
-        ScreenAgents(store: store, listed: settings.panelLayout.effective(for: key).hud.agents, mode: placement.mode)
+        ScreenAgents(store: store, listed: settings.panelLayout.effective(for: key).hud.agents, mode: placement.mode,
+                     directions: directions?.current ?? [:])
     }
 
     /// The marks this screen shows: the watched agents and anything else run in the last day, as its layout lists them.
@@ -989,6 +996,17 @@ final class ScreenHUD {
                 root.simpleMeter?.items[index].attention = .opened
             }
         }
+        // An event's card up beside its sender's mark: a mark whose agent waits on the user turns to it.
+        if previewPlacement == nil, activeAlert != nil, let focus {
+            let facing = MarkAttention.facesCard(BotFacing(cardFrom: geometry.edge))
+            if let index = root.logoQueue?.items.firstIndex(where: { AgentArtwork.markKey($0.vendor) == focus.key }) {
+                root.logoQueue?.items[index].attention = facing
+            }
+            if let index = root.simpleMeter?.items.firstIndex(where: { AgentArtwork.markKey($0.vendor) == focus.key }) {
+                root.simpleMeter?.items[index].attention = facing
+            }
+        }
+        handOutCues(to: &root, docked: root.alert == nil || focus != nil)
         root.focusVendor = focus?.vendor
         root.peek = focus.map(peek)
         root.pinned = pinned
@@ -998,6 +1016,30 @@ final class ScreenHUD {
         // The mode decides the silhouette, not whether there are marks to draw.
         root.hidesSilhouette = geometry.mode.isDocked
         return root
+    }
+
+    /// Hands the dock's marks their events, through what the dock remembers: a card that hides the dock is remembered,
+    /// and a dock back from under one has its bots take up their looks at once and plays what it missed as `DockMemory`
+    /// says.
+    private func handOutCues(to root: inout IslandRootView, docked: Bool) {
+        guard docked else { return dock.hide() }
+        let now = store.clock()
+        if let items = root.logoQueue?.items {
+            root.logoQueue?.items = items.map { item in
+                var item = item
+                item.cue = dock.cue(for: AgentArtwork.markKey(item.vendor), item.cue, badge: item.state.badge, at: now)
+                return item
+            }
+        }
+        if let items = root.simpleMeter?.items {
+            root.simpleMeter?.items = items.map { item in
+                var item = item
+                item.cue = dock.cue(for: AgentArtwork.markKey(item.vendor), item.cue, badge: item.state.badge, at: now)
+                return item
+            }
+        }
+        root.logoQueue?.resumes = dock.returns
+        root.simpleMeter?.resumes = dock.returns
     }
 
     /// Run during the existing hover delay without touching the visible windows or their current glow.
@@ -1054,6 +1096,8 @@ final class ScreenHUD {
     }
 
     func apply(animated: Bool) {
+        // An open card, or the whole panel, is a look at the agents on it: a failure's badge has been seen.
+        if machine.isOpen, activeAlert == nil, previewPlacement == nil { directions?.looked(at: focus.map { [$0.key] }) }
         if let id = answeringSessionID,
            !PermissionRequests.shared.pending.contains(where: { $0.sessionID == id && $0.isQuestion }) {
             answeringSessionID = nil

@@ -143,3 +143,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Clawd sprite animations
+Source: Anthropic's Claude desktop app for macOS 2.37337.1, the sprite table of its game Clawd Quest (app.asar, .vite/renderer/main_window/assets/clawdQuestEngine-*.js)
+The 18 sprites Clawd plays on Claude's marks are copied unchanged into Sources/AgentHUDDesktop/Resources/clawd-sprites.json by scripts/clawd-sprites.py. Clawd is Anthropic's character.
+
+Copyright (c) Anthropic PBC. All rights reserved.
+
+The sprites are Anthropic's artwork and are not covered by this repository's license.

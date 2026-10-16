@@ -128,8 +128,10 @@ enum OpenClawSessions: LocalSessionLayout {
             if let status = ReadOnlySQLite.text(row, 6), ReadOnlySQLite.text(row, 7) != nil, ReadOnlySQLite.text(row, 8) == nil,
                let runID = ReadOnlySQLite.text(row, status == "running" ? 9 : 10) ?? started.map({ "started:\($0)" }) {
                 let state: SessionTurn.State = status == "running" ? .running : status == "done" ? .completed : .ended
+                // Any other status only says the run did not complete, so it ends without a reason.
                 turn = SessionTurn(provider: "OpenClaw", sessionID: id, turnID: runID, state: state, startedAtMs: started,
-                                   observedAtMs: state == .running ? observed : ended ?? observed)
+                                   observedAtMs: state == .running ? observed : ended ?? observed,
+                                   outcome: state == .completed ? .completed : nil)
             }
             sessions.append((raw, session, turn))
         }

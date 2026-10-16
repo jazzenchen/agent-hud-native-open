@@ -95,8 +95,14 @@ public struct PermissionRequest: Identifiable, Equatable, Sendable {
         if case .computerUseApp = nativeApproval { return "APP" }
         if case .browserAccess = nativeApproval { return "WEB" }
         guard let toolName, !toolName.isEmpty else { return "TOOL" }
+        return Self.group(ofTool: toolName) ?? String(toolName.prefix(6)).uppercased()
+    }
+
+    /// The group a client's tool belongs to, as a request's badge names it: BASH, EDIT, READ, FIND, WEB, AGENT, MCP, ASK
+    /// or PLAN. Nil for a tool no group names, whose badge is its own name.
+    public static func group(ofTool toolName: String) -> String? {
         if toolName.hasPrefix("mcp__") { return "MCP" }
-        switch Self.kind(toolName) {
+        switch kind(toolName) {
         case "Bash", "BashOutput", "KillShell": return "BASH"
         case "Edit", "MultiEdit", "Write", "NotebookEdit", "apply_patch": return "EDIT"
         case "Read": return "READ"
@@ -105,7 +111,7 @@ public struct PermissionRequest: Identifiable, Equatable, Sendable {
         case "Task", "Agent": return "AGENT"
         case "AskUserQuestion": return "ASK"
         case "ExitPlanMode": return "PLAN"
-        default: return String(toolName.prefix(6)).uppercased()
+        default: return nil
         }
     }
 

@@ -60,6 +60,12 @@ Which clients expose running and terminal turns, which of them say they are wait
 - A Codex session's detail lists the agents it directly started; each opens its own detail and descendants, with its own name, task, workspace, start time and usage breakdown. The session list contains only root sessions.
 - Codex guardians contribute to their session's usage breakdown without appearing as agents in its detail.
 
+### What a turn is doing
+
+- The logs of Claude Code, Codex, Grok CLI and DeepSeek Harness record each tool call. For a session of theirs the provider keeps the calls of its turn still waiting for their result, the kind of work its newest calls do, and what its newest line is (`SessionActivity`), from the log alone and dated as the log dates it. A kind is the group a permission card names its tool by: a shell command, another command (an MCP tool, Codex's `js`), an edit, a read (reading, searching or fetching), sub-agents (Claude Code's Task and Agent, Codex's collaboration tools), or a question (Codex's `request_user_input_async`); a tool of no group, such as a to-do list or a tool search, changes nothing. After each read the kind is the newest open call's, else the newest call that read brought in, else the one before. Claude Code's newest line also says when the client is trying a failed API request again. The other clients' logs name no tools, and their sessions show only that they work.
+- A turn's end says why it ended only where the client writes a structured reason (`TurnOutcome`): completed; interrupted (Claude Code's `[Request interrupted`, Codex's `turn_aborted` for an interruption, a Copilot abort, Pi's `aborted`, Kimi's and Grok CLI's `cancelled`); failed (an API error Claude Code writes in the model's place, a Codex error, a DeepSeek Harness, Copilot, Pi or Kimi error); or limited (Claude Code's `rate_limit` or `billing_error`, with the reset it writes when it does, Codex's `usage_limit_exceeded`, DeepSeek Harness's `RATE_LIMIT`). A turn with no reason ends quietly, and nothing is read from wording. A Claude Code turn stopped by an API error ends at that line, where it used to stay running until its log went quiet.
+- This is what the marks' bots act out ([bots](hud.md#bots)).
+
 ### Observers
 
 Pi and OpenCode report through a file Agent HUD keeps in the client's own directory — an extension for Pi, a global plugin for OpenCode — which the client loads when it starts. `PiSessionObserver` and `OpenCodeSessionObserver` own the file, the records it writes and their reading.
@@ -87,6 +93,19 @@ A transcript shows that a tool call is pending but not whether the client is run
 - The callback only says that the client needs the user; which kind of attention it is comes from the transcript, never from the wording of the message. A turn that is still running is waiting for approval and shows the message; a turn that already finished is waiting for the next prompt, which the transcript already said.
 - A request is answered as soon as the transcript carries a line newer than it. One unanswered request is kept per session, in `attention/<source>/<hashed session id>.json` in the data directory: session id, the client's message up to 2 KB, and the time. Requests are forgotten a day after they were made; a file's own timestamps are never used for that.
 - The handler command is `'<executable path>' --attention-hook <source>` with a 5-second timeout and `async: true`, installed and taken over by the same rules as a completion hook below. It only reports, so the client runs it without waiting; an older handler of Agent HUD's is given `async` when it is taken over.
+
+### Compaction hook
+
+Claude Code writes a compaction's boundary to the log only once the summary is in, so a compaction under way comes from its `PreCompact` hook. `CompactionHooks` owns the hook's configuration, the callback and the local record.
+
+| Source | Configuration | Reported |
+| --- | --- | --- |
+| Claude Code | Group appended to `hooks.PreCompact` of `settings.json` in `$CLAUDE_CONFIG_DIR` (default `~/.claude`), matcher `auto`; only commands ending in ` --session-origin-hook claude` under `PreCompact` are Agent HUD's | `session_id` and `trigger`, at the callback time |
+
+- Only a compaction Claude Code starts on its own, in the middle of a turn, is reported: a `/compact` the user types runs while the session waits for them.
+- A sub-agent's own compaction is not its session's: Claude Code runs the hook inside a sub-agent with the session's id and the sub-agent's `agent_id`, and the boundary and every line after it go to the sub-agent's log, so such a payload is not recorded.
+- One record is kept per session, in `compaction/claude/<hashed session id>.json` in the data directory: session id, time and trigger, forgotten when a compaction is recorded once it is more than 5 minutes old. A session compacts while its record is newer than its log's last line and at most 5 minutes old; the boundary, or any newer line, ends it.
+- The handler command is `'<executable path>' --session-origin-hook claude`, the origin hook's own ([session navigation](session-navigation.md)), with a 5-second timeout and `async: true`, installed, taken over and removed by the same rules as the notification hook. The handler tells the two apart by `hook_event_name`. A hook names one executable path, and an older copy of the app may be the one at it: every build that has the origin hook records nothing for an event that is not its own, while a flag it did not know would start it whole.
 
 ### Completion hooks
 
@@ -122,6 +141,8 @@ Antigravity, Cursor, GitHub Copilot CLI, CodeBuddy and Qwen Code do not record f
 | Completion reminders | `Sources/AgentHUDCore/Logic/Alerts/IslandEvents.swift`, `Sources/AgentHUDDesktop/App/DesktopApplication.swift` |
 | Adapter setup, a hook's installation, the handler command and the settings writer | `Sources/AgentHUDCore/Hooks/SessionObservers.swift`, `HookInstaller.swift`, `HookCommand.swift`, `HookSettings.swift` |
 | The records handlers leave for the application; completion hooks and handler entry | `Sources/AgentHUDCore/Hooks/HookInbox.swift`, `HookEntry.swift`, `CompletionHooks.swift` |
+| A compaction under way | `Sources/AgentHUDCore/Hooks/CompactionHooks.swift`, `Providers/Claude/ClaudeCodeProvider.swift` |
+| What a turn is doing and how it ended, and what a mark reads of it | `Sources/AgentHUDCore/Models/Sessions/SessionActivity.swift`, `TurnOutcome.swift`, `Sources/AgentHUDCore/Logic/SessionLiveFacts.swift`, `ReportView+Marks.swift` |
 | Observers, their scripts and records | `Sources/AgentHUDCore/Hooks/PiSessionObserver.swift`, `OpenCodeSessionObserver.swift`; installation in `SessionObservers.swift` and `Sources/AgentHUDDesktop/App/DesktopApplication.swift` |
 | Observer status in the settings | `Sources/AgentHUDDesktop/Settings/SourcesPane.swift` |
 | Per-client turn parsing | `Sources/AgentHUDCore/Providers/Claude/ClaudeTranscriptParser.swift`, `TranscriptAccumulator.swift`, `Codex/CodexTranscripts.swift`, `DeepSeek/DeepSeekTranscript.swift`, `Grok/GrokSessions.swift`, `OpenAgents/OpenAgentSessions.swift` |

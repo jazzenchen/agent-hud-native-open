@@ -42,13 +42,19 @@ final class BotMotionTests: XCTestCase {
 
     /// Clawd's arms and legs over a few seconds of one phase, after another, with a pointer to the right.
     private func limbs(_ phases: [(BotPhase, TimeInterval)], for seconds: TimeInterval, seed: UInt64 = 3) -> [(TimeInterval, BotLimbs)] {
+        signed(phases, for: seconds, seed: seed).map { ($0.0, $0.1) }
+    }
+
+    /// The same, with the sign over its head at each moment.
+    private func signed(_ phases: [(BotPhase, TimeInterval)], for seconds: TimeInterval,
+                        seed: UInt64 = 3) -> [(TimeInterval, BotLimbs, BotSign?)] {
         var motion = BotMotion(seed: seed)
         motion.limbed = true
-        var seen: [(TimeInterval, BotLimbs)] = [], now: TimeInterval = 0, next = 0
+        var seen: [(TimeInterval, BotLimbs, BotSign?)] = [], now: TimeInterval = 0, next = 0
         while now <= seconds {
             while next < phases.count, phases[next].1 <= now { motion.set(phases[next].0, at: now); next += 1 }
             motion.step(to: now, aim: CGPoint(x: 0.6, y: 0.2))
-            seen.append((now, motion.limbs))
+            seen.append((now, motion.limbs, motion.sign))
             now += 1.0 / 30
         }
         return seen
@@ -71,8 +77,9 @@ final class BotMotionTests: XCTestCase {
     }
 
     func testABotWithArmsTypesUnderTheSpinnerAndStepsAndJumpsWhileItsAgentWorks() {
-        let seen = limbs([(.working, 0)], for: 60).map(\.1)
-        XCTAssertTrue(seen.allSatisfy { (1...6).contains($0.spinner) && !$0.exclaims }, "Claude Code's spinner over its head throughout")
+        let signed = signed([(.working, 0)], for: 60), seen = signed.map(\.1)
+        XCTAssertTrue(seen.allSatisfy { (1...6).contains($0.spinner) }, "Claude Code's spinner over its head throughout")
+        XCTAssertTrue(signed.allSatisfy { $0.2 == nil }, "and no sign")
         XCTAssertEqual(Set(seen.map(\.spinner)).count, 6, "through all six of its shapes")
         XCTAssertTrue(seen.contains { $0.left == 1 && $0.right == 0 } && seen.contains { $0.left == 0 && $0.right == 1 },
                       "typing, a hand at a time")
@@ -82,8 +89,8 @@ final class BotMotionTests: XCTestCase {
     }
 
     func testABotWithArmsCallsForAnAnswerAndDancesForAReply() {
-        let asking = limbs([(.asking, 0)], for: 6).map(\.1)
-        XCTAssertTrue(asking.allSatisfy { $0.exclaims && $0.spinner == 0 }, "an exclamation mark over its head")
+        let signed = signed([(.asking, 0)], for: 6), asking = signed.map(\.1)
+        XCTAssertTrue(signed.allSatisfy { $0.2 == .exclamation && $0.1.spinner == 0 }, "an exclamation mark over its head")
         XCTAssertTrue(asking.contains { $0.left == 2 && $0.right == 1 } && asking.contains { $0.left == 1 && $0.right == 2 },
                       "both arms waving in turn")
         XCTAssertTrue(asking.contains { $0.y == -2 && $0.lifted == 3 }, "jumping at a knock")
@@ -103,11 +110,11 @@ final class BotMotionTests: XCTestCase {
         XCTAssertTrue(visits.contains { $0.1.x != 0 || $0.1.y != 0 || $0.1.left > 0 || $0.1.right > 0 })
     }
 
-    func testAMarkFollowsItsAgentUnlessItsCardIsBeingLookedAt() {
-        XCTAssertEqual(MarkAttention.none.phase(working: true), .working)
-        XCTAssertEqual(MarkAttention.none.phase(working: false), .idle)
-        XCTAssertEqual(MarkAttention.opened.phase(working: true), .opened)
-        XCTAssertEqual(MarkAttention.opened.phase(working: false), .opened)
+    func testAMarkFollowsItsAgentAndALookAtItsCardPutsThePointerOnTop() {
+        XCTAssertEqual(MarkAttention.none.state(of: BotState(look: .plain)).phase, .working)
+        XCTAssertEqual(MarkAttention.none.state(of: BotState()).phase, .idle)
+        XCTAssertEqual(MarkAttention.opened.state(of: BotState(look: .plain)), BotState(look: .plain, hovered: true))
+        XCTAssertEqual(MarkAttention.opened.state(of: BotState()).phase, .opened)
     }
 
     func testANewIdleMarkWaitsAsItsLogoWithoutStoppingItsClock() {
@@ -129,22 +136,24 @@ final class BotMotionTests: XCTestCase {
         // Woken exactly then, after a sleep far longer than a frame: the morph begins, it does not jump ahead.
         motion.step(to: 100 + wait)
         XCTAssertEqual(motion.morph, 0)
-        XCTAssertEqual(motion.wait, BotPace.lively)
+        XCTAssertEqual(try XCTUnwrap(motion.wait), BotPace.lively, accuracy: 0.0001)
         motion.step(to: 100 + wait + BotPace.lively)
         XCTAssertEqual(motion.morph, CGFloat(BotPace.lively / 0.5), accuracy: 0.0001)
-        XCTAssertEqual(motion.wait, BotPace.lively)
+        XCTAssertEqual(try XCTUnwrap(motion.wait), BotPace.lively, accuracy: 0.0001)
     }
 
-    func testAStillBotIsCalmAndItsEyesFollowAMovedPointerAtTheirOwnPace() {
+    func testAStillBotWaitsForItsBlinkAndItsEyesFollowAMovedPointerAtTheirOwnPace() throws {
         // An alert's bot after its smile: no acts and no breath, only eyes that look where the pointer is.
         var motion = BotMotion(seed: 1)
         motion.staysBot = true
         motion.set(.done, at: 0)
-        // Up to just before its first blink, two seconds in.
-        run(&motion, from: 0, for: 1.8)
-        XCTAssertEqual(motion.wait, BotPace.calm)
+        // Up to just before its first blink, two seconds in: nothing moves until then.
+        run(&motion, from: 0, for: 1.7)
+        motion.step(to: 1.8)
+        XCTAssertEqual(try XCTUnwrap(motion.wait), 2 - 1.8, accuracy: 0.0001)
         motion.step(to: 1.9, aim: CGPoint(x: 0.8, y: 0.3))
-        XCTAssertEqual(motion.wait, BotPace.following)
+        XCTAssertEqual(try XCTUnwrap(motion.wait), BotPace.following - 1.9.truncatingRemainder(dividingBy: BotPace.following),
+                       accuracy: 0.0001, "the next frame of the pointer's pace")
     }
 
     func testAMarkAtRestAsksForNothing() {
@@ -397,7 +406,7 @@ final class BotMotionTests: XCTestCase {
         motion.step(to: 100)
         XCTAssertEqual(motion.morph, 0)
         XCTAssertEqual(motion.pose, BotPose(), "the logo does not hop")
-        XCTAssertEqual(try XCTUnwrap(motion.wait), 0.7, accuracy: 0.001, "nothing changes until it arrives")
+        XCTAssertEqual(try XCTUnwrap(motion.wait), 0.7, accuracy: BotPace.lively, "nothing changes until it arrives")
         run(&motion, from: 100, for: 0.66)
         XCTAssertEqual(motion.morph, 0, "still the logo while its card opens")
         XCTAssertEqual(motion.pose, BotPose())

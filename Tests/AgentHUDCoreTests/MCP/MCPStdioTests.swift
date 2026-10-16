@@ -39,10 +39,38 @@ final class MCPStdioTests: XCTestCase {
     func testArgumentsThatNameNoCommandStillStartTheApplication() {
         for arguments in [["/tmp/hud"], ["/tmp/hud", "--demo"], ["/tmp/hud", "--show-settings", "--demo"],
                           ["/tmp/hud", "--mcp", "claude"], ["/tmp/hud", "--demo", "--mcp"], ["/tmp/hud", "--open-panel"],
-                          ["/tmp/hud", "--permission-hook", "nobody"], ["/tmp/hud", "--snapshot", "/tmp/stills"],
+                          ["/tmp/hud", "--demo", "--permission-hook", "claude"], ["/tmp/hud", "--snapshot", "/tmp/stills"],
                           ["/tmp/hud", "--lang", "en", "--demo"]] {
             XCTAssertNil(HookEntry.handle(arguments: arguments), "\(arguments)")
         }
+    }
+
+    /// A hook names one executable path, and a copy of another build may sit at it: a hook's flag or a client that copy
+    /// does not know ends quietly, where starting whole would rewrite every client's hooks to its own path.
+    func testAHookFlagOrClientThisBuildDoesNotKnowEndsQuietly() throws {
+        let unknown = [["/tmp/hud", "--permission-hook", "nobody"], ["/tmp/hud", "--completion-hook", "nobody"],
+                       ["/tmp/hud", "--attention-hook", "codex"], ["/tmp/hud", "--session-origin-hook", "nobody"],
+                       ["/tmp/hud", "--later-hook", "claude"],
+                       ["/tmp/hud", "--later-hook"], ["/tmp/hud", "--permission-hook"],
+                       ["/tmp/hud", "--permission-hook", "claude", "--later"]]
+        let outbound = try pipe()
+        // What this process had printed and not yet written must not count as the commands' output.
+        fflush(nil)
+        let statuses: [Int32?] = redirecting(STDOUT_FILENO, to: outbound.write) {
+            let statuses = unknown.map { HookEntry.handle(arguments: $0) }
+            fflush(nil)
+            return statuses
+        }
+        close(outbound.write)
+        let output = FileHandle(fileDescriptor: outbound.read, closeOnDealloc: true).readDataToEndOfFile()
+
+        for (arguments, status) in zip(unknown, statuses) { XCTAssertEqual(status, 0, "\(arguments)") }
+        XCTAssertEqual(String(decoding: output, as: UTF8.self), "", "prints nothing")
+        XCTAssertTrue(HookEntry.isHookFlag("--compaction-hook"))
+        // An install command is typed by a person, not run by a client: a client it does not know is an error to say.
+        XCTAssertEqual(HookEntry.handle(arguments: ["/tmp/hud", "--install-completion-hook", "nobody"]), 1)
+        XCTAssertFalse(HookEntry.isHookFlag("--hooks"))
+        XCTAssertFalse(HookEntry.isHookFlag("permission-hook"))
     }
 
     /// Points the process's own descriptor `target` at `replacement` while `body` runs, and back afterwards.

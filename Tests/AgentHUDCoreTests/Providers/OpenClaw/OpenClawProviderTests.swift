@@ -105,6 +105,8 @@ final class OpenClawProviderTests: XCTestCase, @unchecked Sendable {
         XCTAssertEqual(completion.id, SessionCompletion(sessionID: "openclaw:done", vendor: "OpenClaw", turnID: "run-b", task: "", model: "", startedAt: nil, completedAt: now).id)
         XCTAssertEqual(completion.model, "claude-done")
         XCTAssertEqual(sessions["openclaw:fail"]?.turns.map(\.state), [.ended])
+        XCTAssertEqual(sessions["openclaw:done"]?.turns.map(\.outcome), [.completed])
+        XCTAssertEqual(sessions["openclaw:fail"]?.turns.map(\.outcome), [nil], "a status that only says the run did not complete gives no reason")
         XCTAssertEqual(sessions["openclaw:fail"]?.completions.isEmpty, true)
         XCTAssertEqual(sessions["openclaw:child"]?.turns.isEmpty, true, "Sub-agents never finish a turn")
         XCTAssertEqual(sessions["openclaw:stale"]?.turns.isEmpty, true, "Only a session's current window carries lifecycle status")

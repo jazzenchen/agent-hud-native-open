@@ -117,6 +117,9 @@ final class BotQueueTests: XCTestCase {
     func testClawdMovesInWholeStepsAndComesBack() throws {
         let (view, window) = hosted()
         defer { BotClock.shared.drop(view); window.close() }
+        // A seed whose minute of random acts holds a scuttle and a jump: with any seed, about one minute in fifty has
+        // neither, and the test would fail for that alone.
+        view.seed = 7
         view.apply(config: queue([("Claude", true)]), light: false, scale: 2, animates: true)
         let actor = try XCTUnwrap(view.actors[0])
         // One step of the art at the queue's logo size: a quarter of the body's radius.
@@ -157,7 +160,8 @@ final class BotQueueTests: XCTestCase {
         // Work starting meanwhile is shown from the next frame, however long the mark meant to wait.
         view.apply(config: queue([("Claude", true), ("Cursor", false)]), light: false, scale: 2, animates: true)
         let working = try XCTUnwrap(view.stepBots(to: start + 6))
-        XCTAssertEqual(working, BotPace.lively, accuracy: 0.0001)
+        // A step within a slack of a frame's time counts as that frame's, so the next one can be a slack further away.
+        XCTAssertLessThanOrEqual(working, BotPace.lively + BotPace.slack + 0.0001, "no later than the next frame")
     }
 
     func testAWorkingBotThatOnlyBreathesIsSteppedAFewTimesASecond() throws {
@@ -166,9 +170,12 @@ final class BotQueueTests: XCTestCase {
         view.apply(config: queue([("Cursor", true)]), light: false, scale: 2, animates: true)
         let start = CACurrentMediaTime()
         var waits: [TimeInterval] = [], now = start
-        // Thirty seconds of a turn, stepped exactly when the queue asks.
+        // Thirty seconds of a turn, stepped exactly when the queue asks, from the first frame on the shared clock.
+        now += try XCTUnwrap(view.stepBots(to: now))
         while now < start + 30 {
             let wait = try XCTUnwrap(view.stepBots(to: now))
+            XCTAssertEqual((now + wait) / BotPace.lively, ((now + wait) / BotPace.lively).rounded(), accuracy: 0.001,
+                           "every frame falls on the shared clock's")
             waits.append(wait)
             now += wait
         }
@@ -186,6 +193,19 @@ final class BotQueueTests: XCTestCase {
         XCTAssertFalse(clock.moving)
         XCTAssertEqual(view.marks[0].opacity, 1)
         XCTAssertNil(view.marks[0].animation(forKey: "bob"))
+    }
+
+    func testNoNewsFadesTheStillLogoToo() {
+        for (bots, animates) in [(true, false), (false, true)] {
+            let (view, window) = hosted()
+            defer { BotClock.shared.drop(view); window.close() }
+            var config = queue([("Claude", false), ("Cursor", false)], bots: bots)
+            config.items[0].state = BotState(look: .noNews)
+            view.apply(config: config, light: false, scale: 2, animates: animates)
+            _ = run(view, from: CACurrentMediaTime(), frames: 2)
+            XCTAssertEqual(view.marks[0].opacity, 0.5, "bots \(bots), motion \(animates): no news needs no motion to say")
+            XCTAssertEqual(view.marks[1].opacity, 1)
+        }
     }
 
     /// Not a benchmark: a guard against a frame becoming expensive enough to show up in the HUD's own cost.
@@ -239,7 +259,7 @@ final class BotMarkTests: XCTestCase {
 
     private func hosted<V: View>(_ view: V) -> (NSHostingView<V>, NSWindow) {
         let frame = CGRect(x: 0, y: 0, width: 60, height: 60)
-        let window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: true)
+        let window = SeenWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: true)
         window.isReleasedWhenClosed = false
         let host = NSHostingView(rootView: view)
         host.frame = frame
@@ -272,4 +292,13 @@ final class BotMarkTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         XCTAssertNil(stage(in: host))
     }
+}
+
+/// A window the clock takes for one on screen and uncovered, without putting one on the desktop: the display server may
+/// call any test's window covered.
+@MainActor
+final class SeenWindow: NSWindow {
+    var seen = true
+    override var isVisible: Bool { seen }
+    override var occlusionState: NSWindow.OcclusionState { seen ? [.visible] : [] }
 }

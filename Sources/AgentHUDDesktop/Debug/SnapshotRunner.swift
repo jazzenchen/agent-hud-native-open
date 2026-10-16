@@ -151,6 +151,24 @@ public enum SnapshotRunner {
         save("bots-asking", BotSheetScene(phase: .asking), folder: folder, scheme: .dark)
         save("bots-done", BotSheetScene(phase: .done, seconds: 0.9), folder: folder, scheme: .dark)
         save("bots-resting", BotSheetScene(phase: .idle, seconds: 2), folder: folder, scheme: .dark)
+        // Every mark in every state a mark can be told, at the dock's default and largest sizes, on both grounds.
+        for side in [20.0, 36.0] {
+            for ground in [HUDLook.Appearance.dark, .light] {
+                save("bots-states-\(Int(side))-\(ground)", BotStatesScene(side: side, ground: ground), folder: folder,
+                     scheme: ground == .dark ? .dark : .light)
+            }
+        }
+        // Clawd's sprites through every clip, from the bundled sheet, for checking the clips by eye.
+        if let sheet = await ClawdSheetSource.shared.sheet(fitting: .standard) {
+            for side in [20.0, 36.0] {
+                for ground in [HUDLook.Appearance.dark, .light] {
+                    save("clawd-sprites-\(Int(side))-\(ground)", ClawdSpritesScene(sheet: sheet, side: side, ground: ground),
+                         folder: folder, scheme: ground == .dark ? .dark : .light)
+                }
+            }
+        } else {
+            print("snapshot skipped clawd-sprites: the bundled sheet does not fit the clips")
+        }
         // The Display pane with this machine's screen put in logo mode, to check the preview against the HUD.
         if let main = NSScreen.main {
             let key = ScreenIdentity.key(for: main)

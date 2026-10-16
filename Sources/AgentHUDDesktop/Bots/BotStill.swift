@@ -1,22 +1,29 @@
 import CoreGraphics
 import Foundation
 
-/// The still part of a bot's frame, kept as the bitmap's own bytes: the body, its paint and what it wears, which
-/// only the morph and the turn change. A bot that does not spin draws them once it has turned into its bot and,
-/// for every blink and glance after that, starts its frame from a copy. Copied bytes are the bytes drawing them
-/// would have made, so the frame comes out the same.
+/// The still part of a bot's frame, kept as the bitmap's own bytes: the body, its paint and what it wears, and the
+/// small copy of it for sub-agents, which only the morph, the turn, the copy coming or going and a fish's flapping
+/// hands change. A bot that does not spin draws them once it has turned into its bot and, for every blink and glance
+/// after that, starts its frame from a copy. Copied bytes are the bytes drawing them would have made, so the frame
+/// comes out the same.
 @MainActor
 struct BotStill {
     let form: BotForm
     let morph: CGFloat
     let turn: CGFloat
+    let helper: Bool
+    /// How far a fish's hands are raised: they stand behind the body, so they are drawn with it.
+    let flap: BotFlap
     /// The cleared bitmap the frame is drawn in. Its size, colours and transform are part of what is kept.
     let context: CGContext
 
-    init(form: BotForm, morph: CGFloat, turn: CGFloat, on context: CGContext) {
+    init(form: BotForm, morph: CGFloat, turn: CGFloat, helper: Bool = false, flap: BotFlap = BotFlap(),
+         on context: CGContext) {
         self.form = form
         self.morph = morph
         self.turn = turn
+        self.helper = helper
+        self.flap = flap
         self.context = context
     }
 
@@ -27,9 +34,11 @@ struct BotStill {
         let width: Int
         let space: CGColorSpace?
         let transform: CGAffineTransform
-        /// The moment of the morph and the turn last drawn on this kind of bitmap.
+        /// The moment of the morph and the turn last drawn on this kind of bitmap, and whether the copy was on it.
         var morph: CGFloat
         var turn: CGFloat
+        var helper: Bool
+        var flap: BotFlap
         /// The still part at that moment, once it has been drawn there twice; until then nothing is copied, so a
         /// bot that is morphing or spinning, whose every frame is a new moment, pays for no copy it never uses.
         var bytes: [UInt8] = []
@@ -42,6 +51,8 @@ struct BotStill {
             transform = still.context.ctm
             morph = still.morph
             turn = still.turn
+            helper = still.helper
+            flap = still.flap
         }
     }
 
@@ -65,7 +76,8 @@ struct BotStill {
 
     /// Copies the kept part into the bitmap, when one was kept for this moment of the morph and the turn.
     func restore() -> Bool {
-        guard let slot = slot(), slot.held, slot.morph == morph, slot.turn == turn, slot.bytes.count == size,
+        guard let slot = slot(), slot.held, slot.morph == morph, slot.turn == turn, slot.helper == helper,
+              slot.flap == flap, slot.bytes.count == size,
               let data = context.data
         else { return false }
         slot.bytes.withUnsafeBytes { _ = memcpy(data, $0.baseAddress!, $0.count) }
@@ -81,9 +93,11 @@ struct BotStill {
             Self.slots.append(Slot(self))
             return
         }
-        guard slot.morph == morph, slot.turn == turn else {
+        guard slot.morph == morph, slot.turn == turn, slot.helper == helper, slot.flap == flap else {
             slot.morph = morph
             slot.turn = turn
+            slot.helper = helper
+            slot.flap = flap
             slot.held = false
             return
         }

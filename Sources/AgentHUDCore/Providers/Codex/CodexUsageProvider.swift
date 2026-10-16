@@ -276,7 +276,8 @@ public actor CodexUsageProvider: UsageProvider, LedgerRecording {
                                tokensOut: t.outputTokens, client: t.client, transcriptPath: session.path,
                                cacheReadTokens: t.cachedInputTokens, observedAt: evidence.newest, workingDirectory: t.cwd,
                                subagentTranscripts: descendants(of: id).map(\.path).sorted(), agentName: t.agentName, subagentSessions: agents,
-                               lastActivityAt: t.lastEventAt, navigationTarget: navigationTarget(for: t))
+                               lastActivityAt: t.lastEventAt, navigationTarget: navigationTarget(for: t),
+                               activity: t.isInternal ? nil : t.activity ?? SessionActivity())
         }
         let sessions = roots.map { session in
             (session: session, live: SessionPhase.read(session.transcript.evidence, rule: .rollout, at: now).inFlight)

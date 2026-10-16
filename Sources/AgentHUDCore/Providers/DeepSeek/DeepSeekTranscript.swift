@@ -52,8 +52,12 @@ public struct DeepSeekTranscript: Codable, Sendable {
         let startedAt: Date?
         var state: SessionTurn.State
         var observedAt: Date
+        /// Why the turn ended, from its end's reason.
+        var outcome: TurnOutcome?
     }
     private var turns: [Turn]?
+    /// What the running turn is busy with: the tool calls still waiting for their result and the kind of work they do.
+    public private(set) var activity: SessionActivity?
     public private(set) var completions: [SessionCompletion]?
     private var lastAttempt: Attempt?
 
@@ -128,12 +132,29 @@ public struct DeepSeekTranscript: Codable, Sendable {
             if let turn = data["turn"] as? Int, !(turns ?? []).contains(where: { $0.id == turn }),
                timestamp >= (turns?.last?.observedAt ?? .distantPast) {
                 turns = Array(((turns ?? []) + [Turn(id: turn, startedAt: timestamp, state: .running, observedAt: timestamp)]).suffix(32))
+                var started = activity ?? SessionActivity()
+                started.startTurn()
+                started.line = .prompt
+                activity = started
             }
         case "step/start": requestedAt = timestamp
+        case "tool/call":
+            // A result names the calls it answers by their lines' places in the log.
+            guard turns?.last?.state == .running else { break }
+            var calling = activity ?? SessionActivity()
+            calling.open(String(seq), work: (data["name"] as? String).flatMap(Self.work(ofTool:)), at: timestamp)
+            calling.line = .call
+            activity = calling
+        case "tool/result":
+            guard var answered = activity else { break }
+            for call in object["sourceEventSeqs"] as? [Int] ?? [] { answered.close(String(call), at: timestamp) }
+            answered.line = .result
+            activity = answered
         case "turn/end":
             guard let turn = data["turn"] as? Int else { break }
-            let completed = (data["reason"] as? [String: Any])?["kind"] as? String == "completed"
-            let finished = finishTurn(turn, state: completed ? .completed : .ended, at: timestamp)
+            let reason = data["reason"] as? [String: Any]
+            let completed = reason?["kind"] as? String == "completed"
+            let finished = finishTurn(turn, state: completed ? .completed : .ended, outcome: Self.outcome(of: reason), at: timestamp)
             if !isSubagent, completed, let id {
                 let completion = SessionCompletion(sessionID: "deepseek:\(id)", vendor: "DeepSeek", turnID: String(seq),
                     task: title ?? cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "DeepSeek Harness",
@@ -220,7 +241,8 @@ public struct DeepSeekTranscript: Codable, Sendable {
         guard let id, !isSubagent else { return [] }
         return (turns ?? []).map { turn in
             SessionTurn(provider: "deepseek", sessionID: "deepseek:\(id)", turnID: String(turn.id), state: turn.state,
-                        startedAtMs: turn.startedAt.map(RecordCoding.milliseconds), observedAtMs: RecordCoding.milliseconds(turn.observedAt))
+                        startedAtMs: turn.startedAt.map(RecordCoding.milliseconds), observedAtMs: RecordCoding.milliseconds(turn.observedAt),
+                        outcome: turn.outcome)
         }
     }
 
@@ -231,17 +253,43 @@ public struct DeepSeekTranscript: Codable, Sendable {
         lastActivityAt = max(lastActivityAt ?? date, date)
     }
 
-    private mutating func finishTurn(_ id: Int, state: SessionTurn.State, at date: Date) -> Turn? {
+    private mutating func finishTurn(_ id: Int, state: SessionTurn.State, outcome: TurnOutcome?, at date: Date) -> Turn? {
         if let index = turns?.lastIndex(where: { $0.id == id }) {
             guard date >= turns![index].observedAt, turns?[index].state == .running else { return turns?[index] }
-            turns?[index].state = state; turns?[index].observedAt = date
+            turns?[index].state = state; turns?[index].observedAt = date; turns?[index].outcome = outcome
+            if index == turns!.indices.last { activity?.endTurn() }
             return turns?[index]
         }
         guard turns?.last?.state != .running else { return nil }
-        let value = Turn(id: id, startedAt: nil, state: state, observedAt: date)
+        let value = Turn(id: id, startedAt: nil, state: state, observedAt: date, outcome: outcome)
         turns = Array(((turns ?? []) + [value]).suffix(32))
         return value
     }
+
+    /// How a turn's end reason ended it: completed, or an error, which a rate limit makes a limit. Harness names no other
+    /// reason this Mac has seen, so any other ends the turn without one.
+    static func outcome(of reason: [String: Any]?) -> TurnOutcome? {
+        switch reason?["kind"] as? String {
+        case "completed": return .completed
+        case "error": return (reason?["error"] as? [String: Any])?["code"] as? String == "RATE_LIMIT" ? .limited(resetsAt: nil) : .failed
+        default: return nil
+        }
+    }
+
+    /// What a Harness tool call does, by its tool's name; nil for a tool no group names, such as its to-do list.
+    static func work(ofTool name: String) -> SessionActivity.Work? {
+        switch name {
+        case "bash", "job_output": return .shell
+        case "edit", "write": return .edit
+        case "read", "read_image", "grep", "glob", "web_fetch", "web_search": return .read
+        case "subagent", "send_message", "list_agents": return .agents
+        case "ask_user_question": return .question
+        default: return name.hasPrefix("mcp__") ? .command : nil
+        }
+    }
+
+    /// Ends one read of the log (`SessionActivity.settle()`).
+    mutating func settleActivity() { activity?.settle() }
 
     /// Whether this log has its session in flight, by the process rule of `SessionPhase.read(_:rule:at:)`.
     /// `processStarts` is the process table, nil when it was not read.
@@ -257,7 +305,8 @@ public struct DeepSeekTranscript: Codable, Sendable {
         let newest = turns?.last
         return SessionPhase.SourceEvidence(turn: newest.map { turn in
             SessionTurn(provider: "deepseek", sessionID: "deepseek:\(id ?? "")", turnID: String(turn.id), state: turn.state,
-                        startedAtMs: turn.startedAt.map(RecordCoding.milliseconds), observedAtMs: RecordCoding.milliseconds(turn.observedAt))
+                        startedAtMs: turn.startedAt.map(RecordCoding.milliseconds), observedAtMs: RecordCoding.milliseconds(turn.observedAt),
+                        outcome: turn.outcome)
         }, lastWriteAt: lastActivityAt, processOutlivesTurn: processStarts.map { starts in
             // `turn/start` opens every turn, so a running one always has a start.
             starts.contains { $0 <= newest?.startedAt ?? .distantPast }

@@ -246,13 +246,16 @@ final class OpenAgentProviderTests: XCTestCase {
         {"type":"usage.record","usageScope":"session","time":1788800002000,"usage":{"inputOther":999,"output":999}}
         {"type":"turn.ended","turnId":1,"reason":"completed","time":1788800003000}
         {"type":"turn.ended","turnId":2,"reason":"cancelled","time":1788800004000}
+        {"type":"turn.ended","turnId":3,"reason":"completed","error":{"code":"provider_error"},"time":1788800005000}
+        {"type":"turn.ended","turnId":4,"reason":"max_steps","time":1788800006000}
         """
         let parsed = try XCTUnwrap(OpenAgentParser.kimi(Data(modern.utf8), path: "/.kimi-code/sessions/work/session/agents/main/wire.jsonl").first)
         XCTAssertEqual(parsed.events.count, 1)
         XCTAssertEqual(parsed.events.first?.tokensIn, 13)
         XCTAssertEqual(parsed.models.values.first, "kimi-code/real-model")
         XCTAssertEqual(parsed.completions.count, 1)
-        XCTAssertEqual(parsed.turns.map(\.state), [.completed, .ended])
+        XCTAssertEqual(parsed.turns.map(\.state), [.completed, .ended, .ended, .ended])
+        XCTAssertEqual(parsed.turns.map(\.outcome), [.completed, .interrupted, .failed, nil], "an end with no reason of its own ends quietly")
         let sub = try XCTUnwrap(OpenAgentParser.kimi(Data(modern.utf8), path: "/.kimi-code/sessions/work/session/agents/child/wire.jsonl").first)
         XCTAssertTrue(sub.completions.isEmpty)
         let legacy = """

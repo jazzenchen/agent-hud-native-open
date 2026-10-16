@@ -16,6 +16,8 @@ public struct ClaudeCodeProvider: UsageProvider, LedgerRecording {
     private let history: QuotaHistoryStore
     private let accountProfileURL: URL?
     private let sessionOriginsDirectory: URL?
+    /// Where the compaction hook leaves its records (`CompactionHooks`); nil reads none.
+    private let compactionsDirectory: URL?
     private let desktopSessions: ClaudeDesktopSessions?
     /// `ClientHome.key` of the configuration directory, separating unidentified logins of different homes.
     private let home: String
@@ -28,6 +30,7 @@ public struct ClaudeCodeProvider: UsageProvider, LedgerRecording {
         accountProfileURL: URL? = nil,
         home: String = "",
         sessionOriginsDirectory: URL? = nil,
+        compactionsDirectory: URL? = nil,
         desktopSessions: ClaudeDesktopSessions? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -37,6 +40,7 @@ public struct ClaudeCodeProvider: UsageProvider, LedgerRecording {
         self.accountProfileURL = accountProfileURL
         self.home = home
         self.sessionOriginsDirectory = sessionOriginsDirectory
+        self.compactionsDirectory = compactionsDirectory
         self.desktopSessions = desktopSessions
         self.clock = clock
     }
@@ -55,12 +59,19 @@ public struct ClaudeCodeProvider: UsageProvider, LedgerRecording {
             accountProfileURL: ClaudeSubscription.accountProfileURL,
             home: ClaudeSubscription.home,
             sessionOriginsDirectory: ClaudeSessionOrigins.directory,
+            compactionsDirectory: CompactionHooks.directory,
             desktopSessions: ClaudeDesktopSessions()
         )
     }
 
     public var watchedDirectories: [URL]? {
-        transcripts.roots + [AttentionHooks.directory] + (sessionOriginsDirectory.map { [$0] } ?? []) + (desktopSessions?.roots ?? [])
+        // Built in steps: as one sum of optionals, Xcode 16.4's type checker gives up on it.
+        var directories: [URL] = transcripts.roots
+        directories.append(AttentionHooks.directory)
+        if let sessionOriginsDirectory { directories.append(sessionOriginsDirectory) }
+        if let compactionsDirectory { directories.append(compactionsDirectory) }
+        directories += desktopSessions?.roots ?? []
+        return directories
     }
     public func fileChanges(_ paths: Set<String>?) async { await transcripts.fileChanges(paths) }
 
@@ -152,6 +163,7 @@ public struct ClaudeCodeProvider: UsageProvider, LedgerRecording {
         let windowStart = usage?.fiveHour?.resetsAt.map { $0.addingTimeInterval(-5 * 3600) } ?? now.addingTimeInterval(-5 * 3600)
         let agents = Self.workingAgents(sessions, now: now)
         let requests = AttentionHooks.read(source: AttentionHooks.Source.claude, now: now)
+        let compactions = compactionsDirectory.map { CompactionHooks.read(source: .claude, now: now, directory: $0) } ?? [:]
         let candidates = sessions.filter { !$0.isSubagent }.map { session in
             let evidence = session.evidence(subagentsAt: agents[session.path], approval: requests[session.id]?.approval)
             return (session: session, evidence: evidence, reading: SessionPhase.read(evidence, rule: .transcript, at: now))
@@ -230,7 +242,8 @@ public struct ClaudeCodeProvider: UsageProvider, LedgerRecording {
                 transcriptPath: session.path,
                 cacheReadTokens: session.cacheReadTokens, observedAt: evidence.newest, workingDirectory: session.cwd,
                 lastActivityAt: session.lastActivityAt,
-                navigationTarget: navigationTarget(for: session)
+                navigationTarget: navigationTarget(for: session),
+                activity: Self.activity(of: session, subagentsAt: agents[session.path], compaction: compactions[session.id])
             )
         }
 
@@ -323,6 +336,15 @@ extension ClaudeCodeProvider {
             latest[parent] = max(latest[parent] ?? agent.lastActivityAt, agent.lastActivityAt)
         }
         return latest
+    }
+
+    /// What a main log says its turn is busy with, with the newest line of its sub-agents at work and the compaction its
+    /// client said it began after the log's last line.
+    static func activity(of session: TranscriptSession, subagentsAt: Date?, compaction: CompactionHooks.Event?) -> SessionActivity {
+        var activity = session.activity ?? SessionActivity()
+        activity.subagentsAt = subagentsAt
+        activity.compactingSince = CompactionHooks.since(compaction, lastLineAt: session.lastActivityAt)
+        return activity
     }
 
     /// Each session's turn as the provider reports it (`SessionPhase.read(_:rule:at:)`).

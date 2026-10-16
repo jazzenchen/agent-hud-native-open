@@ -50,6 +50,7 @@ final class CompletionHooksTests: XCTestCase, @unchecked Sendable {
             let item = try XCTUnwrap(GrokSessions.read(url).sessions.first)
             XCTAssertTrue(item.completions.isEmpty)
             XCTAssertEqual(item.turns.first?.state, .ended)
+            XCTAssertEqual(item.turns.first?.outcome, reason == "cancelled" ? .interrupted : nil, reason)
         }
     }
 

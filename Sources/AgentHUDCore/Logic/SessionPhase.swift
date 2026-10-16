@@ -179,7 +179,7 @@ public struct SessionPhase: Hashable, Sendable {
     public static func stopped(_ turn: SessionTurn, atMs stop: Int64?) -> SessionTurn {
         guard let stop, turn.state.isInFlight, stop >= turn.observedAtMs else { return turn }
         return SessionTurn(provider: turn.provider, sessionID: turn.sessionID, turnID: turn.turnID, state: .completed,
-                           startedAtMs: turn.startedAtMs, observedAtMs: stop, message: turn.message)
+                           startedAtMs: turn.startedAtMs, observedAtMs: stop, message: turn.message, outcome: .completed)
     }
 
     /// A turn a heartbeat keeps fresh, as Pi's observer does, as it stands at `readAt`: a turn in flight whose last
@@ -207,7 +207,7 @@ public struct SessionPhase: Hashable, Sendable {
             observed = max(observed, RecordCoding.milliseconds(subagentsAt))
         }
         return SessionTurn(provider: turn.provider, sessionID: turn.sessionID, turnID: turn.turnID, state: state,
-                           startedAtMs: turn.startedAtMs, observedAtMs: observed, message: message)
+                           startedAtMs: turn.startedAtMs, observedAtMs: observed, message: message, outcome: turn.outcome)
     }
 
     // MARK: View

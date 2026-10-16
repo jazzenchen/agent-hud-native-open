@@ -76,6 +76,7 @@ enum HarnessLogs: TailLog {
     /// A Harness log is read from its start, so its attempts keep their order as keys.
     static func ingest(_ lines: Data, at offset: Int, into transcript: inout DeepSeekTranscript) throws -> [UsageLedger.Event] {
         for line in lines.split(separator: 0x0A) { try transcript.ingest(line) }
+        transcript.settleActivity()
         return transcript.drainUsage()
     }
 

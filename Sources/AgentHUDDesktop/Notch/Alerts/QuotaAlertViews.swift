@@ -24,7 +24,7 @@ struct QuotaAlertCompactView: View {
         Button(action: onOpen) {
             HStack(spacing: 0) {
                 HStack(spacing: s(8)) {
-                    AgentLogo(vendor: alert.agent.vendor, size: s(17))
+                    ReminderMarkView(vendor: alert.agent.vendor, size: s(17), mark: .quota(alert))
                     Text(alert.agent.vendorName)
                         .font(.ui(t(13), .semibold)).foregroundStyle(theme.alertText).lineLimit(1)
                 }
@@ -58,7 +58,7 @@ struct QuotaAlertDetailView: View {
         let copy = QuotaAlertCopy(alert: alert)
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 9) {
-                AgentLogo(vendor: alert.agent.vendor, size: 22)
+                ReminderMarkView(vendor: alert.agent.vendor, size: 22, mark: .quota(alert))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(alert.agent.vendorName).font(.ui(13, .semibold)).foregroundStyle(theme.alertText)
                     Text(alert.agent.name).font(.ui(10)).foregroundStyle(theme.alertInk(0.42))
