@@ -1,0 +1,18 @@
+name: Windows companion
+on:
+  push:
+    paths: ['windows/**', '.github/workflows/windows-companion.yml']
+  pull_request:
+    paths: ['windows/**', '.github/workflows/windows-companion.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s windows -p "test_*.py" -v
+      - run: python windows/hud.py --probe
