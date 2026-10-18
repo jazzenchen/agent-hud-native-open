@@ -64,7 +64,7 @@ class InteractionTests(unittest.TestCase):
 
     def test_saved_per_screen_settings_survive_reload(self):
         manager=Application.__new__(Application);manager.settings=load({});manager.tray=Mock();manager.monitor=Mock();manager.windows={};manager.data={}
-        manager.update=Mock();manager.menu=lambda:None
+        manager.update=Mock();manager.menu=lambda:None;manager.refresh_themes=Mock()
         with tempfile.TemporaryDirectory() as folder:
             manager.config=Path(folder)/'settings.json'
             manager.apply_setting('edge','right','monitor-a');manager.apply_setting('offset',.76,'monitor-a')

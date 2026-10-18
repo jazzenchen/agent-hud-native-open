@@ -19,7 +19,10 @@ def number(text, pattern):
 
 
 def load_design():
-    palette = (DESKTOP / 'Theme/Theme+Palettes.swift').read_text(encoding='utf-8').split('static let light =')[0]
+    all_palettes = (DESKTOP / 'Theme/Theme+Palettes.swift').read_text(encoding='utf-8')
+    palette = all_palettes.split('static let light =')[0]
+    light_palette=all_palettes.split('static let light =')[1].split('static let island:')[0]
+    light_colors={key:'#'+value for key,value in re.findall(r'(\w+): Color\(hex: 0x([0-9a-fA-F]{6})\)',light_palette)}
     colors = {key: '#' + value for key, value in re.findall(r'(\w+): Color\(hex: 0x([0-9a-fA-F]{6})\)', palette)}
     levels = (DESKTOP / 'Theme/StatusPalette.swift').read_text(encoding='utf-8')
     colors.update({key: '#' + value for key, value in re.findall(r'static let (ok|warning|critical|idle) = RGBA\(hex: 0x([0-9a-fA-F]{6})\)', levels)})
@@ -29,7 +32,14 @@ def load_design():
     animation = (DESKTOP / 'Notch/Island/IslandAnimation.swift').read_text(encoding='utf-8')
     row = (DESKTOP / 'Notch/Panel/ProviderQuotaBlock.swift').read_text(encoding='utf-8')
     geometry=(DESKTOP/'Notch/NotchGeometry.swift').read_text(encoding='utf-8')
-    return dict(colors=colors, width=number(style, r'defaultWidth = (\d+)'),
+    island=(DESKTOP/'Notch/Island/IslandRootView.swift').read_text(encoding='utf-8')
+    build=(ROOT/'scripts/build-app.sh').read_text(encoding='utf-8')
+    return dict(colors=colors,light_colors=light_colors,
+                app_name=re.search(r'APP_NAME="([^"]+)"',build)[1],
+                app_version=re.search(r'CFBundleShortVersionString</key><string>([^<]+)',build)[1],
+                app_icon=ROOT/'assets/AppIcon.icns',width=number(style, r'defaultWidth = (\d+)'),
+                peek_height=number(island,r'dockCompactHeight: CGFloat = ([\d.]+)'),
+                peek_font=number(island,r'dockTextSize: CGFloat = ([\d.]+)'),
                 agent_width=number(style, r'narrowestAgentWidth = (\d+)'),
                 simple_size=number(placement, r'simpleSize: Double = ([\d.]+)'),
                 ring_width=number(placement, r'ringWidth: Double = ([\d.]+)'),

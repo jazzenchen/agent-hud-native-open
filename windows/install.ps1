@@ -28,7 +28,7 @@ foreach ($destination in $destinations) {
     $shortcut.TargetPath = $pythonw
     $shortcut.Arguments = '"' + $script + '"'
     $shortcut.WorkingDirectory = $PSScriptRoot
-    $shortcut.Description = 'Agent HUD Open Windows companion for Codex and Cursor'
+    $shortcut.Description = 'Agent HUD Open'
     $shortcut.Save()
 }
 Get-CimInstance Win32_Process -Filter "name='pythonw.exe'" | Where-Object {

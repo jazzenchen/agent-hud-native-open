@@ -7,12 +7,15 @@ from datetime import datetime
 import math
 
 from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QTimer, QVariantAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter, QPainterPath, QPen, QPixmap, QRegion
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter, QPainterPath, QPen, QPixmap, QRegion,QCursor
 from PySide6.QtWidgets import QWidget, QMenu, QApplication
 
-from material import frosted_backdrop
+from material import frosted_backdrop,rounded_native_window
 from source_design import DESIGN
 from look_logic import stand_in
+from theme import resolves_light,apply_widget_theme
+from motion import SpringDriver,animations_enabled
+from peek_view import AgentPeekView
 
 COLORS = DESIGN['colors']
 
@@ -25,9 +28,13 @@ def font(size, bold=False):
     return result
 
 
-def color(name, alpha=255):
-    result = QColor(COLORS.get(name, name))
-    result.setAlpha(alpha)
+def color(name, alpha=None, painter=None):
+    colors=COLORS
+    if painter is not None:
+        device=painter.device();owner=device.meter if hasattr(device,'meter') else device
+        if hasattr(owner,'palette_colors'):colors=owner.palette_colors()
+    result = QColor(colors.get(name, name))
+    if alpha is not None:result.setAlpha(alpha)
     return result
 
 
@@ -46,12 +53,16 @@ def compact(value):
     return f'{value / 1e6:.1f}M' if value >= 1e6 else (f'{value/1000:.0f}k' if value >= 1000 else str(value))
 
 
-def reset_label(value):
+def reset_label(value,now=None):
     if not value:
         return ''
     try:
-        date = datetime.fromtimestamp(value) if isinstance(value, (float, int)) else datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone()
-        return date.strftime('%a %H:%M')
+        deadline=float(value) if isinstance(value,(float,int)) else datetime.fromisoformat(value.replace('Z','+00:00')).timestamp()
+        remaining=max(0,int(deadline-(datetime.now().timestamp() if now is None else now)))
+        days,hours=divmod(remaining//3600,24);minutes=(remaining%3600)//60
+        if days:return f'{days}天 {hours}时'
+        if hours:return f'{hours}时 {minutes}分'
+        return f'{max(1,minutes)}分' if remaining else '重置中'
     except (ValueError, OSError):
         return ''
 
@@ -76,7 +87,7 @@ class Artwork:
         painter.setOpacity(painter.opacity() * opacity)
         image=self.images[client]
         device=painter.device();meter=device.meter if hasattr(device,'meter') else device
-        if client=='Cursor' and hasattr(meter,'light') and meter.light() and meter.settings.get('mode')!='notch':
+        if client=='Cursor' and hasattr(meter,'light') and meter.light() and not (device is meter and meter.settings.get('mode')=='notch'):
             image=image.copy();tint=QPainter(image);tint.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
             tint.fillRect(image.rect(),QColor('#1d1d1f'));tint.end()
         painter.drawImage(rect, image)
@@ -95,12 +106,12 @@ def artwork():
 
 def text(p, rect, value, size=13, ink='text', bold=False, align=Qt.AlignmentFlag.AlignLeft):
     p.setFont(font(size, bold))
-    p.setPen(color(ink))
+    p.setPen(color(ink,painter=p))
     p.drawText(rect, align | Qt.AlignmentFlag.AlignVCenter, str(value))
 
 
 def divider(p, y, width):
-    p.setPen(QPen(QColor(255, 255, 255, 26), 1))
+    p.setPen(QPen(color('divider',painter=p), 1))
     p.drawLine(QPointF(0, y), QPointF(width, y))
 
 
@@ -112,6 +123,10 @@ class SimpleMeterView(QWidget):
         self.menu_callback, self.preview = menu_callback, preview
         self.data = dict(local=dict(sessions=[]), quota=dict(windows=[]))
         self.group_data={client:self.data}
+        self._used={};self._reading_start={};self._reading_target={}
+        self.reading_animation=QVariantAnimation(self);self.reading_animation.setDuration(300)
+        self.reading_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.reading_animation.valueChanged.connect(self.reading_frame)
         self.cells=[]
         self.anchor = QPointF(0, 0)
         self.native_glass = False
@@ -124,14 +139,17 @@ class SimpleMeterView(QWidget):
         self.setWindowTitle('Agent HUD · ' + client)
         self.setAccessibleName(client + ' 额度')
         self.panel = HoverPanelView(self)
+        self.peek = AgentPeekView(self)
         self.enter_timer = QTimer(self)
         self.enter_timer.setSingleShot(True)
         self.enter_timer.setInterval(220)
-        self.enter_timer.timeout.connect(self.open_panel)
+        self.enter_timer.timeout.connect(self.hover)
         self.leave_timer = QTimer(self)
         self.leave_timer.setSingleShot(True)
         self.leave_timer.setInterval(450)
         self.leave_timer.timeout.connect(self.maybe_close)
+        self.alt_timer=QTimer(self);self.alt_timer.setInterval(50);self.alt_timer.timeout.connect(self.check_alt)
+        self.edge_timer=QTimer(self);self.edge_timer.setInterval(50);self.edge_timer.timeout.connect(self.check_top_edge)
         from glow_view import GlowView
         self.glow=GlowView(self)
         self.refresh_size()
@@ -139,6 +157,8 @@ class SimpleMeterView(QWidget):
     def refresh_size(self):
         self.enter_timer.setInterval(round(self.settings.get('hover_delay',400)))
         self.leave_timer.setInterval(round(self.settings.get('collapse_delay',200)))
+        if self.settings.get('immediate_top') and self.isVisible() and not self.preview:self.edge_timer.start()
+        else:self.edge_timer.stop()
         size = self.settings['size']
         tight, loose = max(3, round(size*.18)), round(size*.45)
         label = '–' if tightest(self.data) is None else f'{tightest(self.data):.0f}%'
@@ -175,6 +195,7 @@ class SimpleMeterView(QWidget):
     def round_mask(self):
         shape = self.surface_path()
         self.setMask(QRegion(shape.toFillPolygon().toPolygon()))
+        if self.settings.get('mode','simple')=='simple' and self.isVisible():rounded_native_window(self,self.corner)
 
     def surface_path(self):
         shape=QPainterPath()
@@ -187,19 +208,27 @@ class SimpleMeterView(QWidget):
         return shape
 
     def apply_material(self):
+        apply_widget_theme(self,self.light())
         glass=self.settings['glass'] and self.settings.get('mode','simple')=='simple'
         self.native_glass = not self.preview and glass and frosted_backdrop(self.winId(),True,self.settings.get('transparency',50),self.light(),self.settings.get('glass_style','material'))
         if not glass and not self.preview:
             frosted_backdrop(self.winId(), False)
+        if self.panel.isVisible():self.panel.apply_material()
+        if self.peek.isVisible():self.peek.apply_material()
+        if self.settings.get('mode','simple')=='simple':rounded_native_window(self,self.corner)
         self.update()
 
     def light(self):
         appearance=self.settings.get('hud_appearance','dark')
-        return appearance=='light' or appearance=='system' and QApplication.palette().window().color().lightness()>128
+        return resolves_light(appearance)
 
     def palette_colors(self):
-        global COLORS
-        COLORS={**DESIGN['colors'],**(dict(text='#1d1d1f',secondary='#6e6e73',tertiary='#8e8e93',ok='#1f9d4c',warning='#c08000') if self.light() else {})}
+        light=self.light()
+        return {**DESIGN['colors'],**(DESIGN['light_colors'] if light else {}),
+            **(dict(ok='#1f9d4c',warning='#c08000') if light else {}),
+            'divider':'#14000000' if light else '#1affffff',
+            'outline':'#1a000000' if light else '#24ffffff',
+            'track':'#1a000000' if light else '#24ffffff'}
 
     def surface_fill(self,native):
         fill=QColor('#f5f5f7' if self.light() else '#000000')
@@ -217,10 +246,23 @@ class SimpleMeterView(QWidget):
         self.data=data[self.client];self.refresh_data()
 
     def refresh_data(self):
+        targets={client:tightest(data) for client,data in self.group_data.items()}
+        if targets!=self._reading_target:
+            self.reading_animation.stop();self._reading_start=dict(self._used);self._reading_target=targets
+            if self.preview or not self.isVisible() or not animations_enabled():self._used=dict(targets)
+            else:
+                self.reading_animation.setStartValue(0.);self.reading_animation.setEndValue(1.);self.reading_animation.start()
         self.refresh_size()
         self.panel.set_data(self.data)
+        self.peek.refresh()
         used = tightest(self.data)
         self.setToolTip(f'{self.client} · 已用 {used:.0f}%' if used is not None else f'{self.client} · 额度暂不可用')
+        self.update()
+
+    def reading_frame(self,progress):
+        self._used={client:(self._reading_start[client]+(target-self._reading_start[client])*float(progress)
+                    if target is not None and self._reading_start.get(client) is not None else target)
+                    for client,target in self._reading_target.items()}
         self.update()
 
     def place(self, x, y):
@@ -228,6 +270,7 @@ class SimpleMeterView(QWidget):
         self.anchor = QPointF(self.geometry().center().x(), self.geometry().bottom()+6)
         if self.panel.isVisible():
             self.panel.reposition()
+        if self.peek.isVisible():self.peek.reposition()
         self.glow.sync()
 
     def paintEvent(self, event):
@@ -241,19 +284,19 @@ class SimpleMeterView(QWidget):
         mode=self.settings.get('mode','simple')
         if mode!='logos':
             p.fillPath(path,QColor('black') if mode=='notch' else fill)
-            if mode!='notch':p.setPen(QPen(QColor(255,255,255,36),1));p.drawPath(path)
+            if mode!='notch':p.setPen(QPen(color('outline',painter=p),1));p.drawPath(path)
         for client,cell in self.cells:
             if mode!='simple':
                 if self.settings.get('show_logos',True):artwork().draw(p,client,cell)
                 continue
             p.save();p.translate(cell.topLeft())
             rect = QRectF(self.left, self.top, self.mark_size, self.mark_size)
-            used = tightest(self.group_data[client]);width = self.settings['ring_width']
+            used = self._used.get(client,tightest(self.group_data[client]));width = self.settings['ring_width']
             ring = rect.adjusted(width/2,width/2,-width/2,-width/2)
-            p.setPen(QPen(QColor(120,120,120,60),width))
+            p.setPen(QPen(color('track',painter=p),width))
             if self.settings.get('show_rings',True):p.drawEllipse(ring)
             if used is not None and self.settings.get('show_rings',True):
-                p.setPen(QPen(color(level(used)),width,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap))
+                p.setPen(QPen(color(level(used),painter=p),width,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap))
                 p.drawArc(ring,90*16,-round(min(100,max(0,used))*3.6*16))
             logo = round(self.mark_size*.55)
             artwork().draw(p,client,QRectF(rect.center().x()-logo/2,rect.center().y()-logo/2,logo,logo))
@@ -266,26 +309,51 @@ class SimpleMeterView(QWidget):
     def enterEvent(self, event):
         self.leave_timer.stop()
         if not self.dragging:
-            if self.settings.get('immediate_top') and self.settings.get('edge','top')=='top':self.open_panel()
+            if self.settings.get('requires_alt'):
+                if not self.preview:self.alt_timer.start()
+                self.check_alt()
             else:self.enter_timer.start()
+
+    def showEvent(self,event):
+        super().showEvent(event)
+        if self.settings.get('immediate_top') and not self.preview:self.edge_timer.start()
+
+    def check_alt(self):
+        if self.underMouse() and QApplication.queryKeyboardModifiers() & Qt.KeyboardModifier.AltModifier:
+            self.hover();self.alt_timer.stop()
+
+    def check_top_edge(self):
+        point=QCursor.pos();rect=self.geometry();screen=self.screen.geometry()
+        if self.settings.get('edge','top')=='top' and rect.left()<=point.x()<=rect.right() and screen.top()<=point.y()<=screen.top()+1 and not self.panel.isVisible() and not self.dragging:
+            self.hover()
 
     def select_at(self,point):
         for client,rect in self.cells:
             if rect.contains(point) and client!=self.client:
                 self.client=client;self.data=self.group_data[client];self.panel.set_data(self.data)
+                if self.peek.isVisible():self.peek.refresh();self.peek.reposition()
                 break
 
     def leaveEvent(self, event):
+        self.alt_timer.stop()
         self.enter_timer.stop()
         self.leave_timer.start()
 
     def open_panel(self):
-        if self.settings.get('requires_alt') and not QApplication.keyboardModifiers() & Qt.KeyboardModifier.AltModifier:return
+        origin=self.geometry().united(self.peek.geometry()) if self.peek.isVisible() else self.geometry()
+        self.peek.dismiss(immediate=True)
+        if not self.panel.isVisible():self.panel.source_rect=origin
         self.panel.open()
 
+    def hover(self):
+        if self.panel.pinned:return
+        if self.settings.get('requires_alt') and not QApplication.queryKeyboardModifiers() & Qt.KeyboardModifier.AltModifier:return
+        if self.settings.get('mode','simple') in ('simple','logos'):self.peek.open()
+        else:self.open_panel()
+
     def maybe_close(self):
-        if not self.underMouse() and not self.panel.underMouse() and not self.panel.pinned:
-            self.panel.collapse()
+        if not self.underMouse() and not self.peek.underMouse() and not self.panel.underMouse() and not self.panel.pinned:
+            self.peek.dismiss();self.panel.collapse()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.RightButton:
@@ -305,6 +373,7 @@ class SimpleMeterView(QWidget):
         self.dragging=True
         self.leave_timer.stop();self.enter_timer.stop()
         self.panel.pinned=False;self.panel.hide()
+        self.panel.animation.stop();self.peek.dismiss(immediate=True)
         self.glow.hide()
         self.move(self.press_origin+delta)
 
@@ -316,9 +385,13 @@ class SimpleMeterView(QWidget):
             if hasattr(self,'placement_callback'):self.placement_callback(self,event.globalPosition().toPoint())
         else:
             self.panel.pinned = not self.panel.pinned
-            self.panel.open() if self.panel.pinned else self.panel.collapse()
+            self.open_panel() if self.panel.pinned else self.panel.collapse()
 
     def hide_all(self):
+        self.reading_animation.stop()
+        self.panel.animation.stop()
+        self.peek.dismiss(immediate=True)
+        self.alt_timer.stop();self.edge_timer.stop()
         self.glow.hide();self.glow.timer.stop()
         self.panel.pinned = False
         self.panel.hide()
@@ -339,11 +412,7 @@ class HoverPanelView(QWidget):
         self.progress = 0.
         self.native_glass = False
         self.hits = []
-        self.animation = QVariantAnimation(self)
-        self.animation.setDuration(int(DESIGN['animation_ms']))
-        curve = QEasingCurve(QEasingCurve.Type.BezierSpline)
-        curve.addCubicBezierSegment(QPointF(.2,.8),QPointF(.2,1),QPointF(1,1))
-        self.animation.setEasingCurve(curve)
+        self.animation = SpringDriver(self,frequency=1520/DESIGN['animation_ms'])
         self.animation.valueChanged.connect(self.animate)
         self.animation.finished.connect(self.finished)
         self.setFixedSize(int(DESIGN['agent_width']),300)
@@ -364,42 +433,53 @@ class HoverPanelView(QWidget):
         screen=self.meter.screen.availableGeometry()
         edge='top' if self.meter.settings.get('mode')=='notch' else self.meter.settings.get('edge','top')
         geom=self.meter.geometry()
-        x=geom.center().x()-self.width()/2
+        width=self.content_width();height=self.layout_height()
+        x=geom.center().x()-width/2
         y=geom.bottom()+6
-        if edge=='bottom':y=geom.top()-self.height()-6
-        elif edge=='left':x=geom.right()+6;y=geom.center().y()-self.height()/2
-        elif edge=='right':x=geom.left()-self.width()-6;y=geom.center().y()-self.height()/2
-        x=max(screen.left()+6,min(x,screen.right()-self.width()-6))
-        y=max(screen.top()+3,min(y,screen.bottom()-self.height()-3))
-        self.move(round(x),round(y))
+        if edge=='bottom':y=geom.top()-height-6
+        elif edge=='left':x=geom.right()+6;y=geom.center().y()-height/2
+        elif edge=='right':x=geom.left()-width-6;y=geom.center().y()-height/2
+        x=max(screen.left()+6,min(x,screen.right()-width-6))
+        y=max(screen.top()+3,min(y,screen.bottom()-height-3))
+        origin=getattr(self,'source_rect',geom)
+        self.move(round(origin.x()+(x-origin.x())*self.progress),round(origin.y()+(y-origin.y())*self.progress))
 
     def open(self):
-        self.animation.stop()
+        self.animate(self.progress)
         self.show()
         self.reposition()
+        self.apply_material()
+        self.animation.retarget(1.)
+
+    def apply_material(self):
+        apply_widget_theme(self,self.meter.light())
         cfg=self.meter.settings
         self.native_glass=not self.meter.preview and cfg['glass'] and frosted_backdrop(self.winId(),True,cfg.get('transparency',50),self.meter.light(),cfg.get('glass_style','material'))
-        if not self.meter.settings['glass'] and not self.meter.preview:
-            frosted_backdrop(self.winId(),False)
-        self.animation.setStartValue(self.progress)
-        self.animation.setEndValue(1.)
-        self.animation.start()
+        if not cfg['glass'] and not self.meter.preview:frosted_backdrop(self.winId(),False)
+        rounded_native_window(self,getattr(self,'corner',16))
+        self.update()
 
     def collapse(self):
-        self.animation.stop()
-        self.animation.setStartValue(self.progress)
-        self.animation.setEndValue(0.)
-        self.animation.start()
+        self.animation.retarget(0.)
 
     def animate(self,value):
-        self.progress=float(value)
-        # Content's fixed 440pt layout is revealed along the upstream curve.
-        self.setFixedSize(int(self.meter.settings.get('panel_width',540)-100),max(8,round(self.layout_height()*self.progress)))
+        self.progress=max(0,min(1,float(value)))
+        # Grow the shell in both dimensions; keep content at its final width to
+        # avoid line wrapping and chart reflow during the source's 400ms curve.
+        target=self.content_width()
+        origin=getattr(self,'source_rect',self.meter.geometry())
+        start=min(target,max(1,origin.width()));start_height=origin.height()
+        self.setFixedSize(round(start+(target-start)*self.progress),max(1,round(start_height+(self.layout_height()-start_height)*self.progress)))
+        self.corner=self.meter.corner+(16-self.meter.corner)*self.progress
         self.reposition()
         shape=QPainterPath()
-        shape.addRoundedRect(QRectF(self.rect()),16,16)
+        shape.addRoundedRect(QRectF(self.rect()),self.corner,self.corner)
         self.setMask(QRegion(shape.toFillPolygon().toPolygon()))
+        if self.isVisible():rounded_native_window(self,self.corner)
         self.update()
+
+    def content_width(self):
+        return min(int(self.meter.settings.get('panel_width',540)-100),self.meter.screen.availableGeometry().width()-16)
 
     def finished(self):
         if self.progress < .01:
@@ -416,16 +496,20 @@ class HoverPanelView(QWidget):
         p=QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        shell_alpha=min(1,max(0,self.progress*4))
+        p.setOpacity(shell_alpha)
         path=QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),16,16)
+        radius=getattr(self,'corner',16)
+        path.addRoundedRect(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),radius,radius)
         fill=self.meter.surface_fill(self.native_glass)
         p.fillPath(path,fill)
-        p.setPen(QPen(QColor(255,255,255,36),1))
+        p.setPen(QPen(color('outline',painter=p),1))
         p.drawPath(path)
         p.setClipPath(path)
-        p.setOpacity(min(1,max(0,(self.progress-.15)/.85)))
-        p.translate(18,14)
-        w=self.width()-36
+        phase=min(1,max(0,(self.progress-.1)/.9))
+        p.setOpacity(phase*phase*(3-2*phase))
+        p.translate(18+(self.width()-self.content_width())/2,14+6*(1-self.progress))
+        w=self.content_width()-36
         self.hits=[]
         y=0
         for key,block in [('panel_quota',lambda:self.provider_block(p,w)),('panel_tokens',lambda:self.token_block(p,y,w)),('panel_sessions',lambda:self.sessions_block(p,y,w))]:
@@ -456,15 +540,15 @@ class HoverPanelView(QWidget):
             return y+28
         for row in rows:
             used=float(row['used']);ink=level(used)
-            p.setPen(Qt.PenStyle.NoPen);p.setBrush(color(ink))
+            p.setPen(Qt.PenStyle.NoPen);p.setBrush(color(ink,painter=p))
             p.drawEllipse(QPointF(10,y+14),4,4)
             label={'Weekly':'每周限额','5-hour':'5 小时限额','Included':'包含用量'}.get(row['label'],row['label'])
             text(p,QRectF(26,y,DESIGN['label_width'],28),label,13,'text',True)
             start=26+DESIGN['label_width']+12;bar_w=w-start-130
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QColor(255,255,255,31))
+            p.setBrush(color('track',painter=p))
             p.drawRoundedRect(QRectF(start,y+12,bar_w,4),2,2)
-            p.setBrush(color(ink))
+            p.setBrush(color(ink,painter=p))
             p.drawRoundedRect(QRectF(start,y+12,bar_w*max(0,min(1,used/100)),4),2,2)
             text(p,QRectF(start+bar_w+8,y,45,28),f'{used:.0f}%',12,ink,True,Qt.AlignmentFlag.AlignRight)
             if self.meter.settings.get('reset_countdown',True):text(p,QRectF(w-76,y,70,28),reset_label(row.get('reset')),10,'secondary',align=Qt.AlignmentFlag.AlignRight)
@@ -492,7 +576,7 @@ class HoverPanelView(QWidget):
                     part=height*amount/total;bottom-=part
                     p.fillRect(QRectF(x,bottom,bw,max(0,part)),QColor(tint))
                 self.hits.append((QRectF(x,chart_y,bw,55),row))
-            p.setPen(QPen(QColor(255,255,255,22),1))
+            p.setPen(QPen(color('divider',painter=p),1))
             p.drawLine(QPointF(6,chart_y+56),QPointF(w-6,chart_y+56))
         return chart_y+65
 
@@ -508,7 +592,7 @@ class HoverPanelView(QWidget):
         fm=QFontMetricsF(font(12))
         for row in items[:int(self.meter.settings.get('session_limit',5))]:
             artwork().draw(p,self.meter.client,QRectF(1,y+5,14,14),.7 if row['state']!='running' else 1)
-            p.setPen(QPen(QColor(20,20,22),2));p.setBrush(color('ok' if row['state']=='running' else 'tertiary'))
+            p.setPen(QPen(self.meter.surface_fill(False),2));p.setBrush(color('ok' if row['state']=='running' else 'tertiary',painter=p))
             p.drawEllipse(QPointF(15,y+18),3,3)
             name=fm.elidedText(row['title'],Qt.TextElideMode.ElideRight,w-94)
             text(p,QRectF(22,y,w-94,25),name,12,'secondary')
@@ -517,19 +601,20 @@ class HoverPanelView(QWidget):
         return y
 
     def gear(self,p,center):
-        p.save();p.translate(center);p.setPen(QPen(color('secondary'),1.3))
+        p.save();p.translate(center);p.setPen(QPen(color('secondary',painter=p),1.3))
         p.setBrush(Qt.BrushStyle.NoBrush);p.drawEllipse(QPointF(0,0),5,5);p.drawEllipse(QPointF(0,0),1.8,1.8)
         for i in range(8):
             p.rotate(45);p.drawLine(QPointF(0,-5),QPointF(0,-7))
         p.restore()
 
     def chart_icon(self,p,center):
-        p.setPen(Qt.PenStyle.NoPen);p.setBrush(color('secondary'))
+        p.setPen(Qt.PenStyle.NoPen);p.setBrush(color('secondary',painter=p))
         for x,h in [(-6,5),(-1,11),(4,8)]:p.drawRoundedRect(QRectF(center.x()+x,center.y()+6-h,3,h),.7,.7)
 
     def mousePressEvent(self,event):
         if event.button()==Qt.MouseButton.RightButton:
             self.meter.menu_callback(event.globalPosition().toPoint());return
+        if self.progress<.98:return
         point=event.position()-QPointF(18,14)
         for rect,action in reversed(self.hits):
             if rect.contains(point):

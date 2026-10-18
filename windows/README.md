@@ -31,7 +31,9 @@ updates the Desktop shortcut. No administrator rights, client launch or Windows
 appearance setting change is needed. Open **Settings** from the tray, HUD right
 click menu, or the panel's gear. Launching the Desktop shortcut again raises the
 settings window of the existing instance. Hover opens the selected agent's
-440pt panel by default; click pins/unpins it; leaving dismisses an unpinned panel.
+compact one-line quota peek in Simple mode (26pt at the default size), or a small
+bubble in Dynamic mode. Click opens/pins that agent's full 440pt panel. Leaving
+dismisses an unpinned peek. The full panel no longer opens merely from a hover.
 
 ## Windows platform boundary
 
@@ -58,6 +60,18 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
   The overlay passes pointer input through. Grid controls are shown only for grid
   styles; range/feather for soft glow. Rendering uses Qt's primitives rather than
   Core Animation; this is a Windows counterpart, not pixel-identical compositing.
+- Settings use source-style card rows, segmented selectors, switches and sliders.
+  Window/menu appearance and each screen's HUD appearance are explicit separate
+  scopes, following upstream. Themes update menus, statistics and already open
+  HUD/peek/panel surfaces; light outlines/tracks use dark hairlines.
+- `motion.py` supplies an exact damped spring and one shared clock that stops at
+  rest. Interrupted panel/selector/switch transitions retain position and velocity.
+  Decorative pointer lighting keeps controls/text stationary. Windows' client-area
+  animation preference suppresses springs and continuous glow when disabled.
+- The Acrylic adapter uses the explicit ABGR theme tint for every glass style;
+  the legacy untinted Clear blur path was removed. Rounded native regions clip
+  the compositor, and DWM's extra border is suppressed separately from Qt painting.
+  See [UI_AUDIT.md](UI_AUDIT.md) for native evidence and remaining review gates.
 - Acrylic replaces Apple Liquid Glass; Segoe UI / Microsoft YaHei UI replace
   Apple fonts. The Windows notch uses the source's fallback dimensions instead
   of claiming a physical camera notch exists.
@@ -79,7 +93,8 @@ These are still draft-port limitations, not promises of full Mac feature parity.
 | `Theme/Theme+Palettes.swift`, `Theme/StatusPalette.swift` | `source_design.py` reads source palette and 70% / 90% status colors |
 | `Components/AgentLogo.swift`, `Resources/{chatgpt,cursor}.png` | Original artwork; Codex's original #10a37f tint; Cursor's template tint |
 | `PanelLayout/PanelLayout.swift`, `Models/Settings/ScreenPlacement.swift` | Original 540pt/440pt widths, 22pt size and 1.5pt ring stroke |
-| `Notch/Island/IslandAnimation.swift` | Original 400ms transition and cubic curve (0.2, 0.8, 0.2, 1) |
+| `Notch/Island/IslandAnimation.swift` | Source transition timescale; the Windows shell uses a critically damped spring scaled to that duration for reversible morphs |
+| `Notch/Panel/AgentPeekView.swift` | `peek_view.py`: one-line Simple peek, source 26pt/9pt baseline, scaled gaps/padding, Dynamic bubble; click opens full details |
 | `Theme/HUDSurface.swift`, `JoinedGlass.swift` | `material.py`: Windows acrylic backdrop instead of Apple's compositor; source black-dimming semantics, a stand-in if unavailable |
 | `Notch/NotchGeometry.swift`, `IslandShape.swift` | `placement.py`, `views.surface_path`: y-down edge/offset/grab conversion and fallback notch silhouette |
 | `Notch/Glow/GlowMotion.swift`, `GlowMatrix.swift` | `glow_logic.py`: gain, noise, periods, flow sheen, Gaussian cutoff; `glow_view.py`: input-through Windows renderer |

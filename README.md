@@ -1,9 +1,5 @@
 <h1 align="center">Agent HUD</h1>
 
-Experimental: a [Windows source port of the Simple HUD for Codex and Cursor](windows/README.md)
-is available alongside the native macOS app: frosted, separate-agent meters,
-shown only for running clients. Port boundaries are documented separately.
-
 <p align="center">
   <strong>Your agents, at a glance.</strong><br>
   Usage, tokens and sessions for Claude Code, Codex and 16 more agents, at your Mac's notch or any screen edge.

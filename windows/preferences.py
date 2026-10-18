@@ -11,7 +11,7 @@ DEFAULTS=dict(mode='simple',glass=True,separates_agents=True,size=DESIGN['simple
     requires_alt=False,immediate_top=False,panel_quota=True,panel_tokens=True,
     panel_sessions=True,reset_countdown=True,panel_width=540,session_limit=5,
     glow_style='blur',glow_effect='breathe',glow_brightness=.9,glow_range=14,glow_blur=8,
-    glow_outward=True,glow_working=3,glow_idle=7,glow_depth=.6,grid_pitch=10,
+    glow_outward=True,glow_hidden=False,glow_working=3,glow_idle=7,glow_depth=.6,grid_pitch=10,
     grid_density=1,grid_core=0,grid_fade=5)
 
 RANGES=dict(size=(20,60),ring_width=(1,4),offset=(0,1),logo_size=(20,60),logo_gap=(.1,.6),
