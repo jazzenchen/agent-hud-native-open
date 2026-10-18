@@ -37,8 +37,14 @@ def main():
         # A HWND-only grab omits independent tool windows. Capture the bounded
         # screen area occupied by our opaque preview backdrop and its overlays.
         screenshot=scene.screen().grabWindow(0,scene.x(),scene.y(),scene.width(),scene.height())
-        screenshot.save(str(destination/('native-'+scheme+'.png')))
+        image=screenshot.toImage()
+        samples=[image.pixelColor(x,y).lightness() for x in range(30,scene.width(),80) for y in range(30,scene.height(),60)] if not image.isNull() else []
+        capture_valid=bool(samples and max(samples)-min(samples)>10)
+        capture_file='native-'+scheme+('' if capture_valid else '-unavailable')+'.png'
+        screenshot.save(str(destination/capture_file))
         result[scheme]=dict(meter_glass=bool(meter.native_glass),peek_glass=bool(meter.peek.native_glass),
+            capture_valid=capture_valid,capture_file=capture_file,
+            capture_note='Owned native scene captured' if capture_valid else 'Desktop capture unavailable/blank; cannot establish compositor fidelity',
             meter_size=[meter.width(),meter.height()],peek_size=[meter.peek.width(),meter.peek.height()],
             meter_rect=[meter.x()-scene.x(),meter.y()-scene.y(),meter.width(),meter.height()],
             peek_rect=[meter.peek.x()-scene.x(),meter.peek.y()-scene.y(),meter.peek.width(),meter.peek.height()])

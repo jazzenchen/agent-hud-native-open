@@ -80,6 +80,20 @@ class InteractionTests(unittest.TestCase):
         self.assertFalse(cfg['show_numbers']);self.assertEqual(cfg['size'],36)
         meter=self.meter(cfg);self.assertEqual(meter.mark_size,36)
 
+    def test_style_reset_persists_glass_and_glow_without_erasing_panel_layout(self):
+        manager=Application.__new__(Application);manager.app=self.app;manager.settings=load({});manager.data={}
+        manager.update=Mock();manager.refresh_themes=Mock();manager.tray=Mock();manager.menu=Mock()
+        screen=self.app.primaryScreen().name()
+        manager.settings['placements'][screen]=dict(mode='logos',glass=False,hud_appearance='light',glow_style='binary',glow_hidden=True,panel_width=680)
+        with tempfile.TemporaryDirectory() as folder:
+            manager.config=Path(folder)/'settings.json'
+            window=SettingsWindow(manager);self.addCleanup(window.close);window.reset_style()
+            recovered=load(json.loads(manager.config.read_text()))['placements'][screen]
+            self.assertEqual(recovered['mode'],'simple');self.assertTrue(recovered['glass'])
+            self.assertEqual(recovered['hud_appearance'],'dark');self.assertEqual(recovered['glow_style'],'blur')
+            self.assertFalse(recovered['glow_hidden']);self.assertEqual(recovered['panel_width'],680)
+            manager.update.assert_called_once();manager.refresh_themes.assert_called_once()
+
     def test_mode_group_and_panel_switches_change_real_geometry(self):
         meter=self.meter();initial=meter.width()
         meter.set_group_data({'Codex':FIXTURE,'Cursor':FIXTURE});self.assertGreater(meter.width(),initial)

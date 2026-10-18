@@ -1,7 +1,7 @@
 """SwiftUI-style controls for the Windows settings host; native keyboard semantics."""
 from PySide6.QtCore import Qt,QRectF,QPointF,Property,QSignalBlocker,Signal
-from PySide6.QtGui import QColor,QPainter,QPen,QFont,QIcon,QPixmap,QPainterPath,QRadialGradient
-from PySide6.QtWidgets import (QWidget,QCheckBox,QHBoxLayout,QVBoxLayout,QPushButton,QButtonGroup,
+from PySide6.QtGui import QColor,QPainter,QPen,QFont,QFontMetrics,QIcon,QPixmap,QPainterPath,QRadialGradient
+from PySide6.QtWidgets import (QWidget,QCheckBox,QHBoxLayout,QVBoxLayout,QPushButton,QButtonGroup,QStyledItemDelegate,QStyle,
     QSlider,QDoubleSpinBox,QLabel,QGraphicsOpacityEffect,QFrame,QSizePolicy)
 from motion import SpringDriver,animations_enabled
 
@@ -42,11 +42,13 @@ class Segmented(QWidget):
         self.animation=SpringDriver(self,frequency=5.5);self.animation.valueChanged.connect(self.set_selection)
         self.layout=QHBoxLayout(self);self.layout.setContentsMargins(3,3,3,3);self.layout.setSpacing(1)
         self.group=QButtonGroup(self);self.group.setExclusive(True);self.buttons=[]
+        face=QFont('Microsoft YaHei UI');face.setPixelSize(13);metrics=QFontMetrics(face)
+        widths=[max(40,metrics.horizontalAdvance(label)+20) for _,label in items]
         for index,(value,label) in enumerate(items):
             button=QPushButton(label);button.setObjectName('segment');button.setCheckable(True);button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setMinimumWidth(48);self.layout.addWidget(button,1);self.group.addButton(button,index);self.buttons.append(button)
+            button.setFixedWidth(widths[index]);self.layout.addWidget(button);self.group.addButton(button,index);self.buttons.append(button)
         self.group.idClicked.connect(self.setCurrentIndex);self.buttons[0].setChecked(True)
-        self.setFixedHeight(32);self.setMinimumWidth(230)
+        self.setFixedHeight(28);self.setFixedWidth(sum(widths)+len(items)-1+6)
     def currentData(self):return self.items[self.index][0]
     def findData(self,value):return next((i for i,(v,_) in enumerate(self.items) if v==value),-1)
     def setCurrentIndex(self,index):
@@ -65,9 +67,9 @@ class Segmented(QWidget):
         t=tokens(is_light(self));painter.setPen(QPen(QColor(t['border']),1));painter.setBrush(QColor(t['sidebar']))
         painter.drawRoundedRect(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),7,7)
         if not self.buttons:return
-        first=self.buttons[0].geometry();last=self.buttons[-1].geometry()
-        step=(last.x()-first.x())/max(1,len(self.buttons)-1)
-        pill=QRectF(first);pill.moveLeft(first.x()+self._selection*step)
+        position=max(0,min(len(self.buttons)-1,self._selection));left=int(position);right=min(left+1,len(self.buttons)-1);fraction=position-left
+        a,b=QRectF(self.buttons[left].geometry()),QRectF(self.buttons[right].geometry())
+        pill=QRectF(a.x()+(b.x()-a.x())*fraction,a.y(),a.width()+(b.width()-a.width())*fraction,a.height())
         painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(QColor('#ffffff' if is_light(self) else '#57575b'))
         if not self.isEnabled():painter.setOpacity(.45)
         painter.drawRoundedRect(pill,5,5);painter.end()
@@ -174,8 +176,53 @@ class SettingRows(QVBoxLayout):
                     subtitle=QLabel(self.subtitles[label]);subtitle.setProperty('subtitle',True);subtitle.setWordWrap(True);column.addWidget(subtitle)
                 layout.addWidget(labels,1)
             else:layout.addWidget(label,1)
-            if isinstance(control,(Segmented,SliderValue)):
-                control.setMaximumWidth(330);control.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed);layout.addWidget(control,2)
+            if isinstance(control,SliderValue):
+                control.setMaximumWidth(450);control.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed);layout.addWidget(control,3)
             else:
-                control.setMaximumWidth(220);layout.addWidget(control,0,Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+                if not isinstance(control,Segmented):control.setMaximumWidth(220)
+                layout.addWidget(control,0,Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
         row.setMinimumHeight(52);self.addWidget(row)
+
+class SidebarDelegate(QStyledItemDelegate):
+    def paint(self,p,option,index):
+        from theme import tokens
+        t=tokens(is_light(self.parent()));rect=QRectF(option.rect).adjusted(0,0,0,-4)
+        selected=bool(option.state & QStyle.StateFlag.State_Selected)
+        p.save();p.setRenderHint(QPainter.RenderHint.Antialiasing);p.setPen(Qt.PenStyle.NoPen)
+        if selected or option.state & QStyle.StateFlag.State_MouseOver:
+            p.setBrush(QColor('#0a84ff' if selected else t['border']));p.drawRoundedRect(rect,9,9)
+        icon=index.data(Qt.ItemDataRole.DecorationRole)
+        if icon:icon.paint(p,round(rect.left()+8),round(rect.top()+9),26,26)
+        face=QFont('Microsoft YaHei UI');face.setPixelSize(13);face.setWeight(QFont.Weight.DemiBold if selected else QFont.Weight.Normal)
+        p.setFont(face);p.setPen(QColor('white' if selected else t['ink']))
+        p.drawText(rect.adjusted(42,0,-6,0),Qt.AlignmentFlag.AlignVCenter|Qt.AlignmentFlag.AlignLeft,index.data());p.restore()
+
+class HudSample(QWidget):
+    """The source's 84pt settings preview, using the actual Windows meter renderer."""
+    def __init__(self,manager,screen_name):
+        super().__init__();self.manager=manager;self.screen_name=screen_name;self.overrides={}
+        from source_design import DESIGN
+        from views import SimpleMeterView
+        self.wallpaper=QPixmap(str(DESIGN['resources']/'settings-wallpaper.png'));self.setFixedHeight(84)
+        cfg={**manager.screen_settings(screen_name),'mode':'simple','edge':'top'}
+        self.meter=SimpleMeterView('Codex',manager.app.primaryScreen(),cfg,lambda _:None,preview=True)
+        self.meter.setParent(self);self.meter.setWindowFlags(Qt.WindowType.Widget)
+        self.meter.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.refresh();self.meter.show()
+        self.destroyed.connect(self.meter.panel.deleteLater);self.destroyed.connect(self.meter.peek.deleteLater);self.destroyed.connect(self.meter.glow.deleteLater)
+    def refresh(self):
+        self.overrides={};self.paint_meter()
+    def preview(self,key,value):
+        self.overrides[key]=value;self.paint_meter()
+    def paint_meter(self):
+        cfg={**self.manager.screen_settings(self.screen_name),**self.overrides,'mode':'simple','edge':'top'}
+        self.meter.settings=cfg
+        data=self.manager.data or {client:dict(quota=dict(windows=[dict(label='Weekly',used=used)]),local=dict(sessions=[])) for client,used in [('Codex',49),('Cursor',34)]}
+        self.meter.set_group_data(data);self.meter.move(round((self.width()-self.meter.width())/2),round((self.height()-self.meter.height())/2));self.update()
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if hasattr(self,'meter'):self.meter.move(round((self.width()-self.meter.width())/2),round((self.height()-self.meter.height())/2))
+    def paintEvent(self,event):
+        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing);path=QPainterPath();path.addRoundedRect(QRectF(self.rect()),6,6);p.setClipPath(path)
+        scaled=self.wallpaper.scaled(self.size(),Qt.AspectRatioMode.KeepAspectRatioByExpanding,Qt.TransformationMode.SmoothTransformation)
+        p.drawPixmap(round((self.width()-scaled.width())/2),round((self.height()-scaled.height())/2),scaled);p.end()

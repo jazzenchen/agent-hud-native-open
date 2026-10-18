@@ -307,6 +307,7 @@ class SimpleMeterView(QWidget):
         p.end()
 
     def enterEvent(self, event):
+        if self.preview and not self.isWindow():return
         self.leave_timer.stop()
         if not self.dragging:
             if self.settings.get('requires_alt'):

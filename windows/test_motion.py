@@ -47,6 +47,16 @@ class MotionAudit(unittest.TestCase):
             self.assertAlmostEqual(meter.panel.progress,1,places=3)
             self.assertFalse(meter.panel.animation.running)
 
+    def test_new_spring_does_not_inherit_elapsed_time_from_existing_animation(self):
+        first,second=SpringDriver(),SpringDriver();self.addCleanup(first.stop);self.addCleanup(second.stop)
+        clock=motion_clock()
+        with patch('motion.animations_enabled',return_value=True),patch('motion.time.monotonic') as now:
+            now.return_value=100.;first.retarget(1.)
+            now.return_value=101.;second.retarget(1.)
+            now.return_value=101.016;clock.frame()
+            self.assertTrue(0<second.state.position<.1)
+            self.assertTrue(first.state.settled)
+
     def test_switch_cancel_and_keyboard_activate_once(self):
         switch=Switch();switch.show();self.addCleanup(switch.close);self.app.processEvents()
         spy=QSignalSpy(switch.toggled)

@@ -51,12 +51,14 @@ class MotionClock(QObject):
         super().__init__(QApplication.instance());self.active=weakref.WeakSet();self.last=time.monotonic()
         self.timer=QTimer(self);self.timer.setTimerType(Qt.TimerType.PreciseTimer);self.timer.setInterval(16);self.timer.timeout.connect(self.frame)
     def add(self,driver):
+        if driver not in self.active:driver._last_frame=time.monotonic()
         self.active.add(driver)
         if not self.timer.isActive():self.last=time.monotonic();self.timer.start()
     def frame(self):
-        now=time.monotonic();elapsed=now-self.last;self.last=now
+        now=time.monotonic();self.last=now
         for driver in tuple(self.active):
             if not isValid(driver) or not driver.running:self.active.discard(driver);continue
+            elapsed=max(0,now-driver._last_frame);driver._last_frame=now
             driver.state.advance(elapsed);driver.valueChanged.emit(driver.state.position)
             if driver.state.settled:
                 driver.running=False;self.active.discard(driver);driver.finished.emit()

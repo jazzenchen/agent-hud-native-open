@@ -194,6 +194,11 @@ class Application:
     def screen_settings(self,name):
         return {**self.settings,**self.settings.get('placements',{}).get(name,{})}
 
+    def apply_screen_settings(self,values,screen):
+        validated={key:validate(key,value) for key,value in values.items()}
+        self.settings['placements'].setdefault(screen,{}).update(validated)
+        self.save();self.update(self.data);self.refresh_themes()
+
     def dragged(self,meter,point):
         screen=meter.screen.geometry()
         horizontal=meter.settings['edge'] in ('top','bottom')

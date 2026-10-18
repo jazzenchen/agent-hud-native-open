@@ -34,11 +34,14 @@ without satisfying the user's visual acceptance gate.
 
 ## Verification
 
-40 tests pass locally, including real control clicks through persistence and
+42 tests pass locally, including real control clicks through persistence and
 rendered-pixel checks for window/HUD/panel/peek light/dark changes. Regressions
 cover live menu dispatch, click versus drag, compact hover versus click-to-pin,
 rapid reversal, stable spring integration, reduced motion, and canceled/keyboard
 switch activation. Existing data/presence/hook checks remain in the suite.
+Style reset also persists glass/glow defaults while preserving panel layout.
+A newly started spring no longer inherits time spent on an earlier animation
+while the UI was busy rebuilding; a regression covers that first-frame jump.
 
 `native_material_preview.py` renders an explicitly owned sample scene with the
 normal Windows Qt backend. Its bounded screen captures include the compositor,
@@ -48,11 +51,11 @@ and does not alter the resident configuration. On Windows build 22631 at 1×:
 - Native light/dark captures were inspected; both meter and 28pt hover line had
   successful Acrylic calls and native rounded regions. Default 22pt sizing is
   separately checked at a 26pt hover-line height.
-- Actual open/close/open reversal settled correctly. The sample recorded a
-  median 16.84ms and P95 19.10ms between spring callbacks.
-- Qt paint/readback P95 was 0.719ms for the compact line and 3.842ms for the full
-  panel. Cached soft breathing glow was 0.364ms; grid styles ranged from 2.921ms
-  to 6.775ms in that run. These are CPU/readback costs, **not measured GPU frame
+- Actual open/close/open reversal settled correctly. The latest sample recorded
+  a median 17.24ms and P95 25.21ms between spring callbacks.
+- Qt paint/readback P95 was 0.585ms for the compact line and 3.135ms for the full
+  panel. Cached soft breathing glow was 0.404ms; grid styles ranged from 2.175ms
+  to 4.977ms in that run. These are CPU/readback costs, **not measured GPU frame
   time or an assurance of 60fps on every machine**.
 
 Reproduce fixtures (generated files stay ignored under windows/previews):
@@ -66,13 +69,25 @@ windows/.venv/Scripts/python.exe windows/native_material_preview.py windows/prev
 The native probe writes native-light.png, native-dark.png, native-material.json
 and ui-performance.json. The fixture renderer writes both light/dark settings
 and panel images. They are sample-data evidence, not screenshots of user records.
+If a remote/disconnected desktop returns a blank capture, the probe names it
+`*-unavailable.png` and records `capture_valid: false`; a blank image is never
+accepted as evidence of fidelity. Earlier successful visual observations and
+their limitations must be distinguished from an unavailable later capture.
+The latest probe returned blank captures for both themes. Native Acrylic calls
+and rounded regions succeeded, but latest compositor fidelity is unverified.
 
 ## Acceptance gate and remaining gaps
 
 The upstream Simple tour was inspected for hover/click behavior, and Swift
-settings/geometry/palette sources were inspected directly. Matched original Mac
-settings captures at the same viewport, state and fixture data are not yet
-available locally. Consequently **no numeric similarity score is reported**;
+settings/geometry/palette sources were inspected directly. Original Mac settings
+captures are now available from successful macOS reference workflow run
+[39160779551](https://github.com/nanhudev/agent-hud-open/actions/runs/39160779551).
+That separate verification branch uses unchanged upstream Swift source at
+bf19ac9 and does not update the Windows PR. Reference images were inspected at
+960×720; compact segmented controls, display row ordering, and the source
+wallpaper/HUD preview were corrected against them. There are still typography,
+native-control and row-spacing differences, and fixture/client state differs.
+Consequently **no numeric similarity score is reported**;
 passing tests or matching background pixels is not proof of 90% fidelity.
 
 Apple Liquid Glass/Core Animation and Windows Acrylic/Qt differ. Native Windows

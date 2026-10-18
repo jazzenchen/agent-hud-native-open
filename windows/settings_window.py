@@ -2,7 +2,8 @@
 from PySide6.QtCore import Qt,QTimer,QSize
 from PySide6.QtWidgets import (QDialog,QHBoxLayout,QVBoxLayout,QListWidget,QStackedWidget,
     QWidget,QScrollArea,QLabel,QComboBox,QCheckBox,QPushButton,QMessageBox,QListWidgetItem,QFrame,QSizePolicy)
-from settings_controls import Switch,Segmented,SliderValue,SettingRows,sidebar_icon,PageTransition,CardSurface
+from settings_controls import Switch,Segmented,SliderValue,SettingRows,sidebar_icon,PageTransition,CardSurface,SidebarDelegate,HudSample
+from preferences import DEFAULTS
 from theme import window_is_light,tokens,apply_widget_theme,native_titlebar
 from source_design import DESIGN
 from PySide6.QtGui import QIcon
@@ -37,8 +38,11 @@ class SettingsWindow(QDialog):
         self.selected_screen=manager.app.primaryScreen().name()
         self.root=QHBoxLayout(self);self.root.setContentsMargins(0,0,0,0);self.root.setSpacing(0)
         shell=QWidget();shell.setObjectName('sidebarShell');shell.setFixedWidth(212)
-        navigation=QVBoxLayout(shell);navigation.setContentsMargins(10,16,10,20);navigation.setSpacing(0)
-        self.sidebar=QListWidget();self.sidebar.setIconSize(QSize(26,26));self.sidebar.setSpacing(3)
+        navigation=QVBoxLayout(shell);navigation.setContentsMargins(10,0,10,12);navigation.setSpacing(4)
+        navigation.addSpacing(44)
+        preferences=QLabel('偏好设置');preferences.setProperty('subtitle',True);preferences.setContentsMargins(12,0,0,8);navigation.addWidget(preferences)
+        self.sidebar=QListWidget();self.sidebar.setIconSize(QSize(26,26));self.sidebar.setSpacing(0)
+        self.sidebar.setItemDelegate(SidebarDelegate(self.sidebar))
         self.sidebar.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         navigation.addWidget(self.sidebar,1)
         identity=QWidget();identity.setObjectName('appIdentity');identity_layout=QHBoxLayout(identity);identity_layout.setContentsMargins(10,0,0,0);identity_layout.setSpacing(10)
@@ -70,10 +74,10 @@ class SettingsWindow(QDialog):
         while self.stack.count():
             widget=self.stack.widget(0);self.stack.removeWidget(widget);widget.deleteLater()
         for name,icon,tint in [('通用','general','#8e8e93'),('智能体','agents','#30b0c7'),('显示','display','#7c65e8'),('实验选项','experimental','#ff9500')]:
-            item=QListWidgetItem(sidebar_icon(icon,tint),self.tr(name));item.setSizeHint(QSize(180,44));self.sidebar.addItem(item)
+            item=QListWidgetItem(sidebar_icon(icon,tint),self.tr(name));item.setSizeHint(QSize(192,48));self.sidebar.addItem(item)
         for method in (self.general,self.sources,self.display,self.experimental):
             page=QWidget();page.setObjectName('settingsPage');outer=QVBoxLayout(page);outer.setContentsMargins(0,0,0,0);outer.setSpacing(0)
-            header=QWidget();header.setObjectName('pageHeader');self._header_layout=QVBoxLayout(header);self._header_layout.setContentsMargins(28,26,28,22);self._header_layout.setSpacing(7)
+            header=QWidget();header.setObjectName('pageHeader');self._header_layout=QVBoxLayout(header);self._header_layout.setContentsMargins(20,24,20,20);self._header_layout.setSpacing(7)
             outer.addWidget(header)
             content=QWidget();content.setObjectName('settingsContent');content.setMaximumWidth(640)
             layout=QVBoxLayout(content);layout.setContentsMargins(0,0,0,0);layout.setSpacing(28)
@@ -123,7 +127,10 @@ class SettingsWindow(QDialog):
         section=QWidget();column=QVBoxLayout(section);column.setContentsMargins(0,0,0,0);column.setSpacing(12)
         heading=QLabel(self.tr(title));heading.setProperty('sectionTitle',True);column.addWidget(heading)
         card=CardSurface();column.addWidget(card)
-        form=SettingRows(card,{'登录时启动':'登录后，自动监测已打开的智能体。','按 agent 分开':'各智能体独立显示，保留各自的面板。','按 Alt 才展开':'指针经过时不展开，悬停后按 Alt 打开。','窗口与菜单外观':'设置、统计和菜单；HUD 外观在「显示」中单独设置。','HUD 外观':'这块屏幕上的 HUD 和展开面板。'})
+        form=SettingRows(card,{'登录时启动':'登录后，自动开始监测用量。','按 agent 分开':'悬停某个标志只展开该 agent 的面板，不再展开全部 agent 的面板。','按 Alt 才展开':'指针经过时不展开，悬停后按 Alt 打开。',
+            '跟随所在屏幕':'每个窗口和菜单栏采用所在屏幕的 HUD 外观，移到另一块屏幕时跟着变。HUD 外观在「显示」中单独设置，与这里的窗口外观独立。',
+            '客户端回调':'显示会话的开始与完成状态，用量和额度读取不受影响。',
+            '位置':'回到这块屏幕的顶部安全位置。','HUD 样式':'形态、位置、大小、外观和光晕一起回到默认。'})
         layout.addWidget(section);return form
 
     def value(self,key,screen=False):
@@ -162,14 +169,14 @@ class SettingsWindow(QDialog):
     def general(self,layout):
         self.title(layout,'通用','外观、语言、启动方式和客户端回调。')
         form=self.group(layout,'外观与语言')
-        appearance=self.combo(form,'窗口与菜单外观','appearance',[('system','跟随系统'),('light','浅色'),('dark','深色')],rebuild=True)
+        appearance=self.combo(form,'外观','appearance',[('system','跟随系统'),('light','浅色'),('dark','深色')],rebuild=True)
+        appearance.setToolTip('设置窗口、统计和菜单的外观；HUD 外观在「显示」中单独设置。')
         appearance.setEnabled(not self.manager.settings['match_screen'])
         self.check(form,'跟随所在屏幕','match_screen').toggled.connect(lambda _:QTimer.singleShot(0,self.rebuild))
         self.combo(form,'语言','language',[('system','跟随系统'),('zh','中文'),('en','English')],rebuild=True)
         form=self.group(layout,'启动');self.check(form,'登录时启动','launch_at_login')
         form=self.group(layout,'客户端');self.check(form,'客户端回调','client_hooks')
-        note=QLabel('显示会话的开始与完成状态，用量和额度读取不受影响。')
-        note.setWordWrap(True);note.setProperty('subtitle',True);form.addRow(note)
+        wait=QComboBox();wait.addItem('10 分钟');wait.setEnabled(False);wait.setToolTip('权限审批暂未开放，由客户端自行询问。');form.addRow('等待回答',wait)
 
     def sources(self,layout):
         self.title(layout,'智能体','管理实时状态和显示窗口。未运行的客户端始终隐藏。')
@@ -189,23 +196,29 @@ class SettingsWindow(QDialog):
         button=QPushButton('立即刷新运行状态');button.clicked.connect(lambda:self.manager.refresh_now());form.addRow(button)
 
     def display(self,layout):
-        self.title(layout,'显示','每块屏幕单独设置；直接拖动 HUD 可吸附到四条边，修改立即生效。')
+        self.title(layout,'显示','自定义灵动岛光晕与面板内容，更改自动生效。')
         form=self.group(layout,'屏幕')
-        choose=QComboBox()
-        for screen in self.manager.app.screens():choose.addItem(screen.name(),screen.name())
-        choose.setCurrentIndex(max(0,choose.findData(self.selected_screen)))
-        choose.currentIndexChanged.connect(lambda _:self.change_screen(choose.currentData()))
-        form.addRow(self.tr('显示器'),choose)
+        if len(self.manager.app.screens())>1:
+            choose=QComboBox()
+            for screen in self.manager.app.screens():choose.addItem(screen.name(),screen.name())
+            choose.setCurrentIndex(max(0,choose.findData(self.selected_screen)))
+            choose.currentIndexChanged.connect(lambda _:self.change_screen(choose.currentData()))
+            form.addRow(self.tr('显示器'),choose)
         self.combo(form,'HUD 形态','mode',[('notch','刘海'),('simple','简约'),('logos','动态')],True,True)
-        self.combo(form,'位置','edge',[('top','顶部'),('right','右侧'),('bottom','底部'),('left','左侧')],True)
-        self.number(form,'沿边位置','offset',0,1,.01)
-        button=QPushButton(self.tr('重置位置'));button.clicked.connect(self.reset_position);form.addRow(button)
-        self.check(form,'按 agent 分开','separates_agents',True)
         self.combo(form,'HUD 外观','hud_appearance',[('dark','深色'),('light','浅色'),('system','跟随系统')],True)
-        self.check(form,'磨砂','glass',True)
-        self.combo(form,'材质','glass_style',[('clear','Clear'),('regular','Regular'),('material','磨砂')],True)
+        surface=Segmented([('solid','实色'),('clear','Clear'),('regular','Regular'),('material','磨砂')])
+        selected=self.value('glass_style',True) if self.value('glass',True) else 'solid'
+        surface.setCurrentIndex(surface.findData(selected));surface.currentIndexChanged.connect(lambda _:self.set_surface(surface.currentData()))
+        surface.setObjectName('surface');form.addRow('材质',surface)
         self.number(form,'透明度','transparency',0,100,1,suffix=' %')
+        button=QPushButton(self.tr('重置位置'));button.clicked.connect(self.reset_position);form.addRow('位置',button)
+        button=QPushButton('恢复默认');button.clicked.connect(self.reset_style);form.addRow('HUD 样式',button)
+        own=any(key in self.manager.settings['placements'].get(self.selected_screen,{}) for key in ('panel_quota','panel_tokens','panel_sessions','panel_width','session_limit','reset_countdown'))
+        button=QPushButton('使用共用布局' if own else '恢复上一版');button.setEnabled(own);button.clicked.connect(self.shared_layout)
+        label=QLabel('面板布局\n'+('这块屏幕的布局' if own else '使用共用布局'));form.addRow(label,button)
+        if self.value('mode',True)!='notch':self.check(form,'按 agent 分开','separates_agents',True)
         if self.value('mode',True)=='simple':
+            self.hud_preview=HudSample(self.manager,self.selected_screen);form.addRow(self.hud_preview)
             self.number(form,'大小','size',20,60,1,suffix=' pt')
             self.number(form,'Logo 间距','gap',.1,.6,.05)
             self.check(form,'显示圆环','show_rings',True)
@@ -249,3 +262,22 @@ class SettingsWindow(QDialog):
 
     def reset_position(self):
         self.write('edge','top',True);self.write('offset',.5,True);self.rebuild()
+
+    def set_surface(self,value):
+        self.write('glass',value!='solid',True)
+        if value!='solid':self.write('glass_style',value,True)
+
+    def reset_style(self):
+        keys=('mode','edge','offset','size','ring_width','show_rings','show_numbers','show_logos','logo_size','logo_gap','edge_distance','gap','hud_appearance','glass','glass_style','transparency','separates_agents')
+        keys+=tuple(key for key in DEFAULTS if key.startswith(('glow_','grid_')))
+        values={key:DEFAULTS[key] for key in keys}
+        if hasattr(self.manager,'apply_screen_settings'):self.manager.apply_screen_settings(values,self.selected_screen)
+        else:
+            for key,value in values.items():self.write(key,value,True)
+        self.rebuild()
+
+    def shared_layout(self):
+        fields=self.manager.settings['placements'].get(self.selected_screen,{})
+        for key in ('panel_quota','panel_tokens','panel_sessions','panel_width','session_limit','reset_countdown'):fields.pop(key,None)
+        if hasattr(self.manager,'save'):self.manager.save();self.manager.update(self.manager.data)
+        self.rebuild()
