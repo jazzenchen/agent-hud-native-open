@@ -1,4 +1,4 @@
-# Windows source port: Simple HUD, Codex and Cursor
+# Windows source port: Codex and Cursor
 
 Windows counterpart of the upstream **SimpleMeterView** and its separate-agent
 hover panels. Defaults: **Simple mode · frosted material · separate agents**.
@@ -28,9 +28,46 @@ cd windows
 The installer creates an isolated `.venv`, installs Qt Essentials and psutil,
 preserves unrelated Cursor hooks, replaces only this checkout's running HUD, and
 updates the Desktop shortcut. No administrator rights, client launch or Windows
-appearance setting change is needed. A tray menu changes the frosted material
-and HUD size; 22pt is the original source default. Hover opens that agent's own
-440pt panel; click pins/unpins it; leaving dismisses an unpinned panel.
+appearance setting change is needed. Open **Settings** from the tray, HUD right
+click menu, or the panel's gear. Launching the Desktop shortcut again raises the
+settings window of the existing instance. Hover opens the selected agent's
+440pt panel by default; click pins/unpins it; leaving dismisses an unpinned panel.
+
+## Windows platform boundary
+
+The port keeps upstream Swift sources untouched. `source_design.py` reads their
+palette, artwork and geometry constants. Platform-independent `placement.py`,
+`glow_logic.py` and `look_logic.py` translate the original drag/offset, motion,
+Gaussian fade and material-opacity rules. `runtime.py` handles presence and data
+independently of views. Qt hosts the windows and paints the SwiftUI counterparts;
+`material.py` is the Windows-only compositor boundary.
+
+- Drag from anywhere on the collapsed HUD; release to snap to the nearest edge.
+  The grabbed point remains anchored along the whole queue. Positions and display
+  settings persist per monitor. Dragging a notch changes it to the logo dock, as
+  upstream does. Click and drag use different paths, so dropping does not pin a panel.
+- Settings follow the original General / Agents / Display / Experimental layout.
+  General controls appearance, language, launch at login and reversible Cursor
+  observers. Agents enable/disable reads and display for Codex/Cursor.
+- Display supports Simple, logo dock and a 200pt stand-in notch (plus original
+  flares), separate/combined agents, four edges, normalized position, light/dark
+  HUD, acrylic style/opacity, size, ring/number visibility, quota/token/session
+  blocks, panel width, session limit, hover/collapse timing and Alt gating.
+- Dock/notch glow provides soft/dot/ASCII/block/Braille/binary renderers and the
+  original breathe/flow/scan/ripple/shimmer/boot gain formulas. Simple has no glow.
+  The overlay passes pointer input through. Grid controls are shown only for grid
+  styles; range/feather for soft glow. Rendering uses Qt's primitives rather than
+  Core Animation; this is a Windows counterpart, not pixel-identical compositing.
+- Acrylic replaces Apple Liquid Glass; Segoe UI / Microsoft YaHei UI replace
+  Apple fonts. The Windows notch uses the source's fallback dimensions instead
+  of claiming a physical camera notch exists.
+
+Remaining gaps are explicit in Experimental: animated Bot direction, the MCP
+draft/save host and approval bridge are not implemented. Historical statistics
+are limited to the available cumulative session records, not the full Mac
+statistics interface. English currently covers settings labels; notices and some
+panel text remain Chinese. Other providers remain outside this Codex/Cursor port.
+These are still draft-port limitations, not promises of full Mac feature parity.
 
 ## Source correspondence
 
@@ -44,6 +81,10 @@ and HUD size; 22pt is the original source default. Hover opens that agent's own
 | `PanelLayout/PanelLayout.swift`, `Models/Settings/ScreenPlacement.swift` | Original 540pt/440pt widths, 22pt size and 1.5pt ring stroke |
 | `Notch/Island/IslandAnimation.swift` | Original 400ms transition and cubic curve (0.2, 0.8, 0.2, 1) |
 | `Theme/HUDSurface.swift`, `JoinedGlass.swift` | `material.py`: Windows acrylic backdrop instead of Apple's compositor; source black-dimming semantics, a stand-in if unavailable |
+| `Notch/NotchGeometry.swift`, `IslandShape.swift` | `placement.py`, `views.surface_path`: y-down edge/offset/grab conversion and fallback notch silhouette |
+| `Notch/Glow/GlowMotion.swift`, `GlowMatrix.swift` | `glow_logic.py`: gain, noise, periods, flow sheen, Gaussian cutoff; `glow_view.py`: input-through Windows renderer |
+| `Theme/HUDLook.swift`, `ScreenPlacement.swift` | `look_logic.py`: separate 0.6 cap for Solid/Clear/Regular and full material transparency |
+| `Settings/SettingsView.swift`, `GeneralPane`, `SourcesPane`, `ScreensPane`, `GlowPane` | `settings_window.py`, `preferences.py`: source page structure, immediate persisted settings, per-screen model |
 | `Font+UI.swift` | Windows system font (Segoe UI) in place of Apple's SF Pro |
 
 Desktop paths in this table are relative to `Sources/AgentHUDDesktop`; core

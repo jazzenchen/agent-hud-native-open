@@ -66,11 +66,12 @@ class Monitor:
         self.stop = threading.Event()
         self.lock = threading.Lock()
         self.open = set()
+        self.enabled = {'Codex','Cursor'}
         self.epochs = {'Codex': 0, 'Cursor': 0}
         self.quotas, self.last_query, self.busy = {}, {}, set()
 
     def poll_once(self):
-        opened = self.presence()
+        opened = self.presence() & self.enabled
         with self.lock:
             for client in self.open ^ opened:
                 self.epochs[client] += 1
@@ -102,7 +103,7 @@ class Monitor:
     def query(self, client, epoch):
         try:
             # Closing after scheduling must not start the engine either.
-            if self.stop.is_set() or client not in self.presence():
+            if self.stop.is_set() or client not in self.enabled or client not in self.presence():
                 return
             data = self.quota_readers[client]()
         except Exception as error:

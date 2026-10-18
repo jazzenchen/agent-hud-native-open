@@ -7,6 +7,13 @@ from runtime import Monitor, classify_clients
 
 
 class PresenceTests(unittest.TestCase):
+    def test_disabled_running_client_is_not_read_or_queried(self):
+        calls=[]
+        monitor=Monitor(lambda _:None,presence=lambda:{'Cursor'},local={'Cursor':lambda:calls.append('read')},quota={'Cursor':lambda:calls.append('query')})
+        monitor.enabled={'Codex'}
+        self.assertEqual(monitor.poll_once(),{});self.assertEqual(calls,[])
+        monitor.stop.set()
+
     def test_closed_apps_and_our_probe_are_not_open_clients(self):
         processes=[dict(pid=1,name='Cursor.exe',exe='C:/Cursor/Cursor.exe',cmdline=[]),
                    dict(pid=2,name='codex.exe',exe='C:/OpenAI/Codex/codex.exe',cmdline=['codex.exe','app-server']),

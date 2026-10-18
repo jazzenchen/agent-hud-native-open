@@ -1,8 +1,9 @@
 """Windows-only replacement for HUDSurface/JoinedGlass's native backdrop."""
 import os
+from look_logic import dimming
 
 
-def frosted_backdrop(handle, enabled=True):
+def frosted_backdrop(handle, enabled=True, transparency=50, light=False, style='material'):
     if os.name != 'nt':
         return False
     import ctypes
@@ -16,9 +17,10 @@ def frosted_backdrop(handle, enabled=True):
         _fields_ = [('attribute', ctypes.c_int), ('data', ctypes.c_void_p), ('size', ctypes.c_size_t)]
 
     try:
-        # Acrylic, 70% black dimming: the upstream 50% transparency maps to
-        # 70% retained black (HUDLook.glassDimming). No system settings change.
-        accent = Accent(4 if enabled else 0, 2, 0xB2000000, 0)
+        # Retain the original HUDLook dimming semantics; only the compositor changes.
+        alpha=max(1,round(255*dimming(transparency,True,style)))
+        rgb=0x00f5f5f7 if light else 0
+        accent = Accent((3 if style=='clear' else 4) if enabled else 0, 2, (alpha<<24)|rgb, 0)
         data = Data(19, ctypes.addressof(accent), ctypes.sizeof(accent))
         user = ctypes.WinDLL('user32', use_last_error=True)
         function = user.SetWindowCompositionAttribute

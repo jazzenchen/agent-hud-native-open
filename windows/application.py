@@ -14,10 +14,9 @@ from providers import DATA
 from runtime import Monitor
 from source_design import DESIGN
 from views import SimpleMeterView, compact
-
-
-DEFAULTS = dict(mode='simple', glass=True, separates_agents=True,
-                size=DESIGN['simple_size'], ring_width=DESIGN['ring_width'])
+from placement import nearest_placement,group_origin
+from preferences import DEFAULTS,load,validate
+from settings_window import SettingsWindow
 
 
 class Bridge(QObject):
@@ -59,16 +58,16 @@ class Application:
     def __init__(self,app):
         self.app=app
         DATA.mkdir(parents=True,exist_ok=True)
-        self.settings=dict(DEFAULTS)
+        self.settings=load({})
         self.config=DATA/'windows-settings.json'
         try:
             saved=json.loads(self.config.read_text(encoding='utf-8'))
-            for key in ('glass','size'):
-                if key in saved:self.settings[key]=saved[key]
+            self.settings=load(saved)
         except (OSError,ValueError):pass
         self.windows={}
         self.data={}
         self.dialogs=[]
+        self.settings_window=None
         self.bridge=Bridge()
         self.bridge.snapshot.connect(self.update)
         self.tray=QSystemTrayIcon(self.tray_icon(),app)
@@ -78,6 +77,8 @@ class Application:
         self.tray.activated.connect(self.tray_click)
         self.tray.show()
         self.monitor=Monitor(self.bridge.snapshot.emit)
+        self.monitor.enabled=set(self.settings['enabled_clients'])
+        self.tray.setVisible(self.settings['show_tray'])
         threading.Thread(target=self.monitor.run,daemon=True).start()
         app.aboutToQuit.connect(self.monitor.stop.set)
         app.screenAdded.connect(lambda _:self.update(self.data))
@@ -95,7 +96,7 @@ class Application:
         menu=QMenu()
         menu.setStyleSheet('QMenu{background:#282828;color:#f5f5f7;border:1px solid #484848;border-radius:8px;padding:6px} '
                            'QMenu::item{padding:7px 22px} QMenu::item:selected{background:#454545;border-radius:4px}')
-        mode=menu.addAction('简约模式 · 按 Agent 分开');mode.setEnabled(False)
+        menu.addAction('设置…',self.show_settings)
         glass=menu.addAction('磨砂背景');glass.setCheckable(True);glass.setChecked(self.settings['glass'])
         glass.toggled.connect(self.set_glass)
         sizes=menu.addMenu('HUD 大小')
@@ -117,13 +118,59 @@ class Application:
         self.tray.setContextMenu(self.tray_menu)
 
     def set_glass(self,value):
-        self.settings['glass']=value;self.save()
-        for meter in self.windows.values():
-            meter.apply_material()
-            meter.panel.hide();meter.panel.pinned=False
+        self.apply_setting('glass',value)
 
     def set_size(self,value):
-        self.settings['size']=value;self.save();self.update(self.data)
+        self.apply_setting('size',value)
+
+    def show_settings(self):
+        if self.settings_window is None:self.settings_window=SettingsWindow(self)
+        self.settings_window.show();self.settings_window.raise_();self.settings_window.activateWindow()
+
+    def refresh_now(self):
+        with self.monitor.lock:self.monitor.last_query.clear()
+
+    def apply_setting(self,key,value,screen=None):
+        value=validate(key,value)
+        if screen is None:
+            if key=='client_hooks':
+                from install_hooks import configure
+                configure(Path.home()/'.cursor/hooks.json',remove=not value)
+            elif key=='launch_at_login':
+                import shutil
+                startup=Path(os.environ['APPDATA'])/'Microsoft/Windows/Start Menu/Programs/Startup/Agent HUD Open.lnk'
+                if value:
+                    import winreg
+                    with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders') as reg:
+                        desktop=Path(os.path.expandvars(winreg.QueryValueEx(reg,'Desktop')[0]))
+                    source=desktop/'Agent HUD Open.lnk'
+                    if not source.exists():raise RuntimeError('请先运行 Windows 安装脚本以创建快捷方式。')
+                    startup.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,startup)
+                elif startup.exists():startup.unlink()
+            self.settings[key]=value
+        else:self.settings['placements'].setdefault(screen,{})[key]=value
+        self.monitor.enabled=set(self.settings['enabled_clients'])
+        self.tray.setVisible(self.settings['show_tray'])
+        self.save();self.update(self.data)
+        for meter in self.windows.values():meter.apply_material()
+
+    def screen_settings(self,name):
+        return {**self.settings,**self.settings.get('placements',{}).get(name,{})}
+
+    def dragged(self,meter,point):
+        screen=meter.screen.geometry()
+        horizontal=meter.settings['edge'] in ('top','bottom')
+        peers=[m for (name,_),m in self.windows.items() if name==meter.screen.name()]
+        cfg=meter.settings
+        gap=round(cfg['size']*cfg['gap']) if cfg['mode']=='simple' else round(cfg['logo_size']*cfg['logo_gap'])
+        runs=[m.width() if horizontal else m.height() for m in peers]
+        index=peers.index(meter);run=sum(runs)+max(0,len(runs)-1)*gap
+        grabbed=sum(runs[:index])+index*gap+runs[index]*getattr(meter,'grab_fraction',.5)
+        extent=(run,max(m.height() for m in peers)) if horizontal else (max(m.width() for m in peers),run)
+        position=nearest_placement(point.x(),point.y(),(screen.x(),screen.y(),screen.width(),screen.height()),extent,meter.settings['edge'],grabbed/max(1,run))
+        if meter.settings.get('mode')=='notch':position['mode']='logos'
+        self.settings.setdefault('placements',{}).setdefault(meter.screen.name(),{}).update(position)
+        self.save();self.update(self.data)
 
     def show_usage(self,client,data):
         window=UsageWindow(client,data)
@@ -132,33 +179,48 @@ class Application:
         window.show()
 
     def update(self,snapshot):
+        snapshot={k:v for k,v in snapshot.items() if k in self.settings['enabled_clients']}
         self.data=snapshot
-        wanted={(screen.name(),client) for screen in self.app.screens() for client in snapshot}
+        groups={}
+        for screen in self.app.screens():
+            cfg=self.screen_settings(screen.name())
+            groups[screen.name()]=[[c] for c in snapshot] if cfg['separates_agents'] and cfg['mode']!='notch' else [list(snapshot)] if snapshot else []
+        wanted={(screen,clients[0] if len(clients)==1 else 'group') for screen,sets in groups.items() for clients in sets}
         for key in list(self.windows):
             if key not in wanted:
-                meter=self.windows.pop(key);meter.hide_all();meter.panel.deleteLater();meter.deleteLater()
+                meter=self.windows.pop(key);meter.hide_all();meter.glow.deleteLater();meter.panel.deleteLater();meter.deleteLater()
         for screen in self.app.screens():
             meters=[]
-            for client in ('Codex','Cursor'):
-                if client not in snapshot:continue
-                key=(screen.name(),client)
+            for clients in groups[screen.name()]:
+                client=clients[0]
+                key=(screen.name(),client if len(clients)==1 else 'group')
                 if key not in self.windows:
-                    meter=SimpleMeterView(client,screen,self.settings,self.context_menu)
+                    meter=SimpleMeterView(client,screen,self.screen_settings(screen.name()),self.context_menu)
                     meter.usage_callback=self.show_usage
+                    meter.settings_callback=self.show_settings
+                    meter.placement_callback=self.dragged
                     self.windows[key]=meter
                 meter=self.windows[key]
-                meter.set_data(snapshot[client]);meters.append(meter)
-            gap=round(self.settings['size']*.45)
-            width=sum(m.width() for m in meters)+max(0,len(meters)-1)*gap
-            x=screen.geometry().center().x()-width/2
-            y=screen.geometry().top()+DESIGN['edge_margin']
+                meter.settings=self.screen_settings(screen.name())
+                meter.set_group_data({c:snapshot[c] for c in clients});meters.append(meter)
+            cfg=self.screen_settings(screen.name())
+            edge=cfg['edge'] if cfg['mode']!='notch' else 'top';horizontal=edge in ('top','bottom')
+            gap=round(cfg['size']*cfg['gap']) if cfg['mode']=='simple' else round(cfg['logo_size']*cfg['logo_gap'])
+            width=sum(m.width() for m in meters)+max(0,len(meters)-1)*gap if horizontal else max([m.width() for m in meters] or [0])
+            height=max([m.height() for m in meters] or [0]) if horizontal else sum(m.height() for m in meters)+max(0,len(meters)-1)*gap
+            rect=screen.geometry()
+            x,y=group_origin((rect.x(),rect.y(),rect.width(),rect.height()),(width,height),edge,cfg['offset'] if cfg['mode']!='notch' else .5,3 if cfg['mode']=='simple' else 0)
             for meter in meters:
-                meter.place(x,y)
+                if not meter.dragging:meter.place(x,y)
                 if not meter.isVisible():meter.show();meter.apply_material()
-                x+=meter.width()+gap
+                meter.glow.sync()
+                if horizontal:x+=meter.width()+gap
+                else:y+=meter.height()+gap
         self.tray.setToolTip('Agent HUD · '+(' / '.join(snapshot) if snapshot else '未打开 Codex / Cursor'))
+        if self.settings_window is not None:
+            for client,label in self.settings_window.status_labels.items():label.setText('运行中' if client in snapshot else '未运行')
         # Health metadata only; useful for checking hidden/background operation.
-        status=dict(running=sorted(snapshot),mode='simple',separates_agents=True,
+        status=dict(running=sorted(snapshot),mode=self.settings['mode'],separates_agents=self.settings['separates_agents'],
                     windows=[dict(agent=m.client,screen=key[0],glass=m.native_glass,visible=m.isVisible())
                              for key,m in self.windows.items()])
         temporary=DATA/'windows-status.tmp'
@@ -184,7 +246,21 @@ def preview(app,directory):
         meter.grab().save(str(directory/(client.lower()+'-simple.png')))
         meter.panel.progress=1.;meter.panel.animate(1.);meter.panel.show();app.processEvents()
         meter.panel.grab().save(str(directory/(client.lower()+'-panel.png')))
-        meter.hide_all();meter.panel.close();meter.close()
+        for mode in ('logos','notch'):
+            meter.settings['mode']=mode;meter.refresh_size();meter.glow.sync();app.processEvents()
+            meter.grab().save(str(directory/(client.lower()+'-'+mode+'.png')))
+        meter.hide_all();meter.glow.close();meter.panel.close();meter.close()
+    class PreviewManager:
+        def __init__(self):self.app=app;self.settings=load({});self.data={}
+        def screen_settings(self,name):return {**self.settings,**self.settings['placements'].get(name,{})}
+        def apply_setting(self,key,value,screen=None):
+            target=self.settings if screen is None else self.settings['placements'].setdefault(screen,{})
+            target[key]=validate(key,value)
+        def refresh_now(self):pass
+    settings=SettingsWindow(PreviewManager());settings.show();app.processEvents()
+    for index,name in enumerate(('general','agents','display','experimental')):
+        settings.sidebar.setCurrentRow(index);app.processEvents();settings.grab().save(str(directory/('settings-'+name+'.png')))
+    settings.close()
 
 
 def main():
@@ -192,6 +268,7 @@ def main():
     parser.add_argument('--preview-dir',type=Path)
     args=parser.parse_args()
     app=QApplication(sys.argv[:1])
+    app.setStyle('Fusion')
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName('Agent HUD Open')
     if args.preview_dir:
@@ -199,10 +276,16 @@ def main():
     # Keep one resident UI, with no window at all until a watched client opens.
     from PySide6.QtNetwork import QLocalServer, QLocalSocket
     socket=QLocalSocket();socket.connectToServer('agent-hud-open-windows-v2')
-    if socket.waitForConnected(200):return
+    if socket.waitForConnected(200):
+        socket.write(b'settings');socket.flush();socket.waitForBytesWritten(200);return
     QLocalServer.removeServer('agent-hud-open-windows-v2')
     server=QLocalServer();server.listen('agent-hud-open-windows-v2')
     manager=Application(app)
+    def activate_existing():
+        connection=server.nextPendingConnection()
+        if connection:
+            manager.show_settings();connection.disconnectFromServer();connection.deleteLater()
+    server.newConnection.connect(activate_existing)
     app.exec()
 
 
