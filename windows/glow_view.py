@@ -1,7 +1,7 @@
 """Windows transparent, input-through compositor for source GlowMotion math."""
 import time,math
 from PySide6.QtCore import Qt,QTimer,QRectF,QPointF
-from PySide6.QtGui import QColor,QPainter,QPen,QFont,QPainterPath,QTransform
+from PySide6.QtGui import QColor,QPainter,QPen,QFont,QPainterPath,QTransform,QLinearGradient,QBrush
 from PySide6.QtWidgets import QWidget
 from glow_logic import gain,strength,distance,sheen,noise,BAYER
 
@@ -36,6 +36,7 @@ class GlowView(QWidget):
         running=any(r.get('state')=='running' for data in self.meter.group_data.values() for r in data.get('local',{}).get('sessions',[]))
         period=cfg['glow_working'] if running else cfg['glow_idle'];pitch=cfg['grid_pitch']
         from views import level,tightest,color
+        self.meter.palette_colors()
         tint=color(level(tightest(self.meter.data)))
         def ink(alpha,x):
             c=QColor(tint)
@@ -46,9 +47,13 @@ class GlowView(QWidget):
         if cfg['glow_style']=='blur':
             extent=cfg['glow_range']+3*cfg['glow_blur']
             for spread in range(math.ceil(extent),0,-2):
-                motion=gain(cfg['glow_effect'],seconds,period,self.width()/2,spread,pitch,self.width(),cfg['glow_depth'])
-                alpha=.06*math.exp(-max(0,spread-cfg['glow_range'])**2/max(1,2*cfg['glow_blur']**2))*motion
-                p.setPen(QPen(ink(alpha,self.width()/2),3));p.setBrush(Qt.BrushStyle.NoBrush)
+                base=.06*math.exp(-max(0,spread-cfg['glow_range'])**2/max(1,2*cfg['glow_blur']**2))
+                gradient=QLinearGradient(0,0,self.width(),0)
+                for stop in range(17):
+                    x=self.width()*stop/16
+                    motion=gain(cfg['glow_effect'],seconds,period,x,spread,pitch,self.width(),cfg['glow_depth'],stop,round(spread))
+                    gradient.setColorAt(stop/16,ink(base*motion,x))
+                p.setPen(QPen(QBrush(gradient),3));p.setBrush(Qt.BrushStyle.NoBrush)
                 p.drawRoundedRect(QRectF(margin-spread,margin-spread,w+2*spread,h+2*spread),radius+spread,radius+spread)
         else:
             style=cfg['glow_style'];step_y=pitch*(2 if style=='braille' else 1)
