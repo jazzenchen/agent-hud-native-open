@@ -22,6 +22,7 @@ DATA = Path(os.environ.get('LOCALAPPDATA', HOME / '.local/share')) / 'AgentHUDOp
 CODEX = Path(os.environ.get('CODEX_HOME', HOME / '.codex'))
 CURSOR_DB = Path(os.environ.get('APPDATA', HOME / 'AppData/Roaming')) / 'Cursor/User/globalStorage/state.vscdb'
 HIDDEN = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+PROBE_PIDS = set()
 
 
 @contextmanager
@@ -53,6 +54,7 @@ def tail_records(path, size=1024 * 1024):
 
 def parse_codex(records):
     state, tokens, observed = 'unknown', None, None
+    breakdown = None
     for row in records:
         payload = row.get('payload') or {}
         if row.get('type') != 'event_msg':
@@ -68,8 +70,12 @@ def parse_codex(records):
             total = (payload.get('info') or {}).get('total_token_usage')
             if total:
                 tokens = total.get('total_tokens')
+                breakdown = dict(input=max(0, total.get('input_tokens', 0) - total.get('cached_input_tokens', 0)),
+                                 cache=total.get('cached_input_tokens', 0),
+                                 output=max(0, total.get('output_tokens', 0) - total.get('reasoning_output_tokens', 0)),
+                                 reasoning=total.get('reasoning_output_tokens', 0))
         observed = row.get('timestamp', observed)
-    return dict(state=state, tokens=tokens, observed=observed)
+    return dict(state=state, tokens=tokens, observed=observed, breakdown=breakdown)
 
 
 class CodexLocal:
@@ -124,6 +130,7 @@ def codex_quota(executable=None, timeout=25):
     proc = subprocess.Popen([executable, 'app-server'], stdin=subprocess.PIPE,
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             creationflags=HIDDEN, text=True, encoding='utf-8')
+    PROBE_PIDS.add(proc.pid)
     messages = queue.Queue()
 
     def read():
@@ -183,6 +190,7 @@ def codex_quota(executable=None, timeout=25):
                 proc.wait()
         proc.stdin.close()
         proc.stdout.close()
+        PROBE_PIDS.discard(proc.pid)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

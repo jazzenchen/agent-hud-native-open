@@ -1,7 +1,8 @@
 <h1 align="center">Agent HUD</h1>
 
-Experimental: a small [Windows companion for Codex and Cursor](windows/README.md)
-is available alongside the native macOS app, with its limitations documented separately.
+Experimental: a [Windows source port of the Simple HUD for Codex and Cursor](windows/README.md)
+is available alongside the native macOS app: frosted, separate-agent meters,
+shown only for running clients. Port boundaries are documented separately.
 
 <p align="center">
   <strong>Your agents, at a glance.</strong><br>

@@ -1,8 +1,18 @@
 param([switch]$Startup, [switch]$NoCursorHooks)
 $ErrorActionPreference = 'Stop'
-$python = (Get-Command python.exe -ErrorAction Stop).Source
-& $python -c "import tkinter,sqlite3; assert __import__('sys').version_info >= (3,10)"
-if ($LASTEXITCODE -ne 0) { throw 'Install Python 3.10+ with Tk from python.org first.' }
+$basePython = (Get-Command python.exe -ErrorAction Stop).Source
+& $basePython -c "assert __import__('sys').version_info >= (3,10)"
+if ($LASTEXITCODE -ne 0) { throw 'Install Python 3.10+ first.' }
+$python = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $python)) {
+    & $basePython -m venv (Join-Path $PSScriptRoot '.venv')
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create the app environment.' }
+}
+& $python -c "import PySide6.QtWidgets,psutil"
+if ($LASTEXITCODE -ne 0) {
+    & $python -m pip install -r (Join-Path $PSScriptRoot 'requirements.txt')
+    if ($LASTEXITCODE -ne 0) { throw 'Could not install the Windows UI dependencies.' }
+}
 $pythonw = Join-Path (Split-Path $python) 'pythonw.exe'
 if (-not (Test-Path -LiteralPath $pythonw)) { throw 'pythonw.exe is required.' }
 $script = Join-Path $PSScriptRoot 'hud.py'
@@ -21,5 +31,8 @@ foreach ($destination in $destinations) {
     $shortcut.Description = 'Agent HUD Open Windows companion for Codex and Cursor'
     $shortcut.Save()
 }
+Get-CimInstance Win32_Process -Filter "name='pythonw.exe'" | Where-Object {
+    $_.CommandLine -and $_.CommandLine.Contains($script)
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }
 Start-Process -FilePath $pythonw -ArgumentList ('"' + $script + '"') -WorkingDirectory $PSScriptRoot -WindowStyle Hidden
 Write-Output 'Agent HUD started. Desktop shortcut created. Cursor observers apply to new turns.'
