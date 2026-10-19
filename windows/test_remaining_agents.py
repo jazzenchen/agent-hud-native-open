@@ -43,7 +43,7 @@ class RemainingAgents(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             home=Path(folder);ledger=UsageLedger(home/'ledger.db')
             fixtures={
-                'DeepSeek':('.dsh/sessions/s/session.v4.jsonl',[dict(type='session',version=4,id='s',createdAt=self.at),dict(type='assistant/message',seq=1,time=self.at,data=dict(turn=1,step=1,usage=dict(inputTokens=10,outputTokens=5)))]),
+                'DeepSeek':('.dsh/sessions/s/session.v4.jsonl',[dict(type='session',version=4,id='s',createdAt=self.at*1000),dict(type='assistant/message',seq=1,time=self.at*1000,data=dict(turn=1,step=1,usage=dict(inputTokens=10,outputTokens=5)))]),
                 'Grok':('.grok/logs/unified.jsonl',[dict(msg='shell.turn.inference_done',sid='s',ts=self.at,ctx=dict(prompt_tokens=10,completion_tokens=5))]),
                 'GitHub Copilot':('.copilot/session-state/s/events.jsonl',[dict(type='session.start',timestamp=self.at,data={}),dict(type='session.shutdown',timestamp=self.at,data=dict(modelMetrics={'m':dict(usage=dict(inputTokens=10,outputTokens=5))}))])}
             for vendor,(relative,rows) in fixtures.items():
@@ -63,8 +63,8 @@ class RemainingAgents(unittest.TestCase):
 
     def test_deepseek_seed_stream_correction_retry_and_ledger_restart(self):
         p=Transcript('DeepSeek','s')
-        p.feed(dict(type='session',version=4,id='s',createdAt=self.at,seedLength=10),0)
-        def row(seq,out):return dict(type='assistant/chunk',seq=seq,time=self.at,data=dict(turn=1,step=1,usage=dict(inputTokens=10,outputTokens=out,cacheReadTokens=20,cacheWriteTokens=2)))
+        p.feed(dict(type='session',version=4,id='s',createdAt=self.at*1000,seedLength=10),0)
+        def row(seq,out):return dict(type='assistant/chunk',seq=seq,time=self.at*1000,data=dict(turn=1,step=1,usage=dict(inputTokens=10,outputTokens=out,cacheReadTokens=20,cacheWriteTokens=2)))
         p.feed(row(5,99),1);self.assertFalse(p.events)
         p.feed(row(10,8),2);p.feed(row(11,4),3)
         self.assertEqual(len(p.events),1);self.assertEqual(p.summary()['tokens'],36)
@@ -72,7 +72,7 @@ class RemainingAgents(unittest.TestCase):
             ledger=UsageLedger(Path(folder)/'ledger.db');ledger.record('DeepSeek',p.events.values())
             p.feed(row(12,2),4);ledger.record('DeepSeek',p.events.values())
             self.assertEqual(UsageLedger(ledger.path).report('DeepSeek')['totals']['total'],34)
-        p.feed(dict(type='llm/retry-started',seq=13,time=self.at,data={}),5);p.feed(row(14,1),6)
+        p.feed(dict(type='llm/retry-started',seq=13,time=self.at*1000,data={}),5);p.feed(row(14,1),6)
         self.assertEqual(len(p.events),2)
     def test_deepseek_discovery_prefers_latest_generation(self):
         with tempfile.TemporaryDirectory() as folder:

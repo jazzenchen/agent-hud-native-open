@@ -177,6 +177,79 @@ class LayoutWidgets(unittest.TestCase):
         shown=meter.panel.providers()[0][1]['quota']['windows']
         self.assertEqual([row['id'] for row in shown],['a/5h','b/5h'])
 
+    def test_row_order_does_not_reorder_accounts_and_foreign_wallets_are_filtered(self):
+        meter=self.meter()
+        data=dict(quota=dict(account=dict(id='a',label='A'),accounts=[dict(id='b',label='B',is_current=False)],
+            windows=[dict(id='a/week',account_id='a',label='Weekly',used=10),dict(id='b/5h',account_id='b',label='5h',used=20)],
+            wallets=[dict(account_id='a',currency='USD',balance=1),dict(account_id='b',currency='USD',balance=2)]))
+        meter.set_data(data);meter.layout_store.propose({'blocks':{'Codex':{'rows':['5h','week'],'widget':'ring'}}})
+        shown=meter.panel.providers()[0][1]['quota']
+        self.assertEqual([row['account_id'] for row in shown['windows']],['a','b']);meter.panel.grab()
+        meter.layout_store.propose({'blocks':{'Codex':{'accounts':['b'],'widget':'number'}}})
+        shown=meter.panel.providers()[0][1]['quota']
+        self.assertEqual([wallet['balance'] for wallet in shown['wallets']],[2]);meter.panel.grab()
+
+    def test_api_balance_uses_source_billing_key_and_picker_without_quota_percentage(self):
+        from billing_metrics import legacy_account
+        meter=self.meter();quota=dict(at=__import__('time').time(),windows=[],wallets=[dict(currency='CNY',balance=8.85)],is_available=True)
+        account=legacy_account('DeepSeek',quota)
+        account['periods']={'CNY':{'day':dict(cost='0.3',per_day='0.3',span=86400,tokens=30,tokens_per_hour=1,columns=[])}}
+        meter.set_group_data({'DeepSeek':{'quota':{**quota,'api_billing':[account]}}})
+        meter.panel.set_data(meter.data);self.assertEqual(meter.panel.providers(),[])
+        self.assertEqual(meter.panel.provider_lines()[0][0][0]['key'],'api:DeepSeek')
+        height=meter.panel.natural_height()
+        for metric in ('quota','burn','tokens','consumed','cost'):
+            meter.panel.metric_selection['api:DeepSeek']=metric;meter.panel.grab()
+            self.assertEqual(meter.panel.natural_height(),height)
+        self.assertTrue(any(isinstance(action,tuple) and action[:2]==('metric','api:DeepSeek') for _,action in meter.panel.hits))
+        meter.layout_store.propose({'blocks':{'api:DeepSeek':{'accounts':['unavailable']}}})
+        self.assertEqual(meter.panel.provider_lines(),[])
+        self.assertEqual(meter.data['quota']['wallets'][0]['balance'],8.85)
+
+    def test_multi_account_grid_has_separate_lines_instead_of_interleaving_cells(self):
+        meter=self.meter();quota=dict(account=dict(id='a',label='Current'),accounts=[dict(id='b',label='Previous',is_current=False)],
+            windows=[dict(id='a/5h',account_id='a',label='A-only window',used=10),dict(id='b/week',account_id='b',label='B-only window',used=20)])
+        meter.set_data({'quota':quota});meter.layout_store.propose({'blocks':{'Codex':{'widget':'number','columns':4}}});meter.panel.set_data(meter.data);meter.panel.grab()
+        hints={action[1].split('\n')[0]:rect for rect,action in meter.panel.hits if isinstance(action,tuple) and action[0]=='metric_hint'}
+        self.assertGreater(hints['B-only window'].top(),hints['A-only window'].bottom())
+
+    def test_settings_wallet_rows_preserve_cents_and_do_not_crash_on_on_demand_fields(self):
+        from settings_window import SettingsWindow
+        from agents_page import AgentsPage
+        from PySide6.QtWidgets import QLabel
+        manager=self.manager();manager.setup_layouts()
+        manager.data={'Grok':{'quota':dict(wallets=[dict(currency='USD',balance=100.25),dict(currency='USD',kind='onDemand',used=0)],windows=[])}}
+        window=SettingsWindow(manager);self.addCleanup(window.close);page=window.findChild(AgentsPage)
+        index=next(index for index in range(page.list.count()) if page.list.item(index).data(Qt.ItemDataRole.UserRole)['vendor']=='Grok')
+        page.select(index)
+        labels={label.text() for label in page.findChildren(QLabel)}
+        self.assertIn('$100.25',labels);self.assertIn('已用 $0.00 · 上限 N/A',labels)
+
+    def test_simple_meter_and_peek_show_api_money_and_do_not_resurrect_hidden_balance(self):
+        import time
+        from billing_metrics import legacy_account
+        from usage_display import visible_quota
+        from PySide6.QtGui import QFontMetricsF
+        from views import font
+        meter=self.meter();quota=dict(at=time.time(),windows=[],wallets=[dict(currency='CNY',balance=1234.5),dict(currency='USD',balance=0)],is_available=True)
+        quota['api_billing']=[legacy_account('DeepSeek',quota)]
+        meter.set_group_data({'DeepSeek':{'quota':quota}});meter.grab();meter.peek.refresh()
+        self.assertEqual(meter.label,'¥1,234.50');self.assertIsNone(meter._used['DeepSeek'])
+        self.assertEqual(meter.peek.rows,[('余额','¥1,234.50',None)]);self.assertEqual(meter.peek.row_inks,['critical'])
+        self.assertGreaterEqual(meter.cells[0][1].width()-meter.mark_size-meter.label_spacing,QFontMetricsF(font(meter.figure_size)).horizontalAdvance(meter.label))
+        hidden=visible_quota(quota,'DeepSeek',{'hidden_accounts':['DeepSeek']})
+        meter.set_group_data({'DeepSeek':{'quota':hidden}});meter.peek.refresh()
+        self.assertEqual(meter.label,'–');self.assertEqual(meter.peek.rows,[]);self.assertEqual(meter.panel.billing_providers(),{})
+        self.assertEqual(quota['api_billing'][0]['balances'][0]['balance'],1234.5)
+        unavailable={'quota':dict(at=time.time(),windows=[],wallets=[],is_available=False)}
+        from views import meter_label
+        self.assertEqual(meter_label('DeepSeek',unavailable),('–','critical'))
+
+    def test_peek_omits_previous_accounts_and_deduplicates_current_short_names(self):
+        meter=self.meter();meter.set_data(dict(quota=dict(account=dict(id='a',label='Current'),accounts=[dict(id='b',label='Old',is_current=False)],
+            windows=[dict(label='Previous only',account_id='b',used=99),dict(label='Current window',short_name='5h',account_id='a',used=10),dict(label='Duplicate window',short_name='5h',account_id='a',used=20)])))
+        meter.peek.refresh();self.assertEqual(meter.peek.rows,[('5h','10%',10)])
+
     def test_failed_settings_toggle_rebuilds_from_saved_layout(self):
         from settings_window import SettingsWindow
         from PySide6.QtWidgets import QCheckBox

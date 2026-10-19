@@ -31,7 +31,9 @@ class NewsQueue(unittest.TestCase):
         for used in (None,float('nan'),float('inf'),False):
             data=dict(quota=dict(windows=[dict(label='5-hour',used=used)]),local=dict(sessions=[]))
             meter.set_data(data);p=QPainter(target)
-            try:self.assertEqual(panel.provider_block(p,404,data=data),71)
+            # Anonymous rows have no invented account header: original heading
+            # 20 + regular block-parts gap 8 + one 28-point bar row.
+            try:self.assertEqual(panel.provider_block(p,404,data=data),56)
             finally:p.end()
             from views import tightest
             self.assertIsNone(tightest(data));meter.peek.refresh()

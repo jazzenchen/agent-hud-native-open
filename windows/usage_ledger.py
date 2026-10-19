@@ -28,6 +28,7 @@ class UsageLedger:
         db.execute('CREATE TABLE IF NOT EXISTS accounts (source TEXT,identity TEXT,label TEXT,evidence TEXT,observed REAL,PRIMARY KEY(source,identity))')
         db.execute('CREATE TABLE IF NOT EXISTS event_origin(source TEXT,event TEXT,group_id TEXT,priority INTEGER,PRIMARY KEY(source,event))')
         db.execute('CREATE INDEX IF NOT EXISTS origin_group ON event_origin(source,group_id,priority)')
+        db.execute('CREATE TABLE IF NOT EXISTS event_billing(source TEXT,event TEXT,provider TEXT,requested_at REAL,PRIMARY KEY(source,event))')
         return db
     def record(self,source,events,accounts=()):
         db=self.connect()
@@ -37,6 +38,9 @@ class UsageLedger:
                     db.execute('INSERT OR REPLACE INTO event_origin VALUES(?,?,?,?)',(source,event['id'],event['session'],event.get('priority',0)))
                     db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source,event) DO UPDATE SET input=excluded.input,output=excluded.output,cache=excluded.cache,cache_write=excluded.cache_write,reasoning=excluded.reasoning,model=CASE WHEN excluded.model!='Unknown' THEN excluded.model ELSE events.model END WHERE ? OR excluded.input+excluded.output+excluded.cache>=events.input+events.output+events.cache",
                         (source,event['id'],event['session'],event.get('model','Unknown'),event['at'],event['input'],event['output'],event['cache'],event.get('cache_write',0),event.get('reasoning',0),event.get('account'),bool(event.get('correction'))))
+                    if source=='DeepSeek' and 'billing_provider' in event:
+                        provider='deepseek-official' if event['billing_provider']=='deepseek-official' else 'Unknown'
+                        db.execute('INSERT OR REPLACE INTO event_billing VALUES(?,?,?,?)',(source,event['id'],provider,event.get('requested_at')))
                 for account in accounts:
                     db.execute('INSERT OR REPLACE INTO accounts VALUES(?,?,?,?,?)',(source,account['id'],account.get('label','账户'),account.get('evidence','unresolved'),time.time()))
         finally:db.close()

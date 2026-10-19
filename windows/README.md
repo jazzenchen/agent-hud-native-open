@@ -328,9 +328,17 @@ Summed usage uses its base prices, exclusive token kinds and applicable currency
 and peak-hour rules; it never treats a bucket as one long prompt or converts
 currencies. Unknown models/routes have no invented price. Estimates are not bills.
 Quota layouts now draw bars, rings, numbers and indexed local model charts;
-grouped half blocks follow the original width/column rules. Unknown readings
-remain unknown. API billing widgets, complete multi-account sections and external
-plan-pool consumer links remain incomplete; see `PARITY_AUDIT.md` for the gate.
+grouped half blocks follow the original width/column rules. Account windows and
+wallets stay in independent sections; retained accounts are dimmed. Unknown
+readings remain unknown.
+
+DeepSeek API balances use money on the Simple HUD, peek and full hover card.
+Its number/chart layout blocks show recorded-request cost, burn and token
+measures from the background worker. Only observed official-provider requests
+receive prices; unknown prices remain unknown, with no currency conversion or
+anonymous-history account relabelling. These are local estimates, not invoices.
+Full statistics-window API cards, external plan-pool consumer links and MCP
+transport remain incomplete; see `PARITY_AUDIT.md` for the release gate.
 
 ## Promo samples
 

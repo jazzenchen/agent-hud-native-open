@@ -150,7 +150,9 @@ class AgentsPage(QWidget):
                 form.addRow('剩余积分',QLabel(credit_text(balance,'remaining')))
                 form.addRow('总积分',QLabel(credit_text(balance,'total')))
             for wallet in quota.get('wallets',[]):
-                form.addRow('余额',QLabel(f"{wallet.get('currency','')} {wallet['balance']:.2f}"))
+                from panel_accounts import wallet_labels
+                name,amount=wallet_labels(wallet)
+                form.addRow('余额' if vendor=='DeepSeek' else name,QLabel(amount))
             if quota.get('stale'):form.addRow(QLabel('当前显示上次成功读数，正在重试。'))
             try:
                 from providers import DATA

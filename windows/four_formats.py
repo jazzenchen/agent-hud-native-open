@@ -8,16 +8,22 @@ import json,math
 from session_formats import Transcript,stamp,count,digest,first
 
 
+def harness_time(value):
+    # Harness specifies milliseconds, including early-epoch test/import logs;
+    # do not infer the unit from the number's size.
+    return value/1000 if isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) else None
+
 def feed(p,row,line):
     kind=row.get('type');data=row.get('data') or {};at=stamp(row.get('timestamp'))
     if p.vendor=='DeepSeek':
         if kind=='session':
             if row.get('version') not in (0,2,3,4):raise ValueError('Unsupported Harness format')
-            p.sid=row.get('id') or p.sid;p.started=stamp(row.get('createdAt'));p.format=row.get('version');p.seed=row.get('seedLength',math.inf if row.get('isSeeded') else 0);p.seed_marker=None;p.attempts=0;p.last_attempt=None;return
+            p.sid=row.get('id') or p.sid;p.started=harness_time(row.get('createdAt'));p.format=row.get('version');p.seed=row.get('seedLength',math.inf if row.get('isSeeded') else 0);p.seed_marker=None;p.attempts=0;p.last_attempt=None;p.billing_provider='Unknown';p.requested_at=None;return
         if not hasattr(p,'seed'):return
-        at=stamp(row.get('time'));seq=row.get('seq')
-        if kind=='request/header':p.model=(data.get('header') or {}).get('config',{}).get('model') or p.model
-        elif kind=='request/context':p.model=data.get('model') or p.model
+        at=harness_time(row.get('time'));seq=row.get('seq')
+        config=(data.get('header') or {}).get('config',{}) if kind=='request/header' else data
+        if kind in ('request/header','request/context') and config.get('model'):
+            p.model=config['model'];p.billing_provider='deepseek-official' if config.get('provider')=='deepseek-official' else 'Unknown'
         if kind=='session/end-seed' and data.get('inherited') and isinstance(seq,int) and seq<p.seed:
             p.seed_marker=seq
             if at and p.started and at>=p.started:p.seed=seq
@@ -26,7 +32,8 @@ def feed(p,row,line):
         if kind=='session/title' and isinstance(data.get('title'),str):p.title=data['title'].splitlines()[0][:100]
         if kind=='turn/start':p.state='running'
         if kind=='turn/end':p.state='done' if (data.get('reason') or {}).get('kind')=='completed' else 'stopped'
-        if kind=='llm/retry-started':p.last_attempt=None
+        if kind=='step/start':p.requested_at=at
+        if kind=='llm/retry-started':p.last_attempt=None;p.requested_at=at
         if kind not in ('assistant/chunk','assistant/message','assistant/attempt'):return
         chunks=[item.get('chunk') for item in data.get('stream') or [] if isinstance(item,dict)] or [data.get('chunk')]
         usage=data.get('usage') or next((chunk.get('usage') for chunk in reversed(chunks) if isinstance(chunk,dict) and chunk.get('type')=='usage'),None)
@@ -41,7 +48,7 @@ def feed(p,row,line):
         if at is not None:
             p.events.pop(key,None)
             p.add(key,at,tokens)
-            if key in p.events:p.events[key]['correction']=True
+            if key in p.events:p.events[key].update(correction=True,billing_provider=p.billing_provider,requested_at=p.requested_at if p.requested_at is not None else at)
     elif p.vendor=='Grok':
         if row.get('method') not in ('session/update','_x.ai/session/update'):return
         params=row.get('params') or {};meta=params.get('_meta') or {};update=params.get('update') or {};at=stamp(meta.get('agentTimestampMs'))

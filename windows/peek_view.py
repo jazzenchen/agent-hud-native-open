@@ -33,11 +33,22 @@ class AgentPeekView(QWidget):
         self.font_size=round(DESIGN['peek_font']*scale) if self.line else round(12*scale)
         self.row_height=round(18*scale);self.top_padding=round(10*scale);self.title_size=round(13*scale)
         self.spacing=round(12*scale);self.pair_gap=round(5*scale);self.padding=round(12*scale)
-        self.rows=[]
+        self.rows=[];self.row_inks=[]
         from quota_insights import number
-        for row in self.meter.data.get('quota',{}).get('windows',[]):
-            used=number(row.get('used'));label={'5-hour':'5h'}.get(row['label'],row['label'])
-            self.rows.append((label,'–' if used is None else f'{used:.0f}%',used))
+        from panel_accounts import sections
+        from quota_cells import window_names
+        from views import level
+        seen=set();quota=self.meter.data.get('quota',{})
+        for section in sections(quota):
+            if not section['is_current']:continue
+            for row in section['quota'].get('windows',[]):
+                used=number(row.get('used'));label={'5-hour':'5h'}.get(row['label'],window_names(row)[1])
+                if label in seen:continue
+                seen.add(label);self.rows.append((label,'–' if used is None else f'{used:.0f}%',used))
+                self.row_inks.append(level(used) if used is not None and not quota.get('stale') and not quota.get('error_code') else 'secondary')
+        from balance_display import balance_lines
+        for balance in balance_lines(self.meter.client,quota):
+            self.rows.append(('余额',balance['value'],None));self.row_inks.append(balance['ink'])
         running=sum(row.get('state')=='running' for row in self.meter.data.get('local',{}).get('sessions',[]))
         self.running=running
         self.fallback=f'{running} 个运行中' if running else self.meter.client
@@ -125,14 +136,14 @@ class AgentPeekView(QWidget):
         if self.line:
             fm=QFontMetricsF(font(self.font_size));bold=QFontMetricsF(font(self.font_size,True))
             if not self.rows:text(p,QRectF(x,0,self.target_width-x-self.padding,self.height()),self.fallback,self.font_size,'secondary')
-            for label,value,used in self.rows:
+            for index,(label,value,used) in enumerate(self.rows):
                 width=math.ceil(fm.horizontalAdvance(label));text(p,QRectF(x,0,width,self.height()),label,self.font_size,'secondary');x+=width+self.pair_gap
-                width=math.ceil(bold.horizontalAdvance(value));text(p,QRectF(x,0,width,self.height()),value,self.font_size,level(used),True);x+=width+self.spacing
+                width=math.ceil(bold.horizontalAdvance(value));text(p,QRectF(x,0,width,self.height()),value,self.font_size,self.row_inks[index],True);x+=width+self.spacing
         else:
             y=self.top_padding;text(p,QRectF(x,y,self.width()-2*x,self.row_height),self.meter.client,self.title_size,'text',True);y+=self.row_height
-            for label,value,used in self.rows:
+            for index,(label,value,used) in enumerate(self.rows):
                 text(p,QRectF(x,y,self.width()-2*x,self.row_height),label,self.font_size,'secondary')
-                text(p,QRectF(x,y,self.width()-2*x,self.row_height),value,self.font_size,level(used),True,Qt.AlignmentFlag.AlignRight);y+=self.row_height
+                text(p,QRectF(x,y,self.width()-2*x,self.row_height),value,self.font_size,self.row_inks[index],True,Qt.AlignmentFlag.AlignRight);y+=self.row_height
             if self.running:text(p,QRectF(x,y,self.width()-2*x,self.row_height),f'{self.running} 个运行中',self.font_size,'secondary')
         p.end()
 

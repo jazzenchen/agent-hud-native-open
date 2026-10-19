@@ -38,6 +38,7 @@ def main():
     options=sys.argv[2:];filters=[value for value in options if not value.startswith('--')]
     news='--news' in options
     draft='--draft' in options
+    api='--api' in options
     def near_shape(widget,global_point):
         local=widget.mapFromGlobal(global_point);mask=widget.mask()
         if mask.isEmpty():mask=QRegion(widget.rect())
@@ -49,13 +50,14 @@ def main():
             for theme in ('dark','light'):
                 if filters and f'{mode}-{edge}'!=filters[0]:continue
                 settings=load(dict(mode=mode,edge=edge,hud_appearance=theme,glass=True,glow_hidden=True))
-                meter=SimpleMeterView('Codex',screen,settings,lambda _:None)
+                meter=SimpleMeterView('DeepSeek' if api else 'Codex',screen,settings,lambda _:None)
                 if draft:
                     from panel_layout import LayoutStore
                     meter.layout_store=LayoutStore()
                     meter.layout_store.propose(dict(style=dict(width=680),sections=['tokens','blocks','sessions'],hiddenSections=['sessions']))
                 current[0]=meter
-                meter.set_data(dict(quota=dict(windows=[dict(label='5-hour',used=17),dict(label='Weekly',used=42)]),local=dict(sessions=[])))
+                quota=dict(windows=[],wallets=[dict(currency='CNY',balance=1234.5),dict(currency='USD',balance=0)],at=time.time(),is_available=True) if api else dict(windows=[dict(label='5-hour',used=17),dict(label='Weekly',used=42)])
+                meter.set_data(dict(quota=quota,local=dict(sessions=[])))
                 actual_edge='top' if mode=='notch' else edge
                 x,y=group_origin((rect.x(),rect.y(),rect.width(),rect.height()),(meter.width(),meter.height()),actual_edge,.5,24)
                 meter.place(x,y);meter.show();meter.apply_material();QTest.qWait(35)
@@ -129,11 +131,12 @@ def main():
                 for widget in (meter.peek,meter.panel,meter.glow,meter):widget.close()
                 current[0]=None
     scene.close();assert records,'No mode/edge cases matched'
-    result=dict(platform=app.platformName(),dpi=screen.devicePixelRatio(),cases=records,
+    result=dict(platform=app.platformName(),dpi=screen.devicePixelRatio(),fixture='api' if api else 'quota',cases=records,
                 scope='Outside-mask corners and a 17pt travel-corridor grid (2pt fractional-DPI antialias guard), mid-morph frames, former-panel centre after close, reversal and hide. Not complete visual similarity proof.')
     (destination/'audit.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     failures=[(r['mode'],r['configured_edge'],r['theme']) for r in records if max(max(s['max_outside_rgb_delta'],s.get('max_trail_rgb_delta',0)) for s in r['samples'])>16 or r['after_close_rgb_delta']>16 or not r['reversal_settled'] or not r['all_surfaces_closed']]
     print(json.dumps(dict(cases=len(records),failures=failures)))
+    if failures:raise SystemExit(1)
 
 
 if __name__=='__main__':main()

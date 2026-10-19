@@ -59,10 +59,12 @@ def balance(home):
     if reply.get('error'):
         from quota_state import QuotaError
         raise QuotaError('auth' if reply['error'] in ('missing-key','http-401','http-403') else 'unavailable')
-    if reply.get('is_available') is not True or not isinstance(reply.get('balance_infos'),list):raise ValueError('Invalid DeepSeek balance response')
+    if not isinstance(reply.get('is_available'),bool) or not isinstance(reply.get('balance_infos'),list):raise ValueError('Invalid DeepSeek balance response')
     wallets=[]
     for value in reply['balance_infos']:
+        currency=value.get('currency')
+        if not isinstance(currency,str) or len(currency)!=3 or not currency.isascii() or not currency.isalpha() or not currency.isupper():raise ValueError('Invalid wallet currency')
         wallets.append(dict(currency=value.get('currency'),balance=float(value['total_balance']),granted=float(value.get('granted_balance',0)),topped_up=float(value.get('topped_up_balance',0))))
-    if any(not math.isfinite(wallet[key]) or wallet[key]<0 for wallet in wallets for key in ('balance','granted','topped_up')):raise ValueError('Invalid wallet amount')
+    if any(not math.isfinite(wallet[key]) or key!='balance' and wallet[key]<0 for wallet in wallets for key in ('balance','granted','topped_up')):raise ValueError('Invalid wallet amount')
     import time
-    return dict(windows=[],wallets=wallets,notice='余额已读取；按量付费不换算成订阅百分比',at=time.time(),not_provided=True)
+    return dict(windows=[],wallets=wallets,is_available=reply['is_available'],notice='余额已读取；按量付费不换算成订阅百分比',at=time.time(),not_provided=True)

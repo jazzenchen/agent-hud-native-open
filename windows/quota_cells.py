@@ -14,7 +14,7 @@ from quota_metric_views import presentation
 RINGS={'small':(40,3,10),'medium':(46,4,11),'large':(60,5,13)}
 
 
-def name_lines(row,width,size):
+def window_names(row):
     # Localization.modelLabel / shortModelLabel deliberately keep quota names
     # in English in both languages. Provider-supplied short names take priority.
     raw=str(row.get('label') or row.get('id') or '—')
@@ -23,6 +23,11 @@ def name_lines(row,width,size):
     fallback={'Desktop / CLI':'Quota','CLI':'Quota','window.session':'5h','window.weekly':'Weekly'}.get(raw)
     if fallback is None:fallback=(raw[len('window.weekly.'):] if raw.startswith('window.weekly.') else raw).split()[0] if raw.split() else raw
     short=str(row.get('short_name') or row.get('shortName') or fallback)
+    return full,short
+
+
+def name_lines(row,width,size):
+    full,short=window_names(row)
     return _name_lines(full,short,width,size)
 
 

@@ -4,6 +4,12 @@ Reference: upstream source `bf19ac98da11fe0f5967f5a124d42f0da4bf2cf9`.
 This is a release gate, **not a measured 90% similarity score**. A detected client
 is not proof that its quota, approvals, completion and navigation work.
 
+Latest checkpoint: account sections and DeepSeek API balances now render from
+their separate observations. The local suite has 234 passing tests; 72 original
+compiled Swift balance-spend cases also match. The native API surface matrix
+passed 24 mode/edge/theme cases at 150% scaling. These are scoped checks, not a
+whole-product similarity score. Remaining release gates below still apply.
+
 ## Settings list and behavior
 
 | Upstream section / rows | Windows implementation | Remaining difference |
@@ -52,8 +58,8 @@ Source pages: `Sources/AgentHUDDesktop/Settings/{GeneralPane,SourcesPane,Screens
 | Quota metric selector / burn / forecast | Five real selections: quota, burn, reply rate, consumed, estimated cost. Source cycle sampling, last-hour/week reply horizon, bucket pricing, projected track and reported WorkBuddy consumption are connected. Native current-client consumer links preserve anonymous logs as local estimates without relabelling account history. External credential-pool/cross-client model links, all source widget types and native keyboard/accessibility controls still need parity. |
 | WorkBuddy | Read-only source metering port: custom titles, session spending, context and model attribution. In addition, the installed desktop client's official billing-summary contract now supplies actual subscription name and remaining/total credits; separate enterprise metadata route and unlimited sentinel. No session spending is substituted for the account balance. Chinese SaaS gateway compatibility checked against installed 5.5.6; other deployments need separate adapters. |
 | Quota / reset-credit alerts | Real threshold/reset/grant tracking and interactive reminder cards now connected. New readings only, silent startup/sign-in baseline, no fake reset from stale/error/unknown readings; forecast warnings once per cycle and actual exhaustion as a separate event. Four-second news lifetime, pointer hold, persistent permissions, callback-independent quota news and hidden-account suppression are implemented. Source staying reset bots are connected and captured natively. Inline-in-usage presentation and static exhausted-logo sign remain differences. Original warnings use a plain logo, not a warning bot. |
-| Statistics | Channel/model/time filters and ledger exist; quota ring/number/chart blocks and half-block planning now render. Original richer sessions, API billing widgets and complete multi-account sections remain incomplete. |
-| MCP layout editing | Original unchanged Swift schemas and layout documents compiled on macOS. Canonical normalization and 13 shared/screen transitions match the original trace; real keyboard-accessible draft bar, saved settings and disk-full rollback are connected. Native branch/row/account filtering and section order are applied without mutating readings. Quota widget rendering is connected. Transport, hold scheduling, style/app drafts and API billing widgets remain incomplete. |
+| Statistics | Channel/model/time filters and ledger exist; quota widgets, grouped account sections and DeepSeek API hover cards now render. Full API cards on the statistics window, exact token-chart interval/binning, richer sessions and external pool consumer links remain incomplete. |
+| MCP layout editing | Original unchanged Swift schemas and layout documents compiled on macOS. Canonical normalization and 13 shared/screen transitions match the original trace; real keyboard-accessible draft bar, saved settings and disk-full rollback are connected. Native branch/row/account filtering and section order are applied without mutating readings. Quota and DeepSeek API widget rendering are connected. Transport, hold scheduling, style/app drafts and external billing-pool bindings remain incomplete. |
 | White rims / black collapse trails | Native 24 mode/edge/theme matrix at 100%, 125%, 150% previously passed within documented tolerance; rerun after integration. Sampled frost is frozen while open. |
 | Performance | Prior local paint measurements only; new end-to-end frame-time profiling not complete. An offline promo cannot prove live frame rate. |
 | Promo / publication | 36-second Windows tour rendered from actual Windows widgets and original-exported actors, following the original tour structure. Account/credit/token examples are isolated and disclosed; original procedural wallpaper and synthesized music. Encoded 1080p/30fps/AAC file and 11 chapter/theme frames reviewed; manifests in `promo/`. Source preview publication and draft PR refresh are separate from the remaining stable-release gate and binary dependency-license review. |
@@ -131,3 +137,43 @@ resident animation benchmark. Remaining widget work includes API billing blocks,
 complete multi-account subheaders, credential-pool consumer links, original chart
 inspection/transition behavior and painted-cell keyboard/accessibility parity.
 Full session/token/HUD filtering, MCP transport and hold scheduling remain open.
+
+Account/API checkpoint: quota rows now split by account in first-row order,
+including independent ring/number grids, retained-reading opacity, source-style
+header read age, notices and account wallets. A layout's row order stays within
+each account. Current WorkBuddy credits never spill into a retained account;
+wallet money preserves cents and distinguishes reported zero from an absent
+limit. Account filters also narrow wallets. The peek keeps current accounts only
+and de-duplicates their short names.
+
+DeepSeek now uses `api:DeepSeek` layout blocks, never a subscription percentage.
+Its first currency also appears on Simple and peek views, with the account's
+lowest balance level and an empty ring. Hidden billing accounts cannot reappear
+through a legacy fallback. Failed reads retain actual money without a level.
+Valid unavailable/negative official balances no longer disappear as parse errors.
+The source-style number/chart cards share measure selection; half cards stack
+columns when needed and keep their height across measures.
+
+The worker prices only observed official-Harness requests. A small additive
+ledger table retains the official-provider marker and request start for source
+peak pricing, without altering token history. Old unverified events stay
+unpriced until observed again; anonymous records never acquire an identified
+account. Missing prices poison the affected currency, not silently undercount it.
+Separate CNY/USD catalog prices are used, without currency conversion. The
+compiled-original balance contract/provenance records 72 cost, pace and run-out
+cases, including overlapping buckets and partial periods.
+
+Native fixtures: 32 full-background captures span eight account/API arrangements,
+two themes and 100%/150% scaling, plus 24-case quota and API surface matrices at
+150%. Warm repaint figures are scoped in `assets/account-billing-native-checkpoint.json`.
+The layout capture helper previously failed to override its backdrop's fixed
+size; older widget captures could include unrelated background windows. Those
+background samples are superseded by this corrected full-screen fixture run.
+They were never evidence of compositor parity. The separate surface-audit
+runner already used a full-screen backdrop; it now exits unsuccessfully if its
+checks find a failure.
+
+Still open: full statistics-window API cards, external account/pool consumer
+bindings, earned-reset rows, complete account-source assessment/accessibility,
+chart inspection/transitions and exact token-chart time bins. No overall 90%
+claim or stable binary release follows from these checks.

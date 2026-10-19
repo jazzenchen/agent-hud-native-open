@@ -70,7 +70,10 @@ class WindowMetrics:
         db.row_factory=sqlite3.Row;deadline=time.monotonic()+1
         db.set_progress_handler(lambda:int(time.monotonic()>deadline),10000)
         try:
-            rows=db.execute('''SELECT event AS id,session,model,at,input,output,cache,cache_write,reasoning,account FROM events
+            billing=vendor=='DeepSeek' and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='event_billing'").fetchone()
+            extra=',provider AS billing_provider,requested_at' if billing else ',NULL AS billing_provider,NULL AS requested_at'
+            join=' LEFT JOIN event_billing USING(source,event)' if billing else ''
+            rows=db.execute('''SELECT event AS id,session,model,at,input,output,cache,cache_write,reasoning,account'''+extra+''' FROM events'''+join+'''
                 WHERE source=? AND (account=? OR (? AND account IS NULL)) AND at>=? AND at<? AND
                 COALESCE((SELECT priority FROM event_origin o WHERE o.source=events.source AND o.event=events.event),0)>=
                 COALESCE((SELECT MAX(priority) FROM event_origin o WHERE o.source=events.source AND o.group_id=events.session),0)
@@ -80,6 +83,9 @@ class WindowMetrics:
         finally:db.close()
     def __call__(self,vendor,quota,local,now=None):
         now=time.time() if now is None else now;rows=[]
+        if vendor=='DeepSeek':
+            from billing_metrics import prepare
+            return prepare(self,vendor,quota,local,now)
         fresh=not quota.get('stale') and not quota.get('error_code') and (at:=stamp(quota.get('at'))) is not None and 0<=now-at<=1800
         for row in quota.get('windows',[]):
             metrics=dict(consumed=None,reply=None,cost=None,tokens_per_hour=None)

@@ -20,7 +20,10 @@ def picker(panel,p,w,client):
             fill=color('text',painter=p);fill.setAlpha(round(.12*255))
             p.setPen(Qt.PenStyle.NoPen);p.setBrush(fill);p.drawRoundedRect(rect,5,5)
         ink='text' if current==metric else 'tertiary'
-        if metric in ('quota','consumed','cost'):
+        if metric=='quota' and client.startswith('api:'):
+            p.setPen(QPen(color(ink,painter=p),1));p.setBrush(Qt.BrushStyle.NoBrush)
+            note=rect.adjusted(3,5,-3,-5);p.drawRect(note);p.drawEllipse(note.center(),1.5,1.5)
+        elif metric in ('quota','consumed','cost'):
             text(p,rect,dict(quota='%',consumed='Σ',cost='$')[metric],9,ink,True,Qt.AlignmentFlag.AlignCenter)
         elif metric=='tokens':
             p.setPen(QPen(color(ink,painter=p),1));p.setBrush(Qt.BrushStyle.NoBrush)
