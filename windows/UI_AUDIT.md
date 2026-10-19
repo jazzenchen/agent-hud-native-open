@@ -414,3 +414,37 @@ enterprise routing and unlimited sentinel are covered by adapter tests.
 history and pure threshold/reset-credit tracking tests are included; their full
 reminder UI/queue integration remains pending, so those tests are not a claim
 that all original alert functionality has shipped.
+
+### Quota news surfaces, queue lifetime and reversal regression
+
+Quota warning/reset and reset-credit grant details now use real painted Windows
+cards translated from the original views. Source width (400pt), four-second
+presentation lifetime, theme colors, reset/expiry information and the working
+statistics action are connected to the quota event tracker. First observations
+remain silent. Permission requests are never expired by the news timer; unseen
+queued news does not lose its presentation time. Hover holds the currently
+presented card, and hidden accounts/windows do not replay old alerts.
+
+The native matrix passed all 24 mode/edge/theme cases at each of 100%, 125% and
+150% scaling (72 cases), recorded under `previews/news-accept-{100,125,150}`.
+Coverage includes intermediate expansion/collapse and reversal frames, with
+the documented 2pt fractional-DPI guard and RGB tolerance. Initial failures
+revealed a stored-edge mismatch for top-only notch reminders and stale leave
+timers closing a newly reopened panel; both now have regression coverage.
+The auditor also now explicitly raises only its owned layers and accounts for
+reminder hover opening the full card. Earlier failed captures remain evidence
+of those failures, not accepted results. News light/dark captures were inspected.
+
+169 regression tests passed for this checkpoint. The five quota metric picker,
+dedicated warning/reset bot artwork, remaining callback channels, full MCP draft
+workflow and richer source statistics still require work. Sampled glass remains
+frozen while open. These results do not establish 90% parity or sustained FPS.
+
+Promo Token samples are isolated in `promo_fixtures.py`: no client, account,
+network or ledger writes. Its graph/model/session totals share one dataset;
+recordings must visibly disclose demo data. The resident app does not import it.
+With the two sample consistency tests, 171 tests pass. The actual TokenDashboard
+was rendered for four agents in both themes using the native Windows platform;
+Codex dark and WorkBuddy light were visually inspected. Qt's offscreen plugin
+rendered missing font glyphs on this machine, so those offscreen captures were
+discarded and replaced by native captures. This is a still preview, not a video.

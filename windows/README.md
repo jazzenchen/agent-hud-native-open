@@ -49,6 +49,22 @@ are refused. An expired/missing/unsupported protected login asks for sign-in in
 WorkBuddy. An account switch during a read discards that result. Optional GLM
 plan windows stay separate from the official WorkBuddy subscription and balance.
 
+Quota readings now drive actual warnings, confirmed resets and new Codex usage
+reset grants. The first reading is a silent baseline. Provider errors, expired
+reset deadlines, future/old observations and account switches do not invent
+events. A quota worker stores observed samples per opaque account/window and
+uses upstream's cycle-aligned sampling and burn-rate math. No consumption is
+simulated between readings. A forecast is unavailable without a known cycle and
+sufficient observed span.
+
+News, including completed replies, expires four seconds after presentation or
+the pointer last leaves; hovering holds it. Requests remain until answered,
+withdrawn or the configured client wait expires. Quota news cannot displace a
+waiting permission. Disabling client hooks leaves quota reminders available;
+Live status controls replies separately. Closing clients or hiding an account
+or window prevents old news being replayed when it returns. The expiry clock
+stops once news drains. The full release-gap list remains in PARITY_AUDIT.md.
+
 ## Install
 
 Python 3.10+ and an Internet connection for first installation are required.
@@ -261,3 +277,10 @@ Clicking details does not make them permanent: leaving HUD/peek/details starts
 the configured collapse delay; entering details cancels it. Window deactivation
 also dismisses details. Account visibility and per-window drag order persist,
 change only quota/wallet presentation, and never erase recorded usage.
+## Promo samples
+
+`promo_fixtures.build_demo(now, elapsed)` is an explicit offline recording input
+for Codex, Claude, Cursor and WorkBuddy. It supplies fictional Token history and
+sessions with internally consistent totals. A recorder must show its disclosure
+(`演示数据 · Demo data`). The resident application never loads this module; it
+does not modify account readings, client logs or the usage ledger.

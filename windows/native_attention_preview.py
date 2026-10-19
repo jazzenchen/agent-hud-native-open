@@ -1,5 +1,5 @@
 """Owned native alert scene with sample hook payloads; no client/config access."""
-import json,sys,uuid
+import json,sys,uuid,time
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
@@ -22,9 +22,13 @@ def main():
     decisions=[];meter.attention_callback=lambda *args,**options:decisions.append((args,options))
     from session_navigation import can_navigate
     meter.attention_can_navigate=can_navigate;results=[]
+    now=time.time()
+    warning=dict(id='sample-warning',kind='quota',event='exhaustion',vendor='Codex',source='',session='',account='sample',window='sample',label='5 小时限额',summary='即将耗尽',remaining=8,reset=now+7200,at=now,time_to_exhaust=2400,other_limits=[])
+    reset={**warning,'id':'sample-reset','event':'reset','remaining':100,'time_to_exhaust':None,'other_limits':['每周限额'],'summary':'已重置'}
+    grant=dict(id='sample-credit',kind='reset_credits',vendor='Codex',source='',session='',account='sample',summary='获得使用量重置',added=1,available=2,at=now,credits=[dict(id='sample',expiresAt=now+14*86400)],new_credits=[])
     for appearance in ('dark','light'):
         meter.settings['hud_appearance']=appearance;meter.apply_material()
-        for kind,event in (('permission',request),('completion',reply)):
+        for kind,event in (('permission',request),('completion',reply),('quota-warning',warning),('quota-reset',reset),('reset-credits',grant)):
             meter.panel.animation.jump(0.);meter.set_attention([event]);meter.hover();meter.panel.animation.jump(1.)
             meter.panel.raise_();QTest.qWait(100)
             bounds=meter.panel.geometry().adjusted(-8,-8,8,8)

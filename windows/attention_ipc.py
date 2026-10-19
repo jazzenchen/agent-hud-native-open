@@ -10,12 +10,42 @@ PIPE='agent-hud-open-attention-v1'
 
 class AttentionServer(QObject):
     changed=Signal()
-    def __init__(self,parent=None,enabled=lambda:True,name=PIPE,wait_minutes=lambda:10,completion_enabled=lambda _:True):
+    def __init__(self,parent=None,enabled=lambda:True,name=PIPE,wait_minutes=lambda:10,completion_enabled=lambda _:True,presentation=None,news_enabled=lambda _:True):
         super().__init__(parent);self.enabled=enabled;self.wait_minutes=wait_minutes;self.completion_enabled=completion_enabled;self.pending=OrderedDict();self.connections={}
         self.seen=OrderedDict();self.tracker=CompletionTracker();self.server=QLocalServer(self)
         self.server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
         self.listening=self.server.listen(name)
         self.server.newConnection.connect(self.accept)
+        from quota_events import QuotaEvents
+        self.quota_events=QuotaEvents();self.presentation=presentation;self.news_enabled=news_enabled;self.news_deadlines={}
+        self.news_timer=QTimer(self);self.news_timer.setInterval(100);self.news_timer.timeout.connect(self.presentation_tick)
+        self.changed.connect(self.sync_news_clock)
+
+    def sync_news_clock(self):
+        if self.presentation is not None and any(event['kind']!='permission' for event in self.pending.values()):
+            if not self.news_timer.isActive():self.news_timer.start()
+        else:self.news_timer.stop();self.news_deadlines.clear()
+
+    def presentation_tick(self,now=None):
+        if self.presentation is None:return
+        from source_design import DESIGN
+        now=time.monotonic() if now is None else now
+        displayed,held=self.presentation()
+        self.news_deadlines={key:deadline for key,deadline in self.news_deadlines.items() if key in displayed and key in self.pending}
+        expired=[]
+        for identifier in displayed:
+            event=self.pending.get(identifier)
+            if event is None or event['kind']=='permission':continue
+            if identifier in held or identifier not in self.news_deadlines:self.news_deadlines[identifier]=now+DESIGN['alert_seconds']
+            elif now>=self.news_deadlines[identifier]:expired.append(identifier)
+        for identifier in expired:self.pending.pop(identifier,None);self.news_deadlines.pop(identifier,None)
+        if expired:self.changed.emit()
+
+    def add_news(self,event):
+        # Source drops quota news while a permission holds the presentation.
+        if not self.news_enabled(event) or any(row['kind']=='permission' for row in self.pending.values()):return
+        if len(self.pending)>=64:return
+        self.pending[event['id']]=event;self.changed.emit()
 
     def accept(self):
         while self.server.hasPendingConnections():
@@ -82,12 +112,16 @@ class AttentionServer(QObject):
         self.pending[event['id']]=event;self.changed.emit()
 
     def observe(self,snapshot):
+        departed=[key for key,event in self.pending.items() if event['kind']!='permission' and (event['vendor'] not in snapshot or event['kind']!='completion' and not self.news_enabled(event))]
+        for key in departed:self.pending.pop(key,None)
+        if departed:self.changed.emit()
         for event in self.tracker.update(snapshot):self.add_completion(event)
+        for event in self.quota_events.update(snapshot):self.add_news(event)
 
     def resolve(self,identifier,action,**options):
         event=self.pending.get(identifier)
         if event is None:return
-        if event['kind']=='completion':self.pending.pop(identifier);self.changed.emit();return
+        if event['kind']!='permission':self.pending.pop(identifier);self.changed.emit();return
         answer=decision(event,action,**options)
         # Unsupported answers do not silently become approval or lose the card.
         if not answer and action!='leave':return
@@ -120,6 +154,8 @@ class AttentionServer(QObject):
 
     def disable(self):
         for socket in tuple(self.connections):self.release(socket)
-        self.pending.clear();self.changed.emit()
+        self.pending=OrderedDict((key,event) for key,event in self.pending.items() if event['kind'] not in ('permission','completion'))
+        self.changed.emit()
 
-    def close(self):self.disable();self.server.close()
+    def close(self):
+        self.disable();self.pending.clear();self.news_timer.stop();self.news_deadlines.clear();self.server.close()

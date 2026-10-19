@@ -4,7 +4,7 @@
 actual timed reversal and hide. Runs on the Windows Qt platform. Reports exact
 scope and failures, never an overall similarity score.
 """
-import json,sys
+import json,sys,time
 from pathlib import Path
 from PySide6.QtCore import QRect,QPoint,QSize
 from PySide6.QtWidgets import QApplication
@@ -23,8 +23,20 @@ def main():
     screen=app.primaryScreen();rect=screen.geometry()
     scene=Scene();scene.setFixedSize(rect.size());scene.move(rect.topLeft())
     scene.show();scene.raise_();QTest.qWait(150)
-    def capture():return screen.grabWindow(0,0,0,rect.width(),rect.height()).toImage()
+    current=[None]
+    def capture():
+        # Other desktop tasks may create topmost windows during a native run.
+        # Reassert only our own controlled layers before each bounded readback.
+        scene.raise_()
+        meter=current[0]
+        if meter is not None:
+            for widget in (meter,meter.peek,meter.panel):
+                if widget.isVisible():widget.raise_()
+        QTest.qWait(20)
+        return screen.grabWindow(0,0,0,rect.width(),rect.height()).toImage()
     baseline=capture();records=[]
+    options=sys.argv[2:];filters=[value for value in options if not value.startswith('--')]
+    news='--news' in options
     def near_shape(widget,global_point):
         local=widget.mapFromGlobal(global_point);mask=widget.mask()
         if mask.isEmpty():mask=QRegion(widget.rect())
@@ -34,13 +46,17 @@ def main():
     for mode in ('simple','logos','notch'):
         for edge in ('top','bottom','left','right'):
             for theme in ('dark','light'):
-                if len(sys.argv)>2 and f'{mode}-{edge}'!=sys.argv[2]:continue
+                if filters and f'{mode}-{edge}'!=filters[0]:continue
                 settings=load(dict(mode=mode,edge=edge,hud_appearance=theme,glass=True,glow_hidden=True))
                 meter=SimpleMeterView('Codex',screen,settings,lambda _:None)
+                current[0]=meter
                 meter.set_data(dict(quota=dict(windows=[dict(label='5-hour',used=17),dict(label='Weekly',used=42)]),local=dict(sessions=[])))
                 actual_edge='top' if mode=='notch' else edge
                 x,y=group_origin((rect.x(),rect.y(),rect.width(),rect.height()),(meter.width(),meter.height()),actual_edge,.5,24)
                 meter.place(x,y);meter.show();meter.apply_material();QTest.qWait(35)
+                if news:
+                    now=time.time()
+                    meter.set_attention([dict(id='fixture-news',kind='quota',event='exhaustion',vendor='Codex',source='',session='',account='',window='sample',label='5 小时限额',summary='即将耗尽',remaining=8,reset=now+7200,at=now,time_to_exhaust=2400,other_limits=[])])
                 samples=[]
                 def audit(widget,phase):
                     image=capture();scale=image.width()/rect.width();deltas=[];points=[]
@@ -77,7 +93,9 @@ def main():
                     return image
                 audit(meter,'meter')
                 if mode!='notch':
-                    meter.hover();meter.peek.animation.jump(1.);QTest.qWait(35);audit(meter.peek,'peek')
+                    if news:meter.peek.open()
+                    else:meter.hover()
+                    meter.peek.animation.jump(1.);QTest.qWait(35);audit(meter.peek,'peek')
                 meter.open_panel()
                 for value in (.15,.5,1.,.65,.2):
                     meter.panel.animation.jump(value);QTest.qWait(35)
@@ -87,6 +105,7 @@ def main():
                         scale=image.width()/rect.width()
                         crop=QRect(round((bounds.x()-rect.x())*scale),round((bounds.y()-rect.y())*scale),round(bounds.width()*scale),round(bounds.height()*scale))
                         image.copy(crop).save(str(destination/f'{mode}-{edge}-{theme}.png'))
+                if news:meter.set_attention([])
                 meter.panel.animation.jump(0.);QTest.qWait(35)
                 hidden=capture();changed=0
                 # The former panel's centre must show its original wallpaper.
@@ -95,12 +114,16 @@ def main():
                     changed=max(abs(a-b) for a,b in zip(hidden.pixelColor(px,py).getRgb()[:3],baseline.pixelColor(px,py).getRgb()[:3]))
                 meter.open_panel();QTest.qWait(60);meter.panel.collapse();QTest.qWait(45);meter.open_panel();QTest.qWait(470)
                 reversal=not meter.panel.animation.running and meter.panel.progress==1.
+                reversal_state=dict(progress=meter.panel.progress,target=meter.panel.animation.state.target,
+                    elapsed=meter.panel.animation.state.elapsed,duration=meter.panel.animation.state.duration,
+                    leave_timer_active=meter.leave_timer.isActive())
                 meter.hide_all();QTest.qWait(35)
                 closed=all(not w.isVisible() for w in (meter,meter.peek,meter.panel,meter.glow))
                 records.append(dict(mode=mode,configured_edge=edge,effective_edge=actual_edge,theme=theme,
-                    samples=samples,after_close_rgb_delta=changed,reversal_settled=reversal,all_surfaces_closed=closed))
+                    samples=samples,after_close_rgb_delta=changed,reversal_settled=reversal,reversal_state=reversal_state,all_surfaces_closed=closed))
                 for widget in (meter.peek,meter.panel,meter.glow,meter):widget.close()
-    scene.close()
+                current[0]=None
+    scene.close();assert records,'No mode/edge cases matched'
     result=dict(platform=app.platformName(),dpi=screen.devicePixelRatio(),cases=records,
                 scope='Outside-mask corners and a 17pt travel-corridor grid (2pt fractional-DPI antialias guard), mid-morph frames, former-panel centre after close, reversal and hide. Not complete visual similarity proof.')
     (destination/'audit.json').write_text(json.dumps(result,indent=2),encoding='utf-8')

@@ -22,6 +22,9 @@ class AgentPeekView(QWidget):
     @property
     def line(self):return bool(self.meter.attention_event()) or self.meter.settings.get('mode','simple')=='simple'
 
+    @property
+    def edge(self):return 'top' if self.meter.settings.get('mode')=='notch' else self.meter.settings['edge']
+
     def refresh(self):
         from views import font
         cfg=self.meter.settings
@@ -41,9 +44,10 @@ class AgentPeekView(QWidget):
         attention=self.meter.attention_event()
         if attention:
             self.rows=[]
-            self.fallback=attention['vendor']+' · '+('待批准' if attention['kind']=='permission' else '有新回复')
+            from quota_alert_views import compact
+            self.fallback=attention['vendor']+' · '+('待批准' if attention['kind']=='permission' else '有新回复' if attention['kind']=='completion' else compact(attention))
         fm=QFontMetricsF(font(self.font_size));bold=QFontMetricsF(font(self.font_size,True))
-        edge=cfg['edge'];self.tuck=round(self.meter.width()/2) if self.line and edge in ('left','right') else 0
+        edge=self.edge;self.tuck=round(self.meter.width()/2) if self.line and edge in ('left','right') else 0
         if self.line:
             cells=sum(math.ceil(fm.horizontalAdvance(label))+self.pair_gap+math.ceil(bold.horizontalAdvance(value)) for label,value,_ in self.rows)
             if not self.rows:cells=math.ceil(fm.horizontalAdvance(self.fallback))
@@ -87,7 +91,7 @@ class AgentPeekView(QWidget):
         self.update()
 
     def reposition(self):
-        geom=self.meter.geometry();cfg=self.meter.settings;edge=cfg['edge']
+        geom=self.meter.geometry();edge=self.edge
         selected=next((rect for client,rect in self.meter.cells if client==self.meter.client),QRectF(self.meter.rect()))
         cx=geom.x()+selected.center().x();cy=geom.y()+selected.center().y()
         if edge=='left':x=geom.right()-self.tuck;y=cy-self.height()/2
@@ -115,7 +119,7 @@ class AgentPeekView(QWidget):
             p.setPen(QPen(color('outline',painter=p),1));p.drawPath(path)
         p.setClipPath(path)
         p.setOpacity(self.progress)
-        x=self.padding+(self.tuck if self.meter.settings['edge']=='left' else 0)
+        x=self.padding+(self.tuck if self.edge=='left' else 0)
         if self.line:
             fm=QFontMetricsF(font(self.font_size));bold=QFontMetricsF(font(self.font_size,True))
             if not self.rows:text(p,QRectF(x,0,self.target_width-x-self.padding,self.height()),self.fallback,self.font_size,'secondary')
@@ -134,7 +138,8 @@ class AgentPeekView(QWidget):
         self.meter.leave_timer.stop()
         if self.meter.attention_events:self.meter.enter_timer.start()
     def leaveEvent(self,event):
-        self.meter.enter_timer.stop();self.meter.leave_timer.start()
+        self.meter.enter_timer.stop()
+        if self.isVisible():self.meter.leave_timer.start()
     def mousePressEvent(self,event):
         if event.button()==Qt.MouseButton.LeftButton:self.pressed=True
         elif event.button()==Qt.MouseButton.RightButton:self.meter.menu_callback(event.globalPosition().toPoint())

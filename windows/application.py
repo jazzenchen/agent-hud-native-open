@@ -123,7 +123,7 @@ class Application:
         self.settings_window=None
         from attention_ipc import AttentionServer
         self.attention=AttentionServer(app,enabled=lambda:self.settings.get('client_hooks',True),wait_minutes=lambda:self.settings.get('approval_wait_minutes',10),
-            completion_enabled=lambda vendor:vendor not in self.settings.get('disabled_live_status_sources',[]))
+            completion_enabled=lambda vendor:vendor not in self.settings.get('disabled_live_status_sources',[]),presentation=self.attention_presentation,news_enabled=self.attention_news_enabled)
         self.attention.changed.connect(self.refresh_attention)
         app.aboutToQuit.connect(self.attention.close)
         self.bridge=Bridge()
@@ -417,6 +417,29 @@ class Application:
             from quota_state import failure_code
             self.health_write_error=failure_code(error)
 
+    def attention_news_enabled(self,event):
+        if event.get('account') in self.settings.get('hidden_accounts',[]):return False
+        if event['vendor'] not in self.data:return False
+        if event['kind']=='quota':
+            from usage_display import visible_quota,window_key
+            quota=visible_quota(self.data[event['vendor']].get('quota',{}),event['vendor'],self.settings)
+            return any(window_key(row)==event['window'] for row in quota.get('windows',[]))
+        return True
+
+    def attention_presentation(self):
+        from PySide6.QtGui import QCursor
+        point=QCursor.pos();displayed=set();held=set()
+        for meter in self.windows.values():
+            event=meter.attention_event()
+            if not meter.isVisible() or event is None:continue
+            displayed.add(event['id'])
+            for widget in (meter,meter.peek,meter.panel):
+                if not widget.isVisible():continue
+                local=widget.mapFromGlobal(point);mask=widget.mask()
+                if widget.rect().contains(local) and (mask.isEmpty() or mask.contains(local)):
+                    held.add(event['id']);break
+        return displayed,held
+
     def refresh_attention(self):
         if not hasattr(self,'attention'):return
         from session_navigation import can_navigate,navigate
@@ -425,7 +448,10 @@ class Application:
             meter.attention_can_navigate=can_navigate
             meter.attention_navigate=navigate
             disabled=set(self.settings.get('disabled_live_status_sources',[]))
-            events=[row for row in self.attention.pending.values() if row['vendor'] in meter.group_data and (row['kind']=='permission' or row['vendor'] not in disabled)]
+            events=[row for row in self.attention.pending.values() if row['vendor'] in meter.group_data and (row['kind']!='completion' or row['vendor'] not in disabled)]
+            from usage_display import window_key
+            events=[row for row in events if row['kind'] not in ('quota','reset_credits') or row.get('account') not in self.settings.get('hidden_accounts',[])]
+            events=[row for row in events if row['kind']!='quota' or row['window'] in {window_key(window) for window in meter.group_data[row['vendor']].get('quota',{}).get('windows',[])}]
             meter.set_attention(events)
 
     def tray_click(self,reason):

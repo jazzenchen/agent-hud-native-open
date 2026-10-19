@@ -441,6 +441,7 @@ class SimpleMeterView(QWidget):
         self.leave_timer.start()
 
     def open_panel(self):
+        self.enter_timer.stop();self.leave_timer.stop()
         origin=self.geometry().united(self.peek.geometry()) if self.peek.isVisible() else self.geometry()
         self.peek.dismiss(immediate=True)
         if not self.panel.isVisible():self.panel.source_rect=origin
@@ -637,6 +638,8 @@ class HoverPanelView(QWidget):
         self.update()
 
     def content_width(self):
+        event=self.meter.attention_event()
+        if event and event['kind'] in ('quota','reset_credits'):return min(int(DESIGN['alert_width']),self.meter.screen.availableGeometry().width()-16)
         single=self.meter.settings.get('separates_agents',True) and self.meter.settings.get('mode')!='notch'
         return min(int(self.meter.settings.get('panel_width',540)-(100 if single else 0)),self.meter.screen.availableGeometry().width()-16)
 
@@ -651,7 +654,7 @@ class HoverPanelView(QWidget):
         self.meter.leave_timer.stop()
 
     def leaveEvent(self,event):
-        self.meter.leave_timer.start()
+        if self.isVisible():self.meter.leave_timer.start()
 
     def paintEvent(self,event):
         self.meter.palette_colors()

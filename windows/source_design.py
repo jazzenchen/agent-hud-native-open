@@ -37,7 +37,11 @@ def load_design():
     island=(DESKTOP/'Notch/Island/IslandRootView.swift').read_text(encoding='utf-8')
     build=(ROOT/'scripts/build-app.sh').read_text(encoding='utf-8')
     shell=(DESKTOP/'Notch/ScreenHUD.swift').read_text(encoding='utf-8')
+    alerts=(DESKTOP/'Notch/Alerts/IslandAlert.swift').read_text(encoding='utf-8')
+    controller=(DESKTOP/'Notch/Island/IslandController.swift').read_text(encoding='utf-8')
     return dict(colors=colors,light_colors=light_colors,status_colors=status_colors,glass_text=glass_text,
+                alert_seconds=number(alerts,r'visibleDuration: Duration = \.seconds\((\d+)\)'),
+                alert_width=number(controller,r'alertDetailWidth: CGFloat = (\d+)'),
                 full_corner=number(shell,r'full \? (\d+)'),bubble_corner=number(shell,r'bubble \? (\d+)'),
                 app_name=re.search(r'APP_NAME="([^"]+)"',build)[1],
                 app_version=re.search(r'CFBundleShortVersionString</key><string>([^<]+)',build)[1],

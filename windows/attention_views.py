@@ -11,6 +11,10 @@ from PySide6.QtGui import QColor,QPen,QFontMetricsF
 
 def geometry(event,w):
     from views import font
+    if event['kind']=='quota':
+        button_y=236 if event.get('other_limits') else 218
+        return dict(button_y=button_y,queue_y=button_y+42,inset_height=0)
+    if event['kind']=='reset_credits':return dict(button_y=178,queue_y=220,inset_height=0)
     if event['kind']!='permission':return dict(button_y=206,queue_y=248,inset_height=68)
     detail=event.get('detail') or ''
     if event.get('removed') or event.get('added'):
@@ -27,6 +31,9 @@ def height(meter):
 
 
 def paint(panel,p,w,event):
+    if event['kind'] in ('quota','reset_credits'):
+        from quota_alert_views import paint as news
+        news(panel,p,w,event);return
     from views import text,color,font,artwork,compact
     meter=panel.meter;live=any(row['id']==event['id'] for row in meter.attention_events)
     permission=event['kind']=='permission';accent=color('warning' if permission else '#0a84ff',painter=p)
@@ -166,6 +173,7 @@ def dispatch(meter,identifier,action):
         return
     if action=='usage':
         if hasattr(meter,'usage_callback'):meter.usage_callback(event['vendor'],meter.group_data.get(event['vendor'],meter.data))
+        if event['kind'] in ('quota','reset_credits'):meter.attention_callback(identifier,'dismiss')
         return
     if action=='navigate':
         if getattr(meter,'attention_navigate',lambda _:False)(event):meter.attention_callback(identifier,'dismiss')
