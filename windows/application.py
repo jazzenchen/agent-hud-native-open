@@ -121,6 +121,11 @@ class Application:
         self.data={}
         self.dialogs=[]
         self.settings_window=None
+        from attention_ipc import AttentionServer
+        self.attention=AttentionServer(app,enabled=lambda:self.settings.get('client_hooks',True),wait_minutes=lambda:self.settings.get('approval_wait_minutes',10),
+            completion_enabled=lambda vendor:vendor not in self.settings.get('disabled_live_status_sources',[]))
+        self.attention.changed.connect(self.refresh_attention)
+        app.aboutToQuit.connect(self.attention.close)
         self.bridge=Bridge()
         self.bridge.snapshot.connect(self.update)
         self.tray=QSystemTrayIcon(self.tray_icon(),app)
@@ -137,6 +142,12 @@ class Application:
         app.screenAdded.connect(lambda _:self.update(self.data))
         app.screenRemoved.connect(lambda _:self.update(self.data))
         app.styleHints().colorSchemeChanged.connect(lambda _:self.refresh_themes())
+        self.hook_setup_error=None
+        if self.settings['client_hooks']:
+            try:
+                from attention_hooks import configure_all
+                configure_all()
+            except (OSError,ValueError):self.hook_setup_error='客户端回调配置失败，保留客户端原有询问。'
 
     def tray_icon(self):
         pixmap=QPixmap(32,32);pixmap.fill(Qt.GlobalColor.transparent)
@@ -237,7 +248,9 @@ class Application:
         if screen is None:
             if key=='client_hooks':
                 from install_hooks import configure
-                configure(Path.home()/'.cursor/hooks.json',remove=not value)
+                from attention_hooks import configure_all
+                configure_all(remove=not value)
+                if (Path.home()/'.cursor').exists():configure(Path.home()/'.cursor/hooks.json',remove=not value)
             elif key=='launch_at_login':
                 import shutil
                 startup=Path(os.environ['APPDATA'])/'Microsoft/Windows/Start Menu/Programs/Startup/Agent HUD Open.lnk'
@@ -262,6 +275,12 @@ class Application:
                 self.monitor.last_query.pop('GitHub Copilot',None)
         self.tray.setVisible(self.settings['show_tray'])
         self.commit_settings(previous);self.update(self.data)
+        if hasattr(self,'attention'):
+            if key=='client_hooks' and not value:self.attention.disable()
+            if key=='approval_wait_minutes':self.attention.refresh_wait()
+            if key=='disabled_live_status_sources':
+                for identifier,event in tuple(self.attention.pending.items()):
+                    if event['kind']=='completion' and event['vendor'] in value:self.attention.resolve(identifier,'dismiss')
         for meter in self.windows.values():meter.apply_material()
         self.refresh_themes()
 
@@ -324,6 +343,7 @@ class Application:
         snapshot={k:v for k,v in snapshot.items() if k in self.settings['enabled_clients']}
         snapshot={name:snapshot[name] for name in self.settings.get('provider_order',list(snapshot)) if name in snapshot}
         self.data=snapshot
+        if hasattr(self,'attention'):self.attention.observe(snapshot)
         for dialog in self.dialogs:
             if isinstance(dialog,UsageWindow) and dialog.client in snapshot:dialog.sync(snapshot[dialog.client])
         groups={}
@@ -349,6 +369,8 @@ class Application:
                 meter.settings=self.screen_settings(screen.name())
                 from usage_display import visible_quota
                 visible={c:{**snapshot[c],'quota':visible_quota(snapshot[c].get('quota',{}),c,self.settings)} for c in clients}
+                for vendor in self.settings.get('disabled_live_status_sources',[]):
+                    if vendor in visible:visible[vendor]={**visible[vendor],'local':{**visible[vendor].get('local',{}),'sessions':[]}}
                 meter.set_group_data(visible);meters.append(meter)
             cfg=self.screen_settings(screen.name())
             edge=cfg['edge'] if cfg['mode']!='notch' else 'top';horizontal=edge in ('top','bottom')
@@ -363,6 +385,7 @@ class Application:
                 meter.glow.sync()
                 if horizontal:x+=meter.width()+gap
                 else:y+=meter.height()+gap
+        self.refresh_attention()
         self.tray.setToolTip(DESIGN['app_name']+' · '+(' / '.join(snapshot) if snapshot else '暂无运行中的智能体'))
         if self.settings_window is not None:
             for client,label in self.settings_window.status_labels.items():label.setText('已停用' if client not in self.settings['enabled_clients'] else '运行中' if client in snapshot else '未运行')
@@ -371,6 +394,7 @@ class Application:
             self._theme_signature=signature;self.refresh_themes()
         # Health metadata only; useful for checking hidden/background operation.
         status=dict(qt_platform=self.app.platformName(),running=sorted(snapshot),mode=self.settings['mode'],separates_agents=self.settings['separates_agents'],
+                    attention_pending=len(self.attention.pending) if hasattr(self,'attention') else 0,
                     quota={client:dict(state='stale' if data.get('quota',{}).get('stale') else 'available' if data.get('quota',{}).get('windows') else 'unavailable' if data.get('quota',{}).get('error_code') else 'no_percentage' if data.get('quota',{}).get('at') else 'loading',
                         error_code=data.get('quota',{}).get('error_code'),last_success_at=data.get('quota',{}).get('at'),
                         retry_seconds=data.get('quota',{}).get('retry_seconds')) for client,data in snapshot.items()},
@@ -391,6 +415,17 @@ class Application:
         except OSError as error:
             from quota_state import failure_code
             self.health_write_error=failure_code(error)
+
+    def refresh_attention(self):
+        if not hasattr(self,'attention'):return
+        from session_navigation import can_navigate,navigate
+        for meter in self.windows.values():
+            meter.attention_callback=self.attention.resolve
+            meter.attention_can_navigate=can_navigate
+            meter.attention_navigate=navigate
+            disabled=set(self.settings.get('disabled_live_status_sources',[]))
+            events=[row for row in self.attention.pending.values() if row['vendor'] in meter.group_data and (row['kind']=='permission' or row['vendor'] not in disabled)]
+            meter.set_attention(events)
 
     def tray_click(self,reason):
         if reason==QSystemTrayIcon.ActivationReason.Trigger:

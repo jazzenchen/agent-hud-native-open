@@ -9,6 +9,16 @@ from pathlib import Path
 
 class UsageLedger:
     def __init__(self,path):self.path=Path(path)
+    def known_accounts(self,source):
+        # Settings needs identities only, not a full token/model/time report.
+        # Keep this path read-only and bounded so a sidebar refresh cannot run
+        # all aggregation queries or create a database on the GUI thread.
+        if not self.path.exists():return []
+        db=sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True,timeout=.1)
+        try:
+            rows=db.execute('SELECT identity,label,evidence,observed FROM accounts WHERE source=? ORDER BY observed DESC LIMIT 100',(source,)).fetchall()
+            return [dict(id=r[0],label=r[1],evidence=r[2],observed=r[3]) for r in rows]
+        finally:db.close()
     def connect(self):
         self.path.parent.mkdir(parents=True,exist_ok=True)
         db=sqlite3.connect(self.path,timeout=2)

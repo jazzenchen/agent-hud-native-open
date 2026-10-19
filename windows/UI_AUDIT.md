@@ -363,3 +363,28 @@ Further work requested: profile frame time/cold-open cost, refine continuous
 curvature and prepare an actual-app demonstration video with clearly labeled
 sample usage. A promotional recording is not performance acceptance evidence.
 The overall >=90% gate and upstream PR update are still pending.
+
+### Core-feature and settings audit
+
+`PARITY_AUDIT.md` now maps original settings rows and core capabilities to actual
+Windows behavior and explicit gaps. Permission/reply cards are implemented in
+the shared native surface rather than as promo-only images. Current-user pipe
+tests exercise real callback subprocess stdout, cancellation, timeouts, invalid
+input, exact Codex reviewer contexts, explicit question/plan answers, transcript
+settling/rotation, hook ownership and reversible foreign-config preservation.
+Qwen timeout units and ZCode nested events come from the original hook source.
+WorkBuddy metering tests cover read-only scope, renamed sessions without log
+reparsing, model attribution intersection and invalid credit values.
+
+150 regression checks pass. The integrated native surface matrix again passed
+24 combinations at each of 100%, 125% and 150% scaling, within the documented
+2pt anti-alias guard and RGB tolerance. Actual permission and reply cards were
+captured in both themes and visually inspected. Mouse press alone did not
+approve; release inside the same live action did. This is not live-client
+certification for every installed client version and not a 90% similarity score.
+
+Source MCP contracts were exported by compiling unchanged Swift definitions on
+macOS (Actions run 39223404514) and stored with provenance. MCP runtime/layout
+drafts, quota/reset-credit reminders, richer statistics and remaining callback
+channels still block the mature-release claim. Performance work and the actual
+UI promo remain required; no upstream review is requested on this checkpoint.

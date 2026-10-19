@@ -20,7 +20,7 @@ class AgentPeekView(QWidget):
         self.target_width=1;self.target_height=26;self.corner=13
 
     @property
-    def line(self):return self.meter.settings.get('mode','simple')=='simple'
+    def line(self):return bool(self.meter.attention_event()) or self.meter.settings.get('mode','simple')=='simple'
 
     def refresh(self):
         from views import font
@@ -38,6 +38,10 @@ class AgentPeekView(QWidget):
         self.fallback=f'{running} 个运行中' if running else self.meter.client
         from quota_state import quota_notice
         self.setToolTip(quota_notice(self.meter.data.get('quota',{}),self.meter.client))
+        attention=self.meter.attention_event()
+        if attention:
+            self.rows=[]
+            self.fallback=attention['vendor']+' · '+('待批准' if attention['kind']=='permission' else '有新回复')
         fm=QFontMetricsF(font(self.font_size));bold=QFontMetricsF(font(self.font_size,True))
         edge=cfg['edge'];self.tuck=round(self.meter.width()/2) if self.line and edge in ('left','right') else 0
         if self.line:
@@ -126,8 +130,11 @@ class AgentPeekView(QWidget):
             if self.running:text(p,QRectF(x,y,self.width()-2*x,self.row_height),f'{self.running} 个运行中',self.font_size,'secondary')
         p.end()
 
-    def enterEvent(self,event):self.meter.leave_timer.stop()
-    def leaveEvent(self,event):self.meter.leave_timer.start()
+    def enterEvent(self,event):
+        self.meter.leave_timer.stop()
+        if self.meter.attention_events:self.meter.enter_timer.start()
+    def leaveEvent(self,event):
+        self.meter.enter_timer.stop();self.meter.leave_timer.start()
     def mousePressEvent(self,event):
         if event.button()==Qt.MouseButton.LeftButton:self.pressed=True
         elif event.button()==Qt.MouseButton.RightButton:self.meter.menu_callback(event.globalPosition().toPoint())

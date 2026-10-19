@@ -78,7 +78,7 @@ class Transcript:
                 self.activity=next(reversed(self.active_calls.values()),'thinking');self.updated=max(self.updated,at)
             if kind!='event_msg':return
             if pk=='task_started' and not inherited:self.state='running';self.active_calls.clear();self.activity='thinking'
-            elif pk in ('task_complete','task_completed') and not inherited:self.state='done';self.active_calls.clear();self.activity=None
+            elif pk in ('task_complete','task_completed') and not inherited:self.state='error' if payload.get('error') else 'done';self.active_calls.clear();self.activity=None
             elif pk=='turn_aborted' and not inherited:self.state='stopped';self.active_calls.clear();self.activity=None
             if pk in ('task_started','task_complete','task_completed','turn_aborted') and at is not None and not inherited:self.updated=max(self.updated,at)
             if pk!='token_count':return

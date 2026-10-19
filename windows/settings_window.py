@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt,QTimer,QSize
 from PySide6.QtWidgets import (QDialog,QHBoxLayout,QVBoxLayout,QListWidget,QStackedWidget,
     QWidget,QScrollArea,QLabel,QComboBox,QCheckBox,QPushButton,QMessageBox,QListWidgetItem,QFrame,QSizePolicy)
 from settings_controls import Switch,Segmented,SliderValue,SettingRows,sidebar_icon,PageTransition,CardSurface,SidebarDelegate,HudSample
-from preferences import DEFAULTS
+from preferences import DEFAULTS,APPROVAL_WAIT_CHOICES
 from theme import window_is_light,tokens,apply_widget_theme,native_titlebar
 from source_design import DESIGN
 from PySide6.QtGui import QIcon
@@ -136,7 +136,7 @@ class SettingsWindow(QDialog):
         card=CardSurface();column.addWidget(card)
         form=SettingRows(card,{'登录时启动':'登录后，自动开始监测用量。','按 agent 分开':'悬停某个标志只展开该 agent 的面板，不再展开全部 agent 的面板。','按 Alt 才展开':'指针经过时不展开，悬停后按 Alt 打开。',
             '跟随所在屏幕':'每个窗口和菜单栏采用所在屏幕的 HUD 外观，移到另一块屏幕时跟着变。HUD 外观在「显示」中单独设置，与这里的窗口外观独立。',
-            '客户端回调':'显示会话的开始与完成状态，用量和额度读取不受影响。',
+            '客户端回调':'写入各客户端的设置，用来在 HUD 上回答权限请求、显示完成与等待批准。',
             '位置':'回到这块屏幕的顶部安全位置。','HUD 样式':'形态、位置、大小、外观和光晕一起回到默认；「恢复上一版」可以撤销。'})
         if title=='屏幕':form.subtitles['HUD 形态']={'simple':'贴着屏幕边缘的悬浮面板，没有背景光晕。','logos':'贴着屏幕边缘停靠，向屏幕内展开。','notch':'固定在屏幕顶部的刘海面板。'}[self.value('mode',True)]
         layout.addWidget(section);return form
@@ -183,8 +183,11 @@ class SettingsWindow(QDialog):
         self.check(form,'跟随所在屏幕','match_screen').toggled.connect(lambda _:QTimer.singleShot(0,self.rebuild))
         self.combo(form,'语言','language',[('system','跟随系统'),('zh','中文'),('en','English')],rebuild=True)
         form=self.group(layout,'启动');self.check(form,'登录时启动','launch_at_login')
-        form=self.group(layout,'客户端');self.check(form,'客户端回调','client_hooks')
-        wait=QComboBox();wait.addItem('10 分钟');wait.setEnabled(False);wait.setToolTip('权限审批暂未开放，由客户端自行询问。');form.addRow('等待回答',wait)
+        form=self.group(layout,'客户端');hooks=self.check(form,'客户端回调','client_hooks')
+        wait=self.combo(form,'等待回答','approval_wait_minutes',[(n,f'{n} 分钟') for n in APPROVAL_WAIT_CHOICES])
+        wait.setEnabled(self.manager.settings['client_hooks'])
+        hooks.toggled.connect(wait.setEnabled)
+        wait.setToolTip('到时没回答的权限请求交还客户端，由它自己询问。')
 
     def sources(self,layout):
         self.title(layout,'智能体','管理实时状态、套餐与显示窗口。')
@@ -223,15 +226,16 @@ class SettingsWindow(QDialog):
             self.hud_preview=HudSample(self.manager,self.selected_screen);form.addRow(self.hud_preview)
             self.number(form,'大小','size',20,60,1,suffix=' pt')
             self.number(form,'Logo 间距','gap',.1,.6,.05)
-            self.check(form,'显示圆环','show_rings',True)
-            self.number(form,'圆环粗细','ring_width',1,4,.1,suffix=' pt')
+            self.check(form,'显示圆环','show_rings',True).toggled.connect(lambda _:QTimer.singleShot(0,self.rebuild))
+            if self.value('show_rings',True):self.number(form,'圆环粗细','ring_width',1,4,.5,suffix=' pt')
             self.check(form,'显示数字','show_numbers',True)
-        else:
+        elif self.value('mode',True)=='logos':
             self.number(form,'Logo 大小','logo_size',20,60,1,suffix=' pt')
             self.number(form,'Logo 离屏幕边缘','edge_distance',0,20,1,suffix=' pt')
             self.number(form,'Logo 间距','logo_gap',.1,.6,.05)
             self.check(form,'显示 Logo','show_logos',True)
             self.glow(layout)
+        else:self.glow(layout)
         form=self.group(layout,'展开面板')
         for label,key in [('会话列表','panel_sessions'),('额度明细','panel_quota'),('重置倒计时','reset_countdown'),('Token 消耗','panel_tokens')]:self.check(form,label,key,True)
         self.number(form,'面板宽度','panel_width',480,720,10,suffix=' pt')
@@ -248,18 +252,21 @@ class SettingsWindow(QDialog):
     def glow(self,layout):
         form=self.group(layout,'背景光晕')
         self.combo(form,'光晕样式','glow_style',[('blur','柔光'),('dots','点阵'),('ascii','字符'),('blocks','色块'),('braille','盲文'),('binary','二进制')],True,True)
-        self.combo(form,'动效','glow_effect',[('breathe','呼吸'),('flow','流光'),('scan','扫描'),('ripple','涟漪'),('shimmer','闪烁'),('boot','启动')],True)
-        fields=[('光晕亮度','glow_brightness',.2,1,.05),
-            ('工作时周期','glow_working',1,12,.1),('空闲时周期','glow_idle',1,24,.1),('呼吸幅度','glow_depth',0,1,.05),
-            ]
-        fields+= [('光晕范围','glow_range',0,36,1),('羽化','glow_blur',0,36,1)] if self.value('glow_style',True)=='blur' else [('点距','grid_pitch',4,12,1),('密度','grid_density',.5,1.5,.05),('实心','grid_core',0,8,1),('渐隐','grid_fade',0,8,1)]
+        self.combo(form,'动效','glow_effect',[('breathe','呼吸'),('flow','流光'),('scan','扫描'),('ripple','涟漪'),('shimmer','闪烁'),('boot','启动')],True,True)
+        grid=self.value('glow_style',True)!='blur'
+        fields= [('点距','grid_pitch',4,12,1),('密度','grid_density',.5,1.5,.05),('实心','grid_core',0,8,1),('渐隐','grid_fade',0,8,1)] if grid else []
+        fields+=[('光晕亮度','glow_brightness',.2,1,.05)]
+        if not grid:fields += [('光晕范围','glow_range',0,36,1),('羽化','glow_blur',0,36,1)]
         for label,key,low,high,step in fields:self.number(form,label,key,low,high,step)
-        self.check(form,'仅向外扩散','glow_outward',True)
+        if not grid:self.check(form,'仅向外扩散','glow_outward',True)
+        self.number(form,'工作时周期','glow_working',1,12,.5,suffix=' s')
+        self.number(form,'空闲时周期','glow_idle',1,24,.5,suffix=' s')
+        if self.value('glow_effect',True)=='breathe':self.number(form,'呼吸幅度','glow_depth',0,1,.05)
 
     def experimental(self,layout):
         self.title(layout,'实验选项','仍在验证的功能，以后可能会变。')
         form=self.group(layout,'Agent 工具')
-        note=QLabel('MCP 布局草稿和权限审批暂未开放。')
+        note=QLabel('MCP 布局草稿尚在移植。权限审批与回复提醒由「通用 → 客户端回调」控制。')
         note.setWordWrap(True);form.addRow(note)
 
     def change_screen(self,name):

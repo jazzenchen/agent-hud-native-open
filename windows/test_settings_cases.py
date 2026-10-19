@@ -14,7 +14,7 @@ class SettingsCases(unittest.TestCase):
     @classmethod
     def setUpClass(cls):cls.app=QApplication.instance() or QApplication([])
     def manager(self):
-        manager=Application.__new__(Application);manager.app=self.app;manager.settings=load({});manager.data={};manager.preview=True
+        manager=Application.__new__(Application);manager.app=self.app;manager.settings=load({});manager.data={};manager.preview=True;manager.windows={}
         manager.tray=Mock();manager.monitor=Mock();manager.menu=Mock();manager.update=Mock();manager.refresh_themes=Mock()
         directory=Path(self.enterContext(tempfile.TemporaryDirectory()));manager.config=directory/'settings.json'
         return manager
@@ -28,6 +28,38 @@ class SettingsCases(unittest.TestCase):
             self.assertTrue(by_name['CodeBuddy']['installed']);self.assertFalse(by_name['CodeBuddy']['running'])
             self.assertFalse(by_name['Cursor']['running']);self.assertTrue(by_name['Codex']['running'])
             self.assertFalse(by_name['Claude']['installed'])
+
+    def test_equal_named_account_windows_have_independent_visibility_and_order(self):
+        from usage_display import visible_quota,window_key
+        from agents_page import WindowOrderList
+        manager=self.manager()
+        rows=[dict(label=label,account_id=account,used=10) for account in ('a','b') for label in ('5h','Weekly')]
+        quota=dict(windows=rows,accounts=[dict(id=key,label=key) for key in ('a','b')])
+        manager.data={'Codex':dict(quota=quota,local={})}
+        manager.settings['hidden_windows']={'Codex':['5h']}
+        window=SettingsWindow(manager);self.addCleanup(window.close);page=window.agent_page
+        page.toggle_window('Codex',window_key(rows[0]),True)
+        visible=visible_quota(quota,'Codex',manager.settings)['windows']
+        self.assertIn(rows[0],visible);self.assertNotIn(rows[2],visible)
+        views=page.findChildren(WindowOrderList);self.assertEqual(len(views),2)
+        for view in views:
+            view.model().moveRow(view.rootIndex(),0,view.rootIndex(),2);view.persist()
+        order=manager.settings['window_order']['Codex'];self.assertEqual(len(set(order)),4)
+        self.assertEqual([window_key(row) for row in visible_quota(quota,'Codex',{**manager.settings,'hidden_windows':{}})['windows']],
+                         [window_key(rows[i]) for i in (1,0,3,2)])
+
+    def test_source_glow_fields_and_ring_controls_follow_current_mode(self):
+        manager=self.manager();screen=self.app.primaryScreen().name()
+        manager.settings['placements'][screen]=dict(mode='notch',glow_style='dots',glow_effect='flow')
+        window=SettingsWindow(manager);self.addCleanup(window.close)
+        from PySide6.QtCore import QObject
+        def names():return {child.objectName() for child in window.stack.widget(2).findChildren(QObject)}
+        self.assertIn('grid_pitch',names());self.assertNotIn('glow_depth',names())
+        self.assertNotIn('glow_outward',names());self.assertNotIn('logo_size',names())
+        manager.settings['placements'][screen]=dict(mode='simple',show_rings=False)
+        window.rebuild();self.assertNotIn('ring_width',names())
+        manager.settings['placements'][screen]=dict(mode='logos',glow_style='blur',glow_effect='breathe')
+        window.rebuild();self.assertIn('glow_depth',names());self.assertIn('glow_outward',names())
 
     def test_style_reset_and_revert_survive_restart_without_resetting_panel_layout(self):
         manager=self.manager();screen=self.app.primaryScreen().name()
@@ -88,5 +120,14 @@ class SettingsCases(unittest.TestCase):
         index=next(i for i in range(page.list.count()) if page.list.item(i).data(256)['vendor']=='Claude')
         page.list.setCurrentRow(index);self.app.processEvents()
         self.assertIsNotNone(page.findChild(QCheckBox,'agent_enabled_Claude'))
+
+    def test_live_status_switch_preserves_collection_and_history(self):
+        manager=self.manager();window=SettingsWindow(manager);self.addCleanup(window.close)
+        page=window.agent_page;before=set(manager.settings['enabled_clients'])
+        page.toggle_live_status('Codex',False)
+        self.assertEqual(set(manager.settings['enabled_clients']),before)
+        self.assertIn('Codex',manager.settings['disabled_live_status_sources'])
+        page.toggle_live_status('Codex',True)
+        self.assertNotIn('Codex',manager.settings['disabled_live_status_sources'])
 
 if __name__=='__main__':unittest.main()

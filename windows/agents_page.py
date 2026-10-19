@@ -6,6 +6,7 @@ from agent_catalog import detect_sources,VENDORS,SUPPORTED
 from settings_controls import Switch,SettingRows,CardSurface,is_light
 from theme import tokens
 from views import artwork
+from usage_display import window_key,window_account,ordered_windows
 
 
 class ProviderList(QListWidget):
@@ -23,13 +24,14 @@ class WindowOrderList(QListWidget):
         self.setDefaultDropAction(Qt.DropAction.MoveAction);self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet('QListWidget{background:transparent;border:0;padding:0} QListWidget::item{padding:0;background:transparent;border-radius:0} QListWidget::item:selected{background:transparent}')
         order=page.manager.settings.get('window_order',{}).get(vendor,[])
-        for window in sorted(windows,key=lambda row:order.index(row['label']) if row['label'] in order else len(order)):
-            label=window['label'];item=QListWidgetItem();item.setData(Qt.ItemDataRole.UserRole,label);item.setSizeHint(QSize(200,46));self.addItem(item)
+        for window in ordered_windows(windows,order):
+            label=window['label'];key=window_key(window);item=QListWidgetItem();item.setData(Qt.ItemDataRole.UserRole,key);item.setSizeHint(QSize(200,46));self.addItem(item)
             widget=QWidget();layout=QHBoxLayout(widget);layout.setContentsMargins(0,0,0,0);layout.setSpacing(12)
             grip=QLabel('≡');grip.setProperty('subtitle',True);grip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             name=QLabel(label);name.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents);layout.addWidget(grip);layout.addWidget(name,1)
-            switch=Switch();switch.setAccessibleName(vendor+' '+label);switch.setChecked(label not in page.manager.settings.get('hidden_windows',{}).get(vendor,[]))
-            switch.toggled.connect(lambda on,label=label:page.toggle_window(vendor,label,on));layout.addWidget(switch);self.setItemWidget(item,widget)
+            switch=Switch();switch.setAccessibleName(vendor+' '+label);hidden=page.manager.settings.get('hidden_windows',{}).get(vendor,[])
+            switch.setChecked(key not in hidden and label not in hidden)
+            switch.toggled.connect(lambda on,key=key:page.toggle_window(vendor,key,on));layout.addWidget(switch);self.setItemWidget(item,widget)
         self.setFixedHeight(max(1,len(windows))*46)
         self.model().rowsMoved.connect(lambda *args:self.persist())
     def startDrag(self,actions):
@@ -38,7 +40,10 @@ class WindowOrderList(QListWidget):
         finally:self.page.dragging=False
     def persist(self):
         values={key:list(labels) for key,labels in self.page.manager.settings.get('window_order',{}).items()}
-        values[self.vendor]=[self.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.count())]
+        current=[self.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.count())]
+        previous=values.get(self.vendor,[]);slots=iter(current)
+        values[self.vendor]=[next(slots) if key in current else key for key in previous]
+        values[self.vendor]+=list(slots)
         self.page.settings.write('window_order',values)
 
 
@@ -145,22 +150,32 @@ class AgentsPage(QWidget):
             try:
                 from providers import DATA
                 from usage_ledger import UsageLedger
-                history=UsageLedger(DATA/'usage-ledger.sqlite').report(vendor).get('accounts',[]) if not getattr(self.manager,'preview',False) else []
+                history=UsageLedger(DATA/'usage-ledger.sqlite').known_accounts(vendor) if not getattr(self.manager,'preview',False) else []
                 for previous in history[:4]:
                     if previous['id']!=account.get('id'):form.addRow('曾识别账户',QLabel(previous['label']))
             except Exception:pass
             form=self.section('显示窗口')
-            switch=Switch();switch.setObjectName('agent_enabled_'+vendor);switch.setChecked(vendor in self.manager.settings['enabled_clients']);switch.setAccessibleName(vendor)
-            switch.toggled.connect(lambda on:self.toggle(vendor,on));form.addRow(vendor,switch)
             if vendor=='GitHub Copilot':
                 consent=Switch();consent.setObjectName('read_copilot_quota');consent.setChecked(self.manager.settings.get('read_copilot_quota',False))
                 consent.toggled.connect(lambda on:self.copilot_consent(consent,on));form.addRow('读取 GitHub Copilot 额度',consent)
             if quota.get('windows'):
-                form.addRow(WindowOrderList(self,vendor,quota['windows']))
+                groups={}
+                for entry in quota['windows']:groups.setdefault(window_account(entry),[]).append(entry)
+                identities_by_id={identity.get('id'):identity.get('label') for identity in identities}
+                for key,entries in groups.items():
+                    if len(groups)>1:
+                        heading=QLabel(identities_by_id.get(key) or key or '其他窗口');heading.setProperty('subtitle',True);form.addRow(heading)
+                    form.addRow(WindowOrderList(self,vendor,entries))
             else:
                 from quota_state import quota_notice
                 note=QLabel(quota_notice(quota,vendor) if row['running'] else '打开客户端后，自动读取当前账户和额度。');note.setProperty('subtitle',True);note.setWordWrap(True);form.addRow(note)
-        form=self.section('接入状态')
+            if vendor!='GLM':
+                form=self.section('会话与提醒')
+                switch=Switch();switch.setObjectName('agent_enabled_'+vendor)
+                switch.setChecked(vendor in self.manager.settings['enabled_clients'] and vendor not in self.manager.settings.get('disabled_live_status_sources',[]))
+                switch.setAccessibleName(vendor+' 实时状态');switch.setToolTip('显示会话状态与完成提醒；历史会话和 Token 统计持续更新。')
+                switch.toggled.connect(lambda on:self.toggle_live_status(vendor,on));form.addRow('实时状态',switch)
+        form=self.section('Agent')
         state='运行中' if row['running'] else '已安装' if row['installed'] else '未检测到'
         status=QLabel(state);form.addRow(vendor,status)
         from provider_registry import QUOTA_VENDORS
@@ -171,6 +186,11 @@ class AgentsPage(QWidget):
     def toggle(self,vendor,on):
         values=set(self.manager.settings['enabled_clients']);values.add(vendor) if on else values.discard(vendor)
         self.settings.write('enabled_clients',sorted(values))
+    def toggle_live_status(self,vendor,on):
+        if on and vendor not in self.manager.settings['enabled_clients']:self.toggle(vendor,True)
+        values=set(self.manager.settings.get('disabled_live_status_sources',[]))
+        values.discard(vendor) if on else values.add(vendor)
+        self.settings.write('disabled_live_status_sources',sorted(values))
     def persist_order(self):
         self.settings.write('provider_order',[self.list.item(i).data(Qt.ItemDataRole.UserRole)['vendor'] for i in range(self.list.count())])
     def copilot_consent(self,switch,on):
@@ -179,6 +199,10 @@ class AgentsPage(QWidget):
         self.settings.write('read_copilot_quota',on)
     def toggle_window(self,vendor,label,on):
         values={key:list(labels) for key,labels in self.manager.settings.get('hidden_windows',{}).items()};hidden=set(values.get(vendor,[]))
+        rows=self.manager.data.get(vendor,{}).get('quota',{}).get('windows',[])
+        for row in rows:
+            if window_key(row)==label and row['label']!=label and row['label'] in hidden:
+                hidden.remove(row['label']);hidden.update(window_key(other) for other in rows if other['label']==row['label'])
         hidden.discard(label) if on else hidden.add(label);values[vendor]=sorted(hidden);self.settings.write('hidden_windows',values)
     def toggle_account(self,key,on):
         values=set(self.manager.settings.get('hidden_accounts',[]));values.discard(key) if on else values.add(key)

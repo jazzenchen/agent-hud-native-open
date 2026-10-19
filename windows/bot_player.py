@@ -126,7 +126,9 @@ class BotPlayer:
         due=[];changed=False
         for vendor,data in self.meter.group_data.items():
             hovered=vendor==self.meter.client and (self.meter.underMouse() or self.meter.peek.isVisible() or self.meter.panel.isVisible())
-            state=activity(data,hovered);key=(state,self.meter.light())
+            notifications=[row for row in getattr(self.meter,'attention_events',[]) if row['vendor']==vendor]
+            state='asking' if any(row['kind']=='permission' for row in notifications) else 'done' if notifications else activity(data,hovered)
+            key=(state,self.meter.light())
             if self.states.get(vendor)!=key:
                 previous=self.shown.get(vendor)
                 if previous:self.fading[vendor]=(previous,now)

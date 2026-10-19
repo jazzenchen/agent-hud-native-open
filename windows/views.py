@@ -112,7 +112,8 @@ def artwork():
 def text(p, rect, value, size=13, ink='text', bold=False, align=Qt.AlignmentFlag.AlignLeft):
     p.setFont(font(size, bold))
     p.setPen(color(ink+'Text' if ink in ('ok','warning','critical','idle') else ink,painter=p))
-    p.drawText(rect, align | Qt.AlignmentFlag.AlignVCenter, str(value))
+    vertical=Qt.AlignmentFlag.AlignTop|Qt.AlignmentFlag.AlignBottom|Qt.AlignmentFlag.AlignVCenter|Qt.AlignmentFlag.AlignBaseline
+    p.drawText(rect,align if align & vertical else align|Qt.AlignmentFlag.AlignVCenter,str(value))
 
 
 def divider(p, y, width):
@@ -136,6 +137,8 @@ class SimpleMeterView(QWidget):
         self.anchor = QPointF(0, 0)
         self.native_glass = False
         self.frost=PanelFrost()
+        self.attention_events=[];self.selected_attention=None;self.retiring_attention=None;self._suspending=False
+        self.attention_navigation_failed=set()
         self.dragging=False
         self.press_position=None
         self.press_origin=None
@@ -166,9 +169,11 @@ class SimpleMeterView(QWidget):
         mode=self.settings.get('mode','simple')
         placement=(mode,self.settings.get('edge','top'))
         if getattr(self,'_previous_placement',placement)!=placement:
+            self._suspending=True
             self.peek.dismiss(immediate=True);self.panel.pinned=False;self.panel.animation.jump(0.);self.panel.hide()
             self.glow.hide();self.glow.timer.stop()
             self.frost.clear()
+            self._suspending=False
         self._previous_placement=placement
         self._previous_mode=mode
         self.enter_timer.setInterval(round(self.settings.get('hover_delay',400)))
@@ -374,13 +379,44 @@ class SimpleMeterView(QWidget):
         if self.settings.get('immediate_top') and not self.preview:self.edge_timer.start()
 
     def hideEvent(self,event):
+        self._suspending=True
         self.bots.stop()
         self.enter_timer.stop();self.leave_timer.stop()
         self.peek.dismiss(immediate=True)
         self.panel.pinned=False;self.panel.animation.jump(0.)
         self.glow.hide();self.glow.timer.stop()
         self.frost.clear()
+        self._suspending=False
         super().hideEvent(event)
+
+    def attention_event(self):
+        selected=next((row for row in self.attention_events if row['id']==self.selected_attention),None)
+        return selected or next((row for row in self.attention_events if row['kind']=='permission'),None) or next(iter(self.attention_events),None) or self.retiring_attention
+
+    def set_attention(self,events):
+        previous=self.attention_event();identifiers=tuple(row['id'] for row in self.attention_events)
+        self.attention_events=list(events)
+        active={row['id'] for row in events}
+        for dialog in tuple(getattr(self,'attention_dialogs',[])):
+            if dialog.property('attention_id') not in active:dialog.reject()
+        changed=identifiers!=tuple(row['id'] for row in events)
+        if not events and previous and self.panel.isVisible():
+            self.retiring_attention=previous;self.panel.collapse()
+        elif events:
+            self.retiring_attention=None
+            event=self.attention_event()
+            if changed and event['vendor'] in self.group_data:
+                self.client=event['vendor'];self.data=self.group_data[self.client];self.panel.data=self.data
+            if self.panel.isVisible():self.panel.animate(self.panel.progress)
+            else:self.show_reminder()
+        elif changed:self.peek.dismiss(immediate=True)
+        if changed:self.bots.sync()
+        self.update();self.panel.update()
+
+    def show_reminder(self):
+        if self.isVisible() and self.attention_events and not self._suspending and not self.panel.isVisible():
+            if not self.peek.isVisible():self.peek.open()
+            else:self.peek.refresh();self.peek.reposition()
 
     def check_alt(self):
         if self.underMouse() and QApplication.queryKeyboardModifiers() & Qt.KeyboardModifier.AltModifier:
@@ -414,12 +450,14 @@ class SimpleMeterView(QWidget):
         if not self.isVisible() or self.dragging:return
         if self.panel.pinned:return
         if self.settings.get('requires_alt') and not QApplication.queryKeyboardModifiers() & Qt.KeyboardModifier.AltModifier:return
-        if self.settings.get('mode','simple') in ('simple','logos') and self.settings.get('separates_agents',True):self.peek.open()
+        if self.attention_events:self.open_panel()
+        elif self.settings.get('mode','simple') in ('simple','logos') and self.settings.get('separates_agents',True):self.peek.open()
         else:self.open_panel()
 
     def maybe_close(self):
         if not self.underMouse() and not self.peek.underMouse() and not self.panel.underMouse():
-            self.peek.dismiss();self.panel.collapse()
+            if not self.attention_events:self.peek.dismiss()
+            self.panel.collapse()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.RightButton:
@@ -455,6 +493,7 @@ class SimpleMeterView(QWidget):
             self.open_panel() if self.panel.pinned else self.panel.collapse()
 
     def hide_all(self):
+        self._suspending=True
         self.enter_timer.stop();self.leave_timer.stop()
         self.reading_animation.stop()
         self.panel.animation.jump(0.)
@@ -464,6 +503,7 @@ class SimpleMeterView(QWidget):
         self.panel.pinned = False
         self.panel.hide()
         self.hide()
+        self._suspending=False
 
 
 class HoverPanelView(QWidget):
@@ -501,6 +541,9 @@ class HoverPanelView(QWidget):
         return sorted(rows,key=lambda row:(row.get('state')!='running',-row.get('updated',0)))
 
     def natural_height(self):
+        if self.meter.attention_event():
+            from attention_views import height
+            return height(self.meter)+28
         quota=sum(43+max(1,len(data.get('quota',{}).get('windows',[])[:5]))*28+18 for _,data in self.providers())
         sessions=self.sessions()[:int(self.meter.settings.get('session_limit',5))]
         cfg=self.meter.settings
@@ -554,6 +597,7 @@ class HoverPanelView(QWidget):
         # WindowDeactivate also covers switching to settings or another app;
         # FocusOut alone would fire when moving between controls in this panel.
         if event.type()==QEvent.Type.WindowDeactivate and self.isVisible():
+            self._attention_press=None
             self.pinned=False
             self.meter.enter_timer.stop()
             self.meter.leave_timer.stop()
@@ -600,6 +644,8 @@ class HoverPanelView(QWidget):
         if self.progress < .01:
             self.hide()
             self.frost.clear()
+            self.meter.retiring_attention=None
+            self.meter.show_reminder()
 
     def enterEvent(self,event):
         self.meter.leave_timer.stop()
@@ -630,6 +676,10 @@ class HoverPanelView(QWidget):
         p.translate(18+(self.width()-self.content_width())/2,14+6*(1-self.progress)-self.scroll_offset)
         w=self.content_width()-36
         self.hits=[]
+        attention=self.meter.attention_event()
+        if attention:
+            from attention_views import paint
+            paint(self,p,w,attention);p.end();return
         y=0
         if self.meter.settings.get('panel_quota',True):
             for client,data in self.providers():
@@ -747,7 +797,10 @@ class HoverPanelView(QWidget):
         point=event.position()-QPointF(18,14-self.scroll_offset)
         for rect,action in reversed(self.hits):
             if rect.contains(point):
-                if action=='settings':
+                if isinstance(action,tuple) and action[0]=='attention':
+                    self._attention_press=(QRectF(rect),action)
+                    return
+                elif action=='settings':
                     if hasattr(self.meter,'settings_callback'):self.meter.settings_callback()
                     else:self.meter.menu_callback(event.globalPosition().toPoint())
                 elif action=='details' and hasattr(self.meter,'usage_callback'):
@@ -757,5 +810,20 @@ class HoverPanelView(QWidget):
                     from PySide6.QtWidgets import QMessageBox
                     self.pinned=True
                     label={'running':'运行中','done':'已结束','stopped':'已停止','error':'异常','unknown':'最后记录'}
-                    QMessageBox.information(self,'会话',action['title']+'\n\n'+label.get(action['state'],'最后记录')+'\n会话累计 Tokens: '+compact(action.get('tokens')))
+                    details=action['title']+'\n\n'+label.get(action['state'],'最后记录')+'\n会话累计 Tokens: '+compact(action.get('tokens'))
+                    credits=action.get('credits')
+                    if credits:
+                        details+=f'\n已消耗积分: {credits["total"]:.2f}'
+                        if credits['unattributed']>.005:details+=f'（未归因 {credits["unattributed"]:.2f}）'
+                        if credits.get('size',0)>0:details+=f'\n上下文: {credits["used"]:,} / {credits["size"]:,} tokens'
+                    QMessageBox.information(self,'会话',details)
                 break
+
+    def mouseReleaseEvent(self,event):
+        pressed=getattr(self,'_attention_press',None);self._attention_press=None
+        if not pressed or event.button()!=Qt.MouseButton.LeftButton or self.progress<.98:return
+        point=event.position()-QPointF(18,14-self.scroll_offset)
+        rect,action=pressed
+        if rect.contains(point) and any(r.contains(point) and a==action for r,a in self.hits):
+            from attention_views import dispatch
+            dispatch(self.meter,action[1],action[2])

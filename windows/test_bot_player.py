@@ -74,6 +74,7 @@ class Bots(unittest.TestCase):
         visible=visible_quota(quota,'Kimi',settings)
         self.assertEqual([r['label'] for r in visible['windows']],['5h']);self.assertFalse(visible['wallets'])
         self.assertEqual(len(quota['windows']),2);self.assertEqual(len(quota['wallets']),1)
-        self.assertEqual([r['label'] for r in visible_quota(quota,'Kimi',dict(window_order=settings['window_order']))['windows']],['5h','Weekly'])
+        # A saved legacy order cannot move one account's window into another's slot.
+        self.assertEqual([r['label'] for r in visible_quota(quota,'Kimi',dict(window_order=settings['window_order']))['windows']],['Weekly','5h'])
 
 if __name__=='__main__':unittest.main()

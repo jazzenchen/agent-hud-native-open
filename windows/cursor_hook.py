@@ -15,7 +15,7 @@ def record(event, payload, directory):
     target = directory / (hashlib.sha256(str(sid).encode()).hexdigest()[:32] + '.json')
     roots = payload.get('workspace_roots') or []
     title = Path(roots[0]).name if roots and isinstance(roots[0], str) else 'Cursor · ' + str(sid)[:8]
-    state = 'running' if event == 'beforeSubmitPrompt' else 'done'
+    state = 'running' if event == 'beforeSubmitPrompt' else 'done' if payload.get('status')=='completed' else 'unknown'
     if event == 'stop' and payload.get('status') in ('aborted', 'error'):
         state = 'stopped' if payload['status'] == 'aborted' else 'error'
     row = dict(id=str(sid), title=title, state=state, updated=time.time(), tokens=None)
@@ -29,6 +29,9 @@ if __name__ == '__main__':
         payload = json.loads(sys.stdin.read())
         base = Path(os.environ.get('LOCALAPPDATA', Path.home() / '.local/share')) / 'AgentHUDOpen'
         record(sys.argv[1], payload, base / 'cursor-events')
+        if sys.argv[1]=='stop' and payload.get('status')=='completed':
+            from attention_hook import send
+            send('completion','cursor',payload)
     except Exception:
         pass  # Monitoring must never block a user's agent.
     # Use the event's documented response schema; never block prompt submission.

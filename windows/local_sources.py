@@ -125,6 +125,18 @@ class LocalSource:
             previous=unique.get(row['id'])
             if previous is None or row.get('priority',0)>previous.get('priority',0):unique[row['id']]=row
         sessions=list(unique.values())
+        if self.vendor=='WorkBuddy':
+            from workbuddy_metering import read
+            models={}
+            for item in self.cache.values():
+                for parser in item['parsers']:
+                    models.setdefault(parser.sid,set()).update(event['model'] for event in parser.events.values() if event.get('model') not in (None,'Unknown'))
+            database=next((path.parent/'workbuddy.db' for path in self.paths if (path.parent/'workbuddy.db').is_file()),None)
+            if database:
+                titles,credits=read(database,sessions,models)
+                for row in sessions:
+                    if row['id'] in titles:row['title']=titles[row['id']]
+                    if row['id'] in credits:row['credits']=credits[row['id']]
         sessions.sort(key=lambda row:(row['state']!='running',-row['updated']))
         if changed:self.ledger.record(self.vendor,changed)
         if changed or self.last_report is None or time.time()-self.report_at>60:

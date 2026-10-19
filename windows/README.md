@@ -12,6 +12,32 @@ Qt/PySide6 to translate the selected SwiftUI views, while reading the original
 Swift source's design constants and original bundled artwork. This is a source
 port of the scoped views, **not a claim that SwiftUI compiles on Windows**, nor
 parity with all providers, charts, approvals, MCP Host API and Mac settings.
+The source-by-source release gate, including unfinished cross-platform core
+features, is tracked in [PARITY_AUDIT.md](PARITY_AUDIT.md).
+
+## Permissions and replies
+
+Client hooks now bridge to a current-user Windows named pipe. The actual HUD
+card can allow or deny supported tool requests, answer Claude/ZCode questions,
+review Claude plans, and display successful new replies. Codex requests are
+held only when the newest matching turn explicitly names the user as reviewer;
+automatic review and unknown contexts remain with Codex. Installing a hook never
+bypasses Codex's own `/hooks` trust confirmation.
+
+Claude, Codex, WorkBuddy, CodeBuddy, Qwen, ZCode and Devin use their original
+source-specific settings layouts; Cursor retains its separate stop callback.
+Unknown layouts are refused. Unrelated hooks are preserved and changed files
+are backed up. Turning callbacks off removes this port's entries. Cancellation,
+disconnection and expiry give no approval. General's source-derived wait choices
+apply to pending requests. Turning Live status off suppresses session-state
+display and replies while keeping usage collection and history intact.
+
+Session return is offered only where the actual platform can address that
+session (registered Codex URI, installed native Claude resume command). Failed
+navigation retains the reminder. WorkBuddy's database is opened read-only for
+custom session titles and charged session credits, including unattributed
+amounts and context size. Charged credits are never presented as remaining
+subscription credits.
 
 ## Install
 
