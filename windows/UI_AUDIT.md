@@ -448,3 +448,33 @@ was rendered for four agents in both themes using the native Windows platform;
 Codex dark and WorkBuddy light were visually inspected. Qt's offscreen plugin
 rendered missing font glyphs on this machine, so those offscreen captures were
 discarded and replaced by native captures. This is a still preview, not a video.
+
+### Staying reminder actors: implementation, export pending
+
+Re-reading `ReminderMark.swift` corrected the prior audit's reference to a
+"warning bot": original quota warnings are plain logos; exhaustion adds the
+static hourglass sign, while reset/reply/request cards have their own actors.
+News must not replace the dock's current working state. The Windows selection
+now follows that distinction and gives permission/question/plan their priority.
+
+The actual alert painters are connected to a separate visible-only actor on the
+shared clock. Hiding clears it; a new card restarts arrival; repeated playback
+does not repeat the logo-to-bot entrance. Reduced motion and disabled bot logos
+retain static artwork. A supplementary export uses unchanged `BotMotion` and
+`BotRenderer`, `staysBot=true` and the source `BotMark.arrival`, with six original
+reminder states. Export QA commit `bf050f6160634c46b065d75f1b63c1824f979664`;
+Actions run `39232230900` was still queued when this checkpoint was written.
+There is no supplementary pack yet: actual animated card capture and integration
+acceptance remain pending. The native preview fails explicitly if that pack is
+missing. This code checkpoint is not a claim that reminder animation has shipped.
+Claude's source procedural recording form is used; the separate proprietary-app
+sprite performer, including its special long-reply/reset clips, is not ported.
+
+173 tests pass, including dock/request selection and reminder visibility/new-card
+clock behavior. A native four-agent 24fps playback benchmark (144 timer frames)
+measured CPU paint p50 0.489ms, p95 10.749ms, worst 87.193ms including initial
+asset loading. Timer interval p50 41.996ms, p95 42.712ms, worst 43.467ms; no interval
+exceeded 1.5 target frames in this run. Evidence:
+`E:/AI-Data/agent-hud-promo-20261019/playback-cpu.json`. This covers an owned Qt
+window's CPU/event loop, not GPU/vsync, full resident activity, or a universal FPS
+claim. Cold loading still deserves optimization before the performance gate.

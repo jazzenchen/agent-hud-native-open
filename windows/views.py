@@ -410,7 +410,7 @@ class SimpleMeterView(QWidget):
             if self.panel.isVisible():self.panel.animate(self.panel.progress)
             else:self.show_reminder()
         elif changed:self.peek.dismiss(immediate=True)
-        if changed:self.bots.sync()
+        if changed:self.bots.sync();self.panel.reminder.sync()
         self.update();self.panel.update()
 
     def show_reminder(self):
@@ -527,6 +527,14 @@ class HoverPanelView(QWidget):
         self.animation.valueChanged.connect(self.animate)
         self.animation.finished.connect(self.finished)
         self.resize(int(DESIGN['agent_width']),300)
+        from bot_player import ReminderPlayer
+        self.reminder=ReminderPlayer(self)
+
+    def showEvent(self,event):
+        super().showEvent(event);self.reminder.sync()
+
+    def hideEvent(self,event):
+        self.reminder.stop();super().hideEvent(event)
 
     def set_data(self,data):
         self.data=data

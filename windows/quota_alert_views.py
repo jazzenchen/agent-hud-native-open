@@ -27,7 +27,7 @@ def paint(panel,p,w,event):
     accent=(('#0a5a3f' if calm else '#7c3b12') if light else ('#a8ecd0' if calm else '#f6c9a6')) if glass else fill.name()
     def ink(alpha):
         value=color('text',painter=p);value.setAlpha(round(alpha*255));return value.name(QColor.NameFormat.HexArgb)
-    artwork().draw(p,event['vendor'],QRectF(0,0,22,22))
+    if not panel.reminder.draw(p,event['vendor'],QRectF(0,0,22,22)):artwork().draw(p,event['vendor'],QRectF(0,0,22,22))
     text(p,QRectF(31,0,w-135,18),event['vendor'],13,'text',True)
     label=event.get('label') or '使用量重置'
     text(p,QRectF(31,18,w-135,16),QFontMetricsF(font(10)).elidedText(label,Qt.TextElideMode.ElideMiddle,w-135),10,ink(.42))

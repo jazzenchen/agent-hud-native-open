@@ -48,14 +48,14 @@ def paint(panel,p,w,event):
         for x in (w-14,w-10,w-6):p.drawEllipse(QPointF(x,9),.8,.8)
         text(p,QRectF(w-82,0,40,18),str(sum(row['kind']=='permission' for row in meter.attention_events)),10,accent.name(),True,Qt.AlignmentFlag.AlignRight)
     else:
-        artwork().draw(p,event['vendor'],QRectF(0,0,24,24))
+        if not panel.reminder.draw(p,event['vendor'],QRectF(0,0,24,24)):artwork().draw(p,event['vendor'],QRectF(0,0,24,24))
         text(p,QRectF(34,0,w-160,18),event['vendor'],13,'text',True)
         text(p,QRectF(34,18,w-160,16),event.get('model') or event['vendor'],11,ink(.45))
         text(p,QRectF(w-120,0,88,24),'有新回复',12,'#0a84ff')
         text(p,QRectF(w-24,0,24,24),'×',12,ink(.65),align=Qt.AlignmentFlag.AlignCenter)
     if permission and live:panel.hits.append((QRectF(w-30,0,30,22),('attention',event['id'],'inspect')))
     if not permission and live:panel.hits.append((QRectF(w-30,0,30,22),('attention',event['id'],'dismiss')))
-    if permission:artwork().draw(p,event['vendor'],QRectF(12,35,13,13))
+    if permission and not panel.reminder.draw(p,event['vendor'],QRectF(12,35,13,13)):artwork().draw(p,event['vendor'],QRectF(12,35,13,13))
     project=PureWindowsPath(event.get('cwd') or '').name or event['vendor']
     name=project if permission else event['vendor']
     if permission:text(p,QRectF(33,31,w-140,24),QFontMetricsF(font(12,True)).elidedText(name,Qt.TextElideMode.ElideRight,w-140),12,'text',True)

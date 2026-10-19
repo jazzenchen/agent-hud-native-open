@@ -25,6 +25,43 @@ class Bots(unittest.TestCase):
             lib=BotLibrary(folder);self.assertFalse(lib.ready)
             (Path(folder)/'manifest.json.gz').write_bytes(gzip.compress(b'{bad'))
             self.assertFalse(BotLibrary(folder).ready)
+
+    def test_source_reminder_marks_do_not_override_busy_dock_state(self):
+        from bot_player import dock_activity,reminder_state
+        data=dict(local=dict(sessions=[dict(state='running',activity='edit',updated=9999)]))
+        for event in (dict(kind='completion'),dict(kind='quota',event='reset'),dict(kind='reset_credits'),dict(kind='quota',event='exhaustion')):
+            self.assertEqual(dock_activity(data,[event],now=10000),'edit')
+        self.assertEqual(reminder_state(dict(kind='quota',event='exhaustion')),None)
+        self.assertEqual(reminder_state(dict(kind='quota',event='reset')),'card-reset')
+        self.assertEqual(reminder_state(dict(kind='reset_credits')),'card-reset')
+        self.assertEqual(reminder_state(dict(kind='completion',started_at=1,at=601)),'card-long-done')
+        self.assertEqual(reminder_state(dict(kind='completion',at=601)),'card-done')
+        plan=dict(kind='permission',plan='p');question=dict(kind='permission',questions=[{}]);request=dict(kind='permission')
+        self.assertEqual(dock_activity(data,[plan,question],now=10000),'question')
+        self.assertEqual(dock_activity(data,[plan,question,request],now=10000),'asking')
+        self.assertEqual(reminder_state(plan),'card-plan');self.assertEqual(reminder_state(question),'card-question')
+
+    def test_reminder_clock_restarts_for_new_card_and_stops_when_hidden(self):
+        from bot_player import ReminderPlayer,clock
+        from views import SimpleMeterView
+        from preferences import load
+        meter=SimpleMeterView('Codex',self.app.primaryScreen(),load({}),lambda _:None,preview=True)
+        self.addCleanup(lambda:(meter.hide_all(),meter.peek.close(),meter.panel.close(),meter.glow.close(),meter.close()))
+        frame=lambda n:dict(image=n,pose=[0,0,0,1,1,0],opacity=1,rest=False)
+        assets=Mock(ready=True);assets.clip.return_value=dict(fps=24,frames=[frame(n) for n in range(192)])
+        player=meter.panel.reminder
+        self.assertIsInstance(player,ReminderPlayer)
+        with patch('bot_player.reminder_library',return_value=assets),patch('bot_player.animations_enabled',return_value=True):
+            meter.attention_events=[dict(id='first',vendor='Codex',kind='completion')]
+            meter.panel.show();player.advance(100);player.advance(103)
+            self.assertEqual(player.shown['Codex']['image'],72)
+            player.advance(109);self.assertGreaterEqual(player.shown['Codex']['image'],48)
+            meter.attention_events=[dict(id='second',vendor='Codex',kind='completion')]
+            player.advance(110);self.assertEqual(player.shown['Codex']['image'],0)
+            self.assertIn(player,clock().followers)
+            meter.panel.hide();self.assertNotIn(player,clock().followers);self.assertFalse(player.shown)
+            meter.attention_events=[dict(id='warning',vendor='Codex',kind='quota',event='exhaustion')]
+            meter.panel.show();self.assertNotIn(player,clock().followers)
     def test_original_atlas_frame_and_pose_render_and_load_lazily(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);image=QImage(4,4,QImage.Format.Format_ARGB32);image.fill(QColor('#18a34a'));image.save(str(root/'atlas.png'))

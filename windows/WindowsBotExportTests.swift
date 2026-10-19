@@ -11,7 +11,7 @@ final class WindowsBotExportTests: XCTestCase {
         let root = URL(fileURLWithPath: folder), images = root.appendingPathComponent("images")
         try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
         var clips: [[String: Any]] = [], seen: Set<String> = []
-        let states: [(String, BotState)] = [
+        var states: [(String, BotState)] = [
             ("working", BotState(look: .plain)), ("thinking", BotState(look: .thinking)),
             ("edit", BotState(look: .tool(.edit))), ("command", BotState(look: .tool(.command))),
             ("read", BotState(look: .tool(.read))), ("asking", BotState(look: .permission)),
@@ -21,11 +21,21 @@ final class WindowsBotExportTests: XCTestCase {
             ("failed", BotState(look: .idle, badge: .failed, hovered: true)),
             ("limited", BotState(look: .idle, badge: .limited, hovered: true))
         ]
+        let reminders = ProcessInfo.processInfo.environment["WINDOWS_BOT_VARIANTS"] == "reminders"
+        if reminders {
+            states = [
+                ("card-done", BotState(card: .done)), ("card-long-done", BotState(card: .longDone)),
+                ("card-reset", BotState(card: .reset)),
+                ("card-asking", BotState(look: .permission)),
+                ("card-question", BotState(look: .question)), ("card-plan", BotState(look: .plan))
+            ]
+        }
         for vendor in AgentArtwork.allVendors {
             for light in [false, true] {
                 guard let form = BotForm.form(for: vendor, ground: light ? .light : .dark) else { continue }
                 for (name, state) in states {
                     var motion = BotMotion(seed: 7); motion.fit(form.spec); motion.period = 3
+                    if reminders { motion.staysBot = true; motion.arrivesAfter = BotMark.arrival }
                     motion.set(state, at: 0)
                     if name == "failed" { motion.play(.failed, at: 0) }
                     if name == "limited" { motion.play(.limitHit, at: 0) }

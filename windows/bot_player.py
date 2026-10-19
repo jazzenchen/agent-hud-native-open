@@ -31,6 +31,16 @@ def activity(data,hovered=False,now=None):
     return 'idle'
 
 
+def dock_activity(data,notifications,hovered=False,now=None):
+    # Source MarkDirector treats requests as agent state. Reply/reset cards are
+    # separate actors; their news must never turn ongoing work into a smile.
+    requests=[row for row in notifications if row['kind']=='permission']
+    if requests:
+        if any(not row.get('plan') and not row.get('questions') for row in requests):return 'asking'
+        return 'question' if any(row.get('questions') for row in requests) else 'plan'
+    return activity(data,hovered,now)
+
+
 class BotLibrary:
     def __init__(self,root=ASSETS):
         self.root=Path(root);self.clips={};self.images={};self.side=64;self.margin=.3;self.cache=OrderedDict();self.pages=OrderedDict();self.loaded=OrderedDict();self.ready=False
@@ -115,6 +125,7 @@ def clock():
 
 class BotPlayer:
     def __init__(self,meter):self.meter=meter;self.states={};self.shown={};self.started={};self.fading={}
+    def assets(self):return library()
     def enabled(self):return self.meter.settings.get('bot_logos',True) and animations_enabled() and library().ready
     def sync(self):
         if self.enabled() and self.meter.isVisible():clock().add(self)
@@ -127,7 +138,7 @@ class BotPlayer:
         for vendor,data in self.meter.group_data.items():
             hovered=vendor==self.meter.client and (self.meter.underMouse() or self.meter.peek.isVisible() or self.meter.panel.isVisible())
             notifications=[row for row in getattr(self.meter,'attention_events',[]) if row['vendor']==vendor]
-            state='asking' if any(row['kind']=='permission' for row in notifications) else 'limited' if any(row['kind']=='quota' and row.get('event')=='exhaustion' for row in notifications) else 'done' if notifications else activity(data,hovered)
+            state=dock_activity(data,notifications,hovered)
             key=(state,self.meter.light())
             if self.states.get(vendor)!=key:
                 previous=self.shown.get(vendor)
@@ -150,9 +161,9 @@ class BotPlayer:
         return min(due) if due else None
     def draw_frame(self,p,rect,frame,opacity=1.):
         if frame.get('rest'):return False
-        image=library().image(frame['image'])
+        image=self.assets().image(frame['image'])
         if image.isNull():return False
-        x,y,rotation,sx,sy,foot=frame['pose'];side=rect.width();extent=image.width()/library().side*side
+        x,y,rotation,sx,sy,foot=frame['pose'];side=rect.width();extent=image.width()/self.assets().side*side
         p.save();p.setOpacity(p.opacity()*frame.get('opacity',1)*opacity)
         p.translate(rect.center()+QPointF(x*side,(y+foot)*side));p.rotate(rotation);p.scale(sx,sy);p.translate(0,-foot*side)
         p.drawImage(QRectF(-extent/2,-extent/2,extent,extent),image);p.restore();return True
@@ -167,3 +178,52 @@ class BotPlayer:
                 self.draw_frame(p,rect,fading[0],1-share);self.draw_frame(p,rect,frame,share);return True
             self.fading.pop(vendor,None)
         return self.draw_frame(p,rect,frame)
+
+
+_reminders=None
+
+
+def reminder_library():
+    global _reminders
+    if _reminders is None:_reminders=BotLibrary(ASSETS.parent/'bot-reminders')
+    return _reminders
+
+
+def reminder_state(event):
+    """Original ReminderMark: warnings are logos, resets/replies are staying bots."""
+    if not event:return None
+    if event['kind']=='permission':
+        return 'card-plan' if event.get('plan') else 'card-question' if event.get('questions') else 'card-asking'
+    if event['kind']=='quota':return 'card-reset' if event.get('event')=='reset' else None
+    if event['kind']=='reset_credits':return 'card-reset'
+    if event['kind']=='completion':
+        start=event.get('started_at');end=event.get('at')
+        long=isinstance(start,(int,float)) and isinstance(end,(int,float)) and math.isfinite(start) and math.isfinite(end) and end-start>=600
+        return 'card-long-done' if long else 'card-done'
+    return None
+
+
+class ReminderPlayer(BotPlayer):
+    """One actual reminder surface on the shared, visible-only bot clock."""
+    def assets(self):return reminder_library()
+    def enabled(self):
+        return self.meter.meter.settings.get('bot_logos',True) and animations_enabled() and self.assets().ready and reminder_state(self.meter.meter.attention_event()) is not None
+    def advance(self,now):
+        event=self.meter.meter.attention_event();state=reminder_state(event)
+        if not state:self.shown.clear();return None
+        vendor=event['vendor'];key=(event['id'],state,self.meter.meter.light())
+        if self.states.get(vendor)!=key:
+            self.states.clear();self.shown.clear();self.started.clear();self.fading.clear()
+            self.states[vendor]=key;self.started[vendor]=now
+        clip=self.assets().clip(vendor,key[2],state)
+        if not clip:return None
+        frames=clip['frames'];index=int(max(0,now-self.started[vendor])*clip['fps'])
+        # The entry includes the source card opening delay. Repeated clips must
+        # never replay that logo→bot arrival over an already open card.
+        if index>=len(frames):
+            start=min(48,len(frames)-1);index=start+(index-start)%(len(frames)-start)
+        frame=frames[index]
+        if self.shown.get(vendor)!=frame:self.shown[vendor]=frame;self.meter.update()
+        return 1/clip['fps']
+    def stop(self):
+        super().stop();self.states.clear();self.started.clear();self.fading.clear()
