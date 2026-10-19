@@ -36,6 +36,20 @@ def window_key(row):
     return 'window:'+json.dumps([account,identifier],ensure_ascii=False,separators=(',',':')) if account or row.get('id') else row.get('label','')
 
 
+def panel_row_key(row):
+    """Original AgentDescriptor.windowKey, shared across accounts in a layout.
+
+    Settings' window_key remains account-specific. Keeping the two distinct
+    prevents a layout document from silently targeting just one account.
+    """
+    identifier=str(row.get('id') or row.get('label',''))
+    account=window_account(row)
+    pool=row.get('billing_pool_id') or ''
+    if account and identifier.startswith(account+'/'):return identifier[len(account)+1:]
+    if pool and identifier.startswith(pool+':'):return identifier[len(pool)+1:]
+    return identifier
+
+
 def ordered_windows(rows,order):
     # Reordering within one account never moves another account's slots.
     groups={}

@@ -52,8 +52,8 @@ Source pages: `Sources/AgentHUDDesktop/Settings/{GeneralPane,SourcesPane,Screens
 | Quota metric selector / burn / forecast | Five real selections: quota, burn, reply rate, consumed, estimated cost. Source cycle sampling, last-hour/week reply horizon, bucket pricing, projected track and reported WorkBuddy consumption are connected. Native current-client consumer links preserve anonymous logs as local estimates without relabelling account history. External credential-pool/cross-client model links, all source widget types and native keyboard/accessibility controls still need parity. |
 | WorkBuddy | Read-only source metering port: custom titles, session spending, context and model attribution. In addition, the installed desktop client's official billing-summary contract now supplies actual subscription name and remaining/total credits; separate enterprise metadata route and unlimited sentinel. No session spending is substituted for the account balance. Chinese SaaS gateway compatibility checked against installed 5.5.6; other deployments need separate adapters. |
 | Quota / reset-credit alerts | Real threshold/reset/grant tracking and interactive reminder cards now connected. New readings only, silent startup/sign-in baseline, no fake reset from stale/error/unknown readings; forecast warnings once per cycle and actual exhaustion as a separate event. Four-second news lifetime, pointer hold, persistent permissions, callback-independent quota news and hidden-account suppression are implemented. Source staying reset bots are connected and captured natively. Inline-in-usage presentation and static exhausted-logo sign remain differences. Original warnings use a plain logo, not a warning bot. |
-| Statistics | Channel/model/time filters and ledger exist; original richer sessions and multi-block layout incomplete. |
-| MCP layout editing | Original unchanged Swift schemas and layout documents compiled on macOS. Canonical normalization and 13 shared/screen transitions match the original trace; real keyboard-accessible draft bar, saved settings and disk-full rollback are connected. Native branch/row/account filtering and section order are applied without mutating readings. Transport, hold scheduling, style/app drafts and all widgets are not yet available. |
+| Statistics | Channel/model/time filters and ledger exist; quota ring/number/chart blocks and half-block planning now render. Original richer sessions, API billing widgets and complete multi-account sections remain incomplete. |
+| MCP layout editing | Original unchanged Swift schemas and layout documents compiled on macOS. Canonical normalization and 13 shared/screen transitions match the original trace; real keyboard-accessible draft bar, saved settings and disk-full rollback are connected. Native branch/row/account filtering and section order are applied without mutating readings. Quota widget rendering is connected. Transport, hold scheduling, style/app drafts and API billing widgets remain incomplete. |
 | White rims / black collapse trails | Native 24 mode/edge/theme matrix at 100%, 125%, 150% previously passed within documented tolerance; rerun after integration. Sampled frost is frozen while open. |
 | Performance | Prior local paint measurements only; new end-to-end frame-time profiling not complete. An offline promo cannot prove live frame rate. |
 | Promo / publication | 36-second Windows tour rendered from actual Windows widgets and original-exported actors, following the original tour structure. Account/credit/token examples are isolated and disclosed; original procedural wallpaper and synthesized music. Encoded 1080p/30fps/AAC file and 11 chapter/theme frames reviewed; manifests in `promo/`. Source preview publication and draft PR refresh are separate from the remaining stable-release gate and binary dependency-license review. |
@@ -111,5 +111,23 @@ Layout planning checkpoint: the Windows planner matches all 144 plans exported
 by the original compiled Swift core, plus 30 grid width/fitting cases. These
 cover half-block fallback, spacing, widget/measure constraints, filters and
 columns. Export provenance is in `assets/upstream-plan-provenance.json`.
-This planner is not yet connected to ring/number/chart rendering; those remain
-open work, and these contract checks do not establish visual similarity.
+The planner is now connected to quota rings, numbers, charts and half-block
+pairing. These contract checks do not establish visual similarity.
+
+Quota widget checkpoint: native rings retain the used share under every measure,
+with the source sizes, projected arc, complete/wrapped names and reserved caption
+line. Numbers use a short figure candidate; chart stacks read indexed local model
+buckets over day/week/month, not generated account history. Grid partial lines
+centre as in the source. Separate-agent panels stay single-block; grouped panels
+pair adjacent half blocks only when the source width threshold fits. Picker
+identity resets on widget/measure-list changes. Layout row keys apply across
+accounts while Settings visibility keys remain account-specific.
+
+There are 217 passing local tests at this checkpoint. Twenty-four native fixture
+captures cover two themes, six widget arrangements and 100%/150% scaling, with
+representative visual review; exact scope and warm synchronous repaint timings
+are in `assets/layout-widgets-native-checkpoint.json`. Those timings are not a
+resident animation benchmark. Remaining widget work includes API billing blocks,
+complete multi-account subheaders, credential-pool consumer links, original chart
+inspection/transition behavior and painted-cell keyboard/accessibility parity.
+Full session/token/HUD filtering, MCP transport and hold scheduling remain open.

@@ -327,8 +327,10 @@ including exact aliases and service routes, checked by upstream on 2026-09-25.
 Summed usage uses its base prices, exclusive token kinds and applicable currency
 and peak-hour rules; it never treats a bucket as one long prompt or converts
 currencies. Unknown models/routes have no invented price. Estimates are not bills.
-External plan-pool consumer links and the original widget/layout variants remain
-incomplete; see the release gate in `PARITY_AUDIT.md`.
+Quota layouts now draw bars, rings, numbers and indexed local model charts;
+grouped half blocks follow the original width/column rules. Unknown readings
+remain unknown. API billing widgets, complete multi-account sections and external
+plan-pool consumer links remain incomplete; see `PARITY_AUDIT.md` for the gate.
 
 ## Promo samples
 

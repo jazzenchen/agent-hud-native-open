@@ -129,6 +129,54 @@ class LayoutWidgets(unittest.TestCase):
         QTest.mouseClick(button,Qt.MouseButton.LeftButton)
         self.assertTrue(window.value('panel_tokens',True))
 
+    def test_cells_keep_names_complete_and_keep_height_across_metrics(self):
+        from quota_cells import geometry,name_lines
+        meter=self.meter();panel=meter.panel
+        row=dict(label='Very long quota window with emoji 🎮 and 中文名称',short_name='Very long quota window with emoji 🎮 and 中文名称',used=27)
+        lines,_=name_lines(row,65,11)
+        self.assertEqual(''.join(lines),row['label'])
+        for widget in ('ring','number'):
+            meter.layout_store.propose({'blocks':{'Codex':{'widget':widget,'columns':6}}});panel.set_data(meter.data)
+            initial=panel.natural_height();panel.grab()
+            for metric in ('burn','tokens','consumed','cost','quota'):
+                panel.metric_selection['Codex']=metric;panel.grab()
+                self.assertEqual(panel.natural_height(),initial)
+            hints=[rect for rect,action in panel.hits if isinstance(action,tuple) and action[0]=='metric_hint']
+            self.assertEqual(len(hints),20)
+            for index,rect in enumerate(hints):
+                self.assertTrue(all(not rect.intersects(other) for other in hints[index+1:]))
+
+    def test_paired_cells_follow_source_width_floor_and_separate_agent_rule(self):
+        meter=self.meter();panel=meter.panel
+        meter.group_data={'Codex':meter.data,'Cursor':deepcopy(meter.data)}
+        layout={'style':{'width':540},'blocks':{'Codex':{'widget':'ring','span':'half'},'Cursor':{'widget':'number','span':'half'}}}
+        meter.layout_store.propose(layout);meter.settings['separates_agents']=False
+        panel.set_data(meter.data);self.assertEqual([len(line) for line in panel.provider_lines()],[2])
+        self.assertEqual([block['columns'] for block,_ in panel.provider_lines()[0]],[2,2])
+        panel.grab();self.assertTrue(any(rect.left()>250 for rect,action in panel.hits if isinstance(action,tuple) and action[:2]==('metric','Cursor')))
+        layout['style']['width']=480;meter.layout_store.propose(layout);panel.set_data(meter.data)
+        self.assertEqual([len(line) for line in panel.provider_lines()],[1,1])
+        meter.settings['separates_agents']=True;self.assertEqual([len(line) for line in panel.provider_lines()],[1])
+
+    def test_changing_widget_resets_measure_but_same_widget_refresh_keeps_it(self):
+        meter=self.meter();panel=meter.panel;panel.measure('Codex')
+        panel.metric_selection['Codex']='cost';self.assertEqual(panel.measure('Codex'),'cost')
+        panel.set_data(meter.data);self.assertEqual(panel.measure('Codex'),'cost')
+        meter.layout_store.propose({'blocks':{'Codex':{'widget':'number'}}})
+        self.assertEqual(panel.measure('Codex'),'quota')
+        meter.layout_store.propose({'blocks':{'Codex':{'widget':'chart','measures':['quota']}}})
+        self.assertEqual(panel.measures('Codex'),['tokens'])
+
+    def test_source_layout_row_key_applies_to_all_accounts_but_settings_keys_stay_separate(self):
+        from usage_display import window_key,panel_row_key
+        meter=self.meter();rows=[dict(id=account+'/'+window,account_id=account,label=window,used=10) for account in ('a','b') for window in ('week','5h')]
+        meter.set_data({'quota':{'windows':rows}})
+        self.assertNotEqual(window_key(rows[0]),window_key(rows[2]))
+        self.assertEqual(panel_row_key(rows[0]),panel_row_key(rows[2]))
+        meter.layout_store.propose({'blocks':{'Codex':{'hiddenRows':['week']}}})
+        shown=meter.panel.providers()[0][1]['quota']['windows']
+        self.assertEqual([row['id'] for row in shown],['a/5h','b/5h'])
+
     def test_failed_settings_toggle_rebuilds_from_saved_layout(self):
         from settings_window import SettingsWindow
         from PySide6.QtWidgets import QCheckBox

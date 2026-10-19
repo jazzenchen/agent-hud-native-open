@@ -571,28 +571,54 @@ class HoverPanelView(QWidget):
         return [section for section in order if section not in layout.get('hiddenSections',[])]
 
     def measures(self,client):
-        from panel_layout import MEASURES
-        asked=self.layout().get('blocks',{}).get(client,{}).get('measures',[])
-        return [metric for metric in asked if metric in MEASURES] or list(MEASURES)
+        from panel_plan import block_plan
+        return block_plan(client,'quota',self.layout().get('blocks',{}).get(client,{}))['measures']
 
     def measure(self,client):
         offered=self.measures(client);selected=self.metric_selection.get(client)
+        identities=getattr(self,'_measure_identities',{});self._measure_identities=identities
+        identity=(self.layout().get('blocks',{}).get(client,{}).get('widget','bar'),tuple(offered))
+        if client in identities and identities[client]!=identity:selected=None;self.metric_selection.pop(client,None)
+        identities[client]=identity
         return selected if selected in offered else offered[0]
+
+    def provider_lines(self):
+        from panel_plan import plan
+        providers=dict(self.providers());layout=self.layout()
+        # providers() already applies account/row filtering to defensive copies.
+        # The planner now resolves presentation and pairing only.
+        changes={key:{name:value for name,value in change.items() if name not in ('accounts','hiddenRows','rows')} for key,change in layout.get('blocks',{}).items()}
+        arranged=plan({**layout,'blocks':changes},[dict(key=key,kind='quota') for key in providers],self.content_width()-36,
+                      not self.meter.settings.get('separates_agents',True) or self.meter.settings.get('mode')=='notch')
+        return [[(block,providers[block['key']]) for block in line] for line in arranged['lines']]
+
+    def provider_height(self,w,data,block):
+        rows=data.get('quota',{}).get('windows',[])
+        header=43+(22 if data.get('quota',{}).get('credit_balance') else 0)
+        if rows and block['widget'] in ('ring','number'):
+            from quota_cells import geometry
+            return header+geometry(rows,w,block,self.layout().get('style',{}).get('spacing','regular'))[2]
+        if block['widget']=='chart':
+            from panel_plan import spacing_metrics
+            return header+40+spacing_metrics(self.layout().get('style',{}).get('spacing','regular'))['chartTop']
+        return header+max(1,len(rows))*28
 
     def sources(self):
         return list(self.meter.group_data.items()) if not self.meter.settings.get('separates_agents',True) or self.meter.settings.get('mode')=='notch' else [(self.meter.client,self.data)]
 
     def providers(self):
-        from usage_display import window_key,window_account
+        from usage_display import window_key,window_account,panel_row_key
         layout=self.layout();changes=layout.get('blocks',{});providers=[]
         for client,data in self.sources():
             change=changes.get(client,{})
             if change.get('hidden'):continue
             quota=data.get('quota',{});rows=quota.get('windows',[]);accounts=change.get('accounts',[])
             fallback=(quota.get('account') or {}).get('id','')
-            kept=[row for row in rows if window_key(row) not in change.get('hiddenRows',[]) and (not accounts or (window_account(row) or fallback) in accounts)]
+            kept=[row for row in rows if not {window_key(row),panel_row_key(row)}.intersection(change.get('hiddenRows',[])) and (not accounts or (window_account(row) or fallback) in accounts)]
             if rows and not kept:continue
-            order=change.get('rows',[]);kept=sorted(kept,key=lambda row:order.index(window_key(row)) if window_key(row) in order else len(order))
+            order=change.get('rows',[])
+            def rank(row):return min((order.index(key) for key in (window_key(row),panel_row_key(row)) if key in order),default=len(order))
+            kept=sorted(kept,key=rank)
             balance=quota.get('credit_balance') if not accounts or fallback in accounts else None
             if not rows and accounts and not balance:continue
             providers.append((client,{**data,'quota':{**quota,'windows':kept,'credit_balance':balance}}))
@@ -607,7 +633,9 @@ class HoverPanelView(QWidget):
         if self.meter.attention_event():
             from attention_views import height
             return height(self.meter)+28
-        quota=sum(43+(22 if data.get('quota',{}).get('credit_balance') else 0)+max(1,len(data.get('quota',{}).get('windows',[])))*28+18 for _,data in self.providers())
+        from panel_plan import spacing_metrics
+        spacing=spacing_metrics(self.layout().get('style',{}).get('spacing','regular'));gap=spacing['blocks'];after=spacing['divided']+gap
+        quota=sum(max(self.provider_height((self.content_width()-36-gap*(len(line)-1))/len(line),data,block) for block,data in line)+after for line in self.provider_lines())
         sessions=self.sessions()[:int(self.layout().get('sessions',{}).get('limit',5))]
         sections=self.section_order()
         return 14+(quota if 'blocks' in sections else 0)+(92+18 if 'tokens' in sections else 0)+(22+max(1,len(sessions))*25+18 if 'sessions' in sections else 0)+17+28+14+(40 if self.draft_bar.ready() else 0)
@@ -757,12 +785,18 @@ class HoverPanelView(QWidget):
         p.setClipRect(QRectF(0,self.scroll_offset-14,w,max(0,bottom)),Qt.ClipOperation.IntersectClip)
         for section in self.section_order():
             if section=='blocks':
-                for client,data in self.providers():
-                    first_hit=len(self.hits)
-                    p.save();p.translate(0,y);height=self.provider_block(p,w,client,data);p.restore()
-                    for index in range(first_hit,len(self.hits)):
-                        rect,action=self.hits[index];self.hits[index]=(rect.translated(0,y),action)
-                    y+=height;divider(p,y+8,w);y+=18
+                from panel_plan import spacing_metrics
+                spacing=spacing_metrics(self.layout().get('style',{}).get('spacing','regular'))
+                for line in self.provider_lines():
+                    width=(w-spacing['blocks']*(len(line)-1))/len(line);height=0
+                    for column,(block,data) in enumerate(line):
+                        x=column*(width+spacing['blocks']);first_hit=len(self.hits)
+                        p.save();p.translate(x,y);height=max(height,self.provider_block(p,width,block['key'],data,block));p.restore()
+                        for index in range(first_hit,len(self.hits)):
+                            rect,action=self.hits[index];self.hits[index]=(rect.translated(x,y),action)
+                    y+=height
+                    if self.layout().get('style',{}).get('separators',True):divider(p,y+spacing['divided'],w)
+                    y+=spacing['divided']+spacing['blocks']
             else:
                 y=self.token_block(p,y,w) if section=='tokens' else self.sessions_block(p,y,w)
                 divider(p,y+8,w);y+=18
@@ -777,12 +811,25 @@ class HoverPanelView(QWidget):
         self.hits.append((QRectF(w-30,y,30,28),'details'))
         p.end()
 
-    def provider_block(self,p,w,client=None,data=None):
+    def provider_block(self,p,w,client=None,data=None,block=None):
         client=client or self.meter.client;data=self.data if data is None else data
+        if block is None:
+            from panel_plan import block_plan
+            block=block_plan(client,'quota',self.layout().get('blocks',{}).get(client,{}))
         artwork().draw(p,client,QRectF(6,2,14,14))
-        text(p,QRectF(26,0,w-140,20),client,13,'text',True)
+        picker_width=0 if len(self.measures(client))==1 else min(len(self.measures(client))*22-2,86 if w<300 else 108)
         from quota_metric_views import picker,presentation
-        picker(self,p,w,client)
+        if block['widget']=='chart':
+            from panel_charts import series
+            values=series(self,client,data,block['period'])
+            period={'day':'24 小时','week':'7 天','month':'30 天'}[block['period']]
+            total=compact(values['total']) if values['reported'] else '—'
+            from quota_cells import fitting
+            label=fitting((period+' · '+total,total),max(0,w-34-QFontMetricsF(font(13,True)).horizontalAdvance(client)),11)
+            picker_width=QFontMetricsF(font(11)).horizontalAdvance(label)
+            text(p,QRectF(w-picker_width,0,picker_width,20),label,11,'secondary',align=Qt.AlignmentFlag.AlignRight)
+        else:picker(self,p,w,client)
+        text(p,QRectF(26,0,w-picker_width-34,20),client,13,'text',True)
         from usage_display import account_label
         quota=data.get('quota',{});label=account_label(quota)
         text(p,QRectF(6,23,w*.66,15),QFontMetricsF(font(10)).elidedText(label,Qt.TextElideMode.ElideRight,w*.66),10,'secondary')
@@ -795,12 +842,25 @@ class HoverPanelView(QWidget):
             text(p,QRectF(w*.58,y,w*.42-6,22),'总积分  '+credit_text(balance,'total'),10,'secondary',align=Qt.AlignmentFlag.AlignRight)
             y+=22
         rows=data.get('quota',{}).get('windows',[])
+        if block['widget']=='chart':
+            from panel_charts import paint
+            first_hit=len(self.hits);p.save();p.translate(0,y);height=paint(self,p,w,client,data,block);p.restore()
+            for index in range(first_hit,len(self.hits)):
+                rect,action=self.hits[index];self.hits[index]=(rect.translated(0,y),action)
+            return y+height
         if not rows:
             from quota_state import quota_notice
             notice=quota_notice(data.get('quota',{}),client)
             fm=QFontMetricsF(font(11))
             text(p,QRectF(6,y,w-12,28),fm.elidedText(notice,Qt.TextElideMode.ElideRight,w-12),11,'secondary')
             return y+28
+        if block['widget'] in ('ring','number'):
+            from quota_cells import paint
+            first_hit=len(self.hits);p.save();p.translate(0,y)
+            height=paint(self,p,w,rows,quota,block,self.measure(client),self.layout().get('style',{}).get('spacing','regular'));p.restore()
+            for index in range(first_hit,len(self.hits)):
+                rect,action=self.hits[index];self.hits[index]=(rect.translated(0,y),action)
+            return y+height
         for row in rows:
             from quota_insights import number
             used=number(row.get('used'));ink=level(used)

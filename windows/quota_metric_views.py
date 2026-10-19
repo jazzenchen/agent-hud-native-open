@@ -12,9 +12,10 @@ def picker(panel,p,w,client):
     from views import color,text
     current=panel.measure(client);offered=panel.measures(client)
     if len(offered)==1:return
-    x=w-(len(offered)*22-2)
+    available=min(len(offered)*22-2,86 if w<300 else len(offered)*22-2)
+    button=(available-2*(len(offered)-1))/len(offered);x=w-available
     for index,metric in enumerate(offered):
-        rect=QRectF(x+index*22,0,20,18)
+        rect=QRectF(x+index*(button+2),0,button,18)
         if current==metric:
             fill=color('text',painter=p);fill.setAlpha(round(.12*255))
             p.setPen(Qt.PenStyle.NoPen);p.setBrush(fill);p.drawRoundedRect(rect,5,5)
