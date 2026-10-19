@@ -143,7 +143,8 @@ def parse_codex_quota(result):
             if not math.isfinite(used) or used<0:continue
             minutes=value.get('windowDurationMins')
             label='Weekly' if minutes==10080 else '5-hour' if minutes==300 else f'{minutes or "?"} min'
-            windows.append(dict(label=label if key=='codex' else f'{key} · {label}',used=used,reset=value.get('resetsAt')))
+            duration=float(minutes)*60 if isinstance(minutes,(int,float)) and not isinstance(minutes,bool) and math.isfinite(minutes) and minutes>0 else None
+            windows.append(dict(label=label if key=='codex' else f'{key} · {label}',used=used,reset=value.get('resetsAt'),duration=duration))
     account=result.get('account') or {}
     email=str(account.get('email') or '').strip()
     workspace=str(result.get('accountId') or '').strip()
@@ -152,7 +153,9 @@ def parse_codex_quota(result):
         from session_formats import digest
         identity=dict(id=digest('Codex',email.lower(),workspace),label=email or 'ChatGPT 工作区',evidence='account')
     plan=next((b.get('planType') for b in buckets.values() if isinstance(b,dict) and b.get('planType')),account.get('planType'))
-    return dict(windows=windows,account=identity,plan=plan,notice='Live account limits' if windows else 'Account reports no quota percentage',at=time.time())
+    credits=result.get('rateLimitResetCredits')
+    if not isinstance(credits,dict) or not isinstance(credits.get('availableCount'),int) or isinstance(credits['availableCount'],bool) or credits['availableCount']<0:credits=None
+    return dict(windows=windows,account=identity,plan=plan,reset_credits=credits,notice='Live account limits' if windows else 'Account reports no quota percentage',at=time.time())
 
 
 def codex_quota(executable=None, timeout=25):

@@ -135,6 +135,11 @@ class Monitor:
             if self.stop.is_set() or client not in self.enabled or client not in self.presence():
                 return
             data = self.quota_readers[client]()
+            try:
+                from quota_insights import QuotaHistory
+                from providers import DATA
+                data=QuotaHistory(DATA/'quota-history.sqlite').decorate(client,data)
+            except Exception:pass  # History failure must not invalidate live quota.
             accounts=data.get('accounts') or ([data['account']] if data.get('account') else [])
             if accounts:
                 try:

@@ -55,7 +55,7 @@ class QuotaCases(unittest.TestCase):
         data=parse_codex_quota(snapshot)
         self.assertEqual(data['windows'],[])  # CodexRateLimits.buckets: present empty map is authoritative.
         del snapshot['rateLimitsByLimitId']
-        self.assertEqual(parse_codex_quota(snapshot)['windows'],[dict(label='5-hour',used=0.,reset=None)])
+        self.assertEqual(parse_codex_quota(snapshot)['windows'],[dict(label='5-hour',used=0.,reset=None,duration=18000.)])
         snapshot['rateLimitsByLimitId']={'bad':None,'codex':dict(primary=dict(usedPercent=float('nan')))}
         self.assertEqual(parse_codex_quota(snapshot)['windows'],[])
 
