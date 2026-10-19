@@ -1,6 +1,7 @@
 """Persisted Windows counterparts of Settings / ScreenPlacement / PanelSwitches."""
 from copy import deepcopy
 from source_design import DESIGN
+from agent_catalog import SUPPORTED,VENDORS
 
 DEFAULTS=dict(mode='simple',glass=True,separates_agents=True,size=DESIGN['simple_size'],
     ring_width=DESIGN['ring_width'],edge='top',offset=.5,placements={},
@@ -8,7 +9,7 @@ DEFAULTS=dict(mode='simple',glass=True,separates_agents=True,size=DESIGN['simple
     gap=.45,hud_appearance='dark',glass_style='material',transparency=50,glass_transparency=50,solid_transparency=0,
     screen_versions={},hidden_windows={},
     appearance='system',match_screen=False,language='zh',launch_at_login=False,client_hooks=True,
-    enabled_clients=['Codex','Cursor'],show_tray=True,hover_delay=400,collapse_delay=200,
+    enabled_clients=[name for name in VENDORS if name in SUPPORTED],adapter_schema=1,show_tray=True,hover_delay=400,collapse_delay=200,
     requires_alt=False,immediate_top=False,panel_quota=True,panel_tokens=True,
     panel_sessions=True,reset_countdown=True,panel_width=540,session_limit=5,
     glow_style='blur',glow_effect='breathe',glow_brightness=.9,glow_range=14,glow_blur=8,
@@ -38,10 +39,10 @@ def validate(key,value):
         return value
     if isinstance(DEFAULTS[key],bool):
         if not isinstance(value,bool):raise ValueError('Boolean setting required')
-    if key=='enabled_clients':return [c for c in ('Codex','Cursor') if c in value]
+    if key=='enabled_clients':return [c for c in VENDORS if c in SUPPORTED and c in value]
     if key=='hidden_windows':
         if not isinstance(value,dict):raise ValueError('Window choices must be a map')
-        return {client:[label for label in labels if isinstance(label,str)] for client,labels in value.items() if client in ('Codex','Cursor') and isinstance(labels,list)}
+        return {client:[label for label in labels if isinstance(label,str)] for client,labels in value.items() if client in SUPPORTED and isinstance(labels,list)}
     return value
 
 
@@ -63,4 +64,7 @@ def load(saved):
         if 'transparency' in original:
             bucket='glass_transparency' if fields.get('glass',result['glass']) else 'solid_transparency'
             if bucket not in original:fields[bucket]=fields['transparency']
+    if not saved.get('adapter_schema'):
+        result['enabled_clients']=[name for name in VENDORS if name in result['enabled_clients'] or name in SUPPORTED-{'Codex','Cursor'}]
+        result['adapter_schema']=1
     return result

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from providers import CodexLocal, PROBE_PIDS, codex_quota, cursor_quota, cursor_sessions
 from quota_state import failure_code,notice
+from agent_catalog import COMMANDS,SUPPORTED
 
 
 def classify_clients(processes, visible_pids):
@@ -24,6 +25,25 @@ def classify_clients(processes, visible_pids):
             found.add('Codex')
         elif name in ('codex.exe', 'codex') and not any(x in args for x in ('app-server', 'mcp-server', 'exec-server', 'daemon')):
             found.add('Codex')
+        else:
+            # Electron desktop clients require a visible window. Node CLIs must
+            # match an executable/package segment, not arbitrary prompt text.
+            desktop={'codebuddy.exe':'CodeBuddy','workbuddy.exe':'WorkBuddy','antigravity.exe':'Antigravity','opencode.exe':'OpenCode','claude.exe':'Claude'}
+            if visible and name in desktop:found.add(desktop[name]);continue
+            if name=='claude.exe' and any(marker in exe for marker in ('/.local/bin/','/claude-code/')):found.add('Claude');continue
+            if any(x in args for x in ('app-server','mcp-server','daemon','gateway','serve','server')):continue
+            for vendor,commands in COMMANDS.items():
+                if vendor in ('Codex','Cursor') or vendor not in SUPPORTED:continue
+                if name in tuple(command+'.exe' for command in commands)+tuple(commands) and name not in desktop:found.add(vendor)
+                if name in ('node.exe','node','bun.exe','bun'):
+                    script=next((arg.replace('\\','/') for arg in args[1:] if arg.endswith(('.js','.mjs','.cjs'))),'')
+                    markers={'Claude':'@anthropic-ai/claude-code/','CodeBuddy':'@tencent-ai/codebuddy-code/','WorkBuddy':'@tencent-ai/workbuddy/','OpenClaw':'/openclaw/','Pi':'@mariozechner/pi-coding-agent/','Qwen':'@qwen-code/qwen-code/','Kimi':'/kimi-cli/','OpenCode':'/opencode-ai/'}
+                    if markers.get(vendor,'\0') in script:found.add(vendor)
+    if found & {'Claude','Pi','OpenCode','WorkBuddy'}:
+        try:
+            from open_plan_quota import discover
+            if any(c.group=='GLM' and (c.clients & found or 'GLM' in c.clients) for c in discover()):found.add('GLM')
+        except Exception:pass
     return found
 
 
@@ -62,27 +82,31 @@ class Monitor:
     """Never reads an inactive client's records or launches its quota engine."""
     def __init__(self, emit, presence=running_clients, local=None, quota=None):
         self.emit, self.presence = emit, presence
-        self.readers = local or {'Codex': CodexLocal().sessions, 'Cursor': cursor_sessions}
-        self.quota_readers = quota or {'Codex': codex_quota, 'Cursor': cursor_quota}
+        if local is None:
+            from provider_registry import defaults
+            local,default_quota=defaults()
+        else:default_quota={}
+        self.readers = local
+        self.quota_readers = quota if quota is not None else default_quota
         self.stop = threading.Event()
         self.lock = threading.Lock()
         self.open = set()
-        self.enabled = {'Codex','Cursor'}
-        self.epochs = {'Codex': 0, 'Cursor': 0}
+        self.enabled = set(self.readers)
+        self.epochs = {name:0 for name in self.readers}
         self.quotas, self.last_query, self.busy = {}, {}, set()
         self.failures,self.retry_after={},{}
 
     def poll_once(self):
-        opened = self.presence() & self.enabled
+        opened = self.presence() & self.enabled & self.readers.keys()
         with self.lock:
             for client in self.open ^ opened:
-                self.epochs[client] += 1
+                self.epochs[client] = self.epochs.get(client,0)+1
                 self.quotas.pop(client, None)
                 self.last_query.pop(client, None)
                 self.failures.pop(client,None);self.retry_after.pop(client,None)
             self.open = opened
         snapshot = {}
-        for client in ('Codex', 'Cursor'):
+        for client in self.readers:
             if client not in opened:
                 continue
             try:
@@ -94,7 +118,7 @@ class Monitor:
                 epoch = self.epochs[client]
                 key = (client, epoch)
                 delay=self.retry_after.get(client,180)
-                needs = time.monotonic() - self.last_query.get(client, -1000) > delay and key not in self.busy
+                needs = client in self.quota_readers and time.monotonic() - self.last_query.get(client, -1000) > delay and key not in self.busy
                 if needs:
                     self.busy.add(key)
                     self.last_query[client] = time.monotonic()
@@ -111,6 +135,13 @@ class Monitor:
             if self.stop.is_set() or client not in self.enabled or client not in self.presence():
                 return
             data = self.quota_readers[client]()
+            accounts=data.get('accounts') or ([data['account']] if data.get('account') else [])
+            if accounts:
+                try:
+                    from providers import DATA
+                    from usage_ledger import UsageLedger
+                    UsageLedger(DATA/'usage-ledger.sqlite').record(client,[],accounts)
+                except Exception:pass  # Disk pressure must not erase a valid live reading.
         except Exception as error:
             code=failure_code(error)
         finally:

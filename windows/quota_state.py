@@ -37,6 +37,7 @@ def notice(code,client='Codex'):
 
 def quota_notice(data,client='Codex'):
     if data.get('hidden'):return '额度窗口已隐藏，可在智能体设置中恢复'
+    if data.get('not_provided'):return data.get('notice') or '此接入未提供额度接口'
     if data.get('stale'):return '上次读数 · '+notice(data.get('error_code','unavailable'),client)
     if data.get('windows'):return ''
     return notice(data.get('error_code','loading' if not data.get('at') else 'no_percentage'),client)

@@ -50,10 +50,12 @@ class QuotaCases(unittest.TestCase):
         for error,expected in cases:
             with self.subTest(expected=expected):self.assertEqual(failure_code(error),expected)
 
-    def test_empty_multibucket_falls_back_and_zero_is_real_but_null_is_not(self):
+    def test_authoritative_empty_multibucket_and_zero_is_real_but_null_is_not(self):
         snapshot=dict(rateLimitsByLimitId={},rateLimits=dict(primary=dict(usedPercent=0,windowDurationMins=300),secondary=dict(usedPercent=None)))
         data=parse_codex_quota(snapshot)
-        self.assertEqual(data['windows'],[dict(label='5-hour',used=0.,reset=None)])
+        self.assertEqual(data['windows'],[])  # CodexRateLimits.buckets: present empty map is authoritative.
+        del snapshot['rateLimitsByLimitId']
+        self.assertEqual(parse_codex_quota(snapshot)['windows'],[dict(label='5-hour',used=0.,reset=None)])
         snapshot['rateLimitsByLimitId']={'bad':None,'codex':dict(primary=dict(usedPercent=float('nan')))}
         self.assertEqual(parse_codex_quota(snapshot)['windows'],[])
 

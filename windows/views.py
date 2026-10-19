@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QWidget, QMenu, QApplication
 
 from material import frosted_backdrop,rounded_native_window
 from source_design import DESIGN
-from look_logic import stand_in
+from look_logic import stand_in,dimming
 from theme import resolves_light,apply_widget_theme
 from motion import SpringDriver,animations_enabled
 from peek_view import AgentPeekView
@@ -245,7 +245,8 @@ class SimpleMeterView(QWidget):
 
     def surface_fill(self,native):
         fill=QColor('#f5f5f7' if self.light() else '#000000')
-        fill.setAlpha(18 if native else round(255*stand_in(self.settings.get('transparency',50),self.settings['glass'],self.settings.get('glass_style','material'))))
+        opacity=dimming(self.settings.get('transparency',50),True,self.settings.get('glass_style','material')) if native else stand_in(self.settings.get('transparency',50),self.settings['glass'],self.settings.get('glass_style','material'))
+        fill.setAlpha(round(255*opacity))
         return fill
 
     def set_data(self, data):
@@ -567,8 +568,10 @@ class HoverPanelView(QWidget):
         artwork().draw(p,client,QRectF(6,2,14,14))
         text(p,QRectF(26,0,w-100,20),client,13,'text',True)
         text(p,QRectF(w-64,0,64,20),'%',10,'secondary',align=Qt.AlignmentFlag.AlignRight)
-        text(p,QRectF(6,23,w/2,15),'个人账户',10,'secondary')
-        text(p,QRectF(w/2,23,w/2-6,15),'上次读数 · 重试中' if data.get('quota',{}).get('stale') else '当前账户',10,'tertiary',align=Qt.AlignmentFlag.AlignRight)
+        from usage_display import account_label
+        quota=data.get('quota',{});label=account_label(quota)
+        text(p,QRectF(6,23,w*.66,15),QFontMetricsF(font(10)).elidedText(label,Qt.TextElideMode.ElideRight,w*.66),10,'secondary')
+        text(p,QRectF(w*.68,23,w*.32-6,15),'上次读数 · 重试中' if quota.get('stale') else str(quota.get('plan') or ''),10,'tertiary',align=Qt.AlignmentFlag.AlignRight)
         y=43
         rows=data.get('quota',{}).get('windows',[])[:5]
         if not rows:
@@ -595,26 +598,26 @@ class HoverPanelView(QWidget):
         return y
 
     def token_block(self,p,y,w):
+        from usage_display import hourly
         text(p,QRectF(0,y,100,20),'Tokens',13,'text',True)
-        text(p,QRectF(100,y,w-100,20),'最近会话 · 各会话累计',10,'secondary',align=Qt.AlignmentFlag.AlignRight)
-        items=[r for r in self.sessions() if r.get('tokens') is not None][:12]
+        text(p,QRectF(100,y,w-100,20),'最近 24 小时 · 每小时',10,'secondary',align=Qt.AlignmentFlag.AlignRight)
+        reports=[data.get('local',{}).get('stats',{}) for _,data in self.providers()]
+        items=hourly(reports) if any(r.get('event_count') for r in reports) else []
         chart_y=y+27
         if not items:
             text(p,QRectF(6,chart_y,w-12,55),'暂无可读取的 Token 记录',11,'tertiary')
         else:
-            maximum=max(1,max(row['tokens'] for row in items))
-            gap=5;bw=min(24,(w-12-(len(items)-1)*gap)/len(items))
-            for index,row in enumerate(reversed(items)):
-                x=6+index*(bw+gap);height=55*row['tokens']/maximum
-                breakdown=row.get('breakdown') or {}
-                parts=[(breakdown.get('cache',0),'#b098df'),(breakdown.get('input',0),'#69a9e9'),
-                       (breakdown.get('reasoning',0),'#de86af'),(breakdown.get('output',0),'#e99d52')]
-                if not any(n for n,_ in parts):parts=[(row['tokens'],'#b098df')]
+            maximum=max(1,max(row['total'] for row in items))
+            gap=3;bw=(w-12-(len(items)-1)*gap)/len(items)
+            for index,row in enumerate(items):
+                x=6+index*(bw+gap);height=55*row['total']/maximum
+                parts=[(row.get('cache',0),'#b098df'),(row.get('fresh_input',0),'#69a9e9'),(row.get('cache_write',0),'#75bca0'),
+                       (row.get('reasoning',0),'#de86af'),(row.get('visible_output',0),'#e99d52')]
                 total=max(1,sum(n for n,_ in parts));bottom=chart_y+55
                 for amount,tint in parts:
                     part=height*amount/total;bottom-=part
                     p.fillRect(QRectF(x,bottom,bw,max(0,part)),QColor(tint))
-                self.hits.append((QRectF(x,chart_y,bw,55),row))
+                self.hits.append((QRectF(x,chart_y,bw,55),'details'))
             p.setPen(QPen(color('divider',painter=p),1))
             p.drawLine(QPointF(6,chart_y+56),QPointF(w-6,chart_y+56))
         return chart_y+65

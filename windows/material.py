@@ -17,12 +17,11 @@ def frosted_backdrop(handle, enabled=True, transparency=50, light=False, style='
         _fields_ = [('attribute', ctypes.c_int), ('data', ctypes.c_void_p), ('size', ctypes.c_size_t)]
 
     try:
-        # Retain the original HUDLook dimming semantics; only the compositor changes.
-        alpha=max(1,round(255*dimming(transparency,True,style)))
-        # GradientColor is ABGR. Legacy state 3 ignores the tint and leaves light
-        # surfaces dark; all glass styles use the tinted Acrylic compositor here.
-        rgb=0x00f7f5f5 if light else 0
-        accent = Accent(4 if enabled else 0, 0, (alpha<<24)|rgb, 0)
+        # The original pre-Liquid-Glass path separates FrostedGlass from its
+        # dimming layer. Do the same: native blur only, with the themed dimming
+        # painted inside Qt's capsule. Acrylic's native gradient ignores custom
+        # regions and left a rectangular tint outside the requested silhouette.
+        accent = Accent(3 if enabled else 0,0,0,0)
         data = Data(19, ctypes.addressof(accent), ctypes.sizeof(accent))
         user = ctypes.WinDLL('user32', use_last_error=True)
         function = user.SetWindowCompositionAttribute

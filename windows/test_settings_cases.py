@@ -60,8 +60,11 @@ class SettingsCases(unittest.TestCase):
     def test_agent_page_has_full_inventory_and_unimplemented_providers_get_no_fake_switch(self):
         manager=self.manager();window=SettingsWindow(manager);self.addCleanup(window.close)
         page=window.agent_page;self.assertEqual(page.list.count(),18)
+        index=next(i for i in range(page.list.count()) if page.list.item(i).data(256)['vendor']=='Antigravity')
+        page.list.setCurrentRow(index);self.app.processEvents()
+        self.assertIsNone(page.findChild(QCheckBox,'agent_enabled_Antigravity'))
         index=next(i for i in range(page.list.count()) if page.list.item(i).data(256)['vendor']=='Claude')
         page.list.setCurrentRow(index);self.app.processEvents()
-        self.assertIsNone(page.findChild(QCheckBox,'agent_enabled_Claude'))
+        self.assertIsNotNone(page.findChild(QCheckBox,'agent_enabled_Claude'))
 
 if __name__=='__main__':unittest.main()

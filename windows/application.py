@@ -29,6 +29,7 @@ class UsageWindow(QDialog):
     """The two original statistics tabs, scoped to available Windows records."""
     def __init__(self,client,data,light=False):
         super().__init__()
+        self.client=client;self.usage_signature=None
         self.setWindowTitle(client+' · 用量统计')
         self.resize(680,460)
         self.apply_theme(light)
@@ -36,9 +37,21 @@ class UsageWindow(QDialog):
         layout.addWidget(QLabel(client))
         tabs=QTabWidget()
         sessions=data.get('local',{}).get('sessions',[])
-        for label in ('Tokens','Sessions'):
-            table=QTableWidget(len(sessions),3)
-            table.setHorizontalHeaderLabels(['会话','状态','会话累计 Tokens'])
+        stats=data.get('local',{}).get('stats',{})
+        token_page=QDialog();token_layout=QVBoxLayout(token_page);token_layout.setContentsMargins(0,0,0,0)
+        totals=stats.get('totals',{})
+        self.summary=QLabel();token_layout.addWidget(self.summary)
+        models=stats.get('models',[]);model_table=QTableWidget(len(models),7);model_table.setObjectName('tokenModels')
+        model_table.setHorizontalHeaderLabels(['模型','输入','缓存读取','缓存写入','输出','推理','总量'])
+        model_table.verticalHeader().hide();model_table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch)
+        model_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        for i,row in enumerate(models):
+            for j,value in enumerate([row['model']]+[compact(row.get(k)) for k in ('fresh_input','cache','cache_write','visible_output','reasoning','total')]):model_table.setItem(i,j,QTableWidgetItem(value))
+        for column in range(1,7):model_table.setColumnWidth(column,75)
+        token_layout.addWidget(model_table);tabs.addTab(token_page,'Tokens')
+        for label in ('Sessions',):
+            table=QTableWidget(len(sessions),3);table.setObjectName('usageSessions')
+            table.setHorizontalHeaderLabels(['会话','状态','已索引 Tokens'])
             table.verticalHeader().hide()
             table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch)
             table.setColumnWidth(1,85);table.setColumnWidth(2,120)
@@ -48,7 +61,31 @@ class UsageWindow(QDialog):
                     table.setItem(i,j,QTableWidgetItem(value))
             tabs.addTab(table,label)
         layout.addWidget(tabs)
-        layout.addWidget(QLabel('各会话累计值；父子会话不相加，不冒充今日或账户总消耗。'))
+        note=data.get('local',{}).get('notice') or '按请求去重；推理和缓存写入分列，不重复加入总量。'
+        self.footer=QLabel(note);self.footer.setWordWrap(True);layout.addWidget(self.footer)
+        self.sync(data)
+
+    def sync(self,data):
+        local=data.get('local',{});stats=local.get('stats',{});sessions=local.get('sessions',[])
+        signature=repr((stats,[(r.get('id'),r.get('tokens'),r.get('state'),r.get('title')) for r in sessions],local.get('notice'),data.get('quota',{}).get('account')))
+        if signature==self.usage_signature:return
+        self.usage_signature=signature
+        from usage_display import account_label
+        total=stats.get('totals',{}).get('total')
+        scope=account_label(data.get('quota',{})) if stats.get('scope')=='account' else '本地用量，未推断历史账户归属'
+        self.summary.setText('最近 7 天 · '+compact(total)+' Tokens · '+str(stats.get('event_count',0))+' 条用量记录 · '+scope)
+        models=stats.get('models',[])
+        values=[[r['model']]+[compact(r.get(k)) for k in ('fresh_input','cache','cache_write','visible_output','reasoning','total')] for r in models]
+        session_values=[[r['title'],{'running':'运行中','done':'已结束','stopped':'已停止','error':'异常'}.get(r.get('state'),'最后记录'),compact(r.get('tokens'))] for r in sessions]
+        for name,rows in [('tokenModels',values),('usageSessions',session_values)]:
+            table=self.findChild(QTableWidget,name);offset=table.verticalScrollBar().value();table.setUpdatesEnabled(False)
+            try:
+                table.setRowCount(len(rows))
+                for i,row in enumerate(rows):
+                    for j,value in enumerate(row):table.setItem(i,j,QTableWidgetItem(value))
+                table.verticalScrollBar().setValue(offset)
+            finally:table.setUpdatesEnabled(True)
+        self.footer.setText(local.get('notice') or '按请求去重；推理和缓存写入分列，不重复加入总量。')
 
     def apply_theme(self,light):
         apply_widget_theme(self,light);t=tokens(light)
@@ -269,6 +306,8 @@ class Application:
     def update(self,snapshot):
         snapshot={k:v for k,v in snapshot.items() if k in self.settings['enabled_clients']}
         self.data=snapshot
+        for dialog in self.dialogs:
+            if isinstance(dialog,UsageWindow) and dialog.client in snapshot:dialog.sync(snapshot[dialog.client])
         groups={}
         for screen in self.app.screens():
             cfg=self.screen_settings(screen.name())
@@ -318,6 +357,8 @@ class Application:
                     quota={client:dict(state='stale' if data.get('quota',{}).get('stale') else 'available' if data.get('quota',{}).get('windows') else 'unavailable' if data.get('quota',{}).get('error_code') else 'no_percentage' if data.get('quota',{}).get('at') else 'loading',
                         error_code=data.get('quota',{}).get('error_code'),last_success_at=data.get('quota',{}).get('at'),
                         retry_seconds=data.get('quota',{}).get('retry_seconds')) for client,data in snapshot.items()},
+                    usage={client:dict(account_identified=(data.get('quota',{}).get('account') or {}).get('evidence')=='account',indexed_records=data.get('local',{}).get('stats',{}).get('event_count'),
+                        indexing=bool(data.get('local',{}).get('indexing')),models=len(data.get('local',{}).get('stats',{}).get('models',[]))) for client,data in snapshot.items()},
                     settings_visible=self.settings_window.isVisible() if self.settings_window else False,
                     window_appearance='light' if self.window_light() else 'dark',
                     windows=[dict(agent=m.client,screen=key[0],glass=m.native_glass,visible=m.isVisible(),mode=m.settings['mode'],

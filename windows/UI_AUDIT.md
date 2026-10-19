@@ -21,8 +21,8 @@ without satisfying the user's visual acceptance gate.
   change. Statistics and menus no longer hardcode dark. Popup menus rebuild from
   current data and retain explicit ownership of provider submenus.
 - Light text, logo tint, rings, separators, tracks and borders use light-theme
-  tokens. Windows Acrylic tint uses ABGR, including Clear/Regular fallback; the
-  untinted legacy Clear path no longer leaves light surfaces dark. Both Qt and
+  tokens. Native untinted blur and an independent source dimming layer now
+  replace the earlier Acrylic tint, including Clear/Regular fallback. Both Qt and
   native window regions are rounded; the additional DWM border is disabled.
 - Panels morph from their actual source bounds; their content keeps a fixed
   layout during expansion. Springs preserve current value and velocity under
@@ -34,7 +34,7 @@ without satisfying the user's visual acceptance gate.
 
 ## Verification
 
-63 tests pass locally, including real control clicks through persistence and
+85 tests pass locally, including real control clicks through persistence and
 rendered-pixel checks for window/HUD/panel/peek light/dark changes. Regressions
 cover live menu dispatch, click versus drag, compact hover versus click-to-pin,
 rapid reversal, stable spring integration, reduced motion, and canceled/keyboard
@@ -68,8 +68,8 @@ Further corrections from this comparison:
 - Restore all 18 source-detection groups from the upstream catalog, original
   artwork and the SourcesPane list/detail layout. Passive Windows path/command/
   process detection refreshes while settings is visible; it never starts clients.
-  Only Codex/Cursor currently have live data adapters; other groups say this
-  explicitly instead of presenting nonfunctional monitoring switches.
+  Fourteen groups now have data adapters; DeepSeek, Antigravity, Grok and
+  GitHub Copilot remain detection-only, without nonfunctional controls.
 - Restore persisted, bounded per-screen versions: style reset, layout reset and
   use-shared can be reverted after restart. Glass and Solid retain separate
   transparency values; old saved values migrate without being discarded.
@@ -78,7 +78,7 @@ Further corrections from this comparison:
   Per-quota-window visibility leaves the original readings intact.
 
 Native 125% and 150% scale probes both captured dark/light scenes and successful
-Acrylic calls. These exposed an additional **unresolved blocker**: Acrylic's
+Acrylic calls. Earlier Acrylic probes exposed a blocker: Acrylic's
 outer backdrop can remain a rectangle with the OS's small corners even though
 Qt paint and GetWindowRgn report the intended capsule. A new outside-capsule
 pixel check compares the surface against the same owned wallpaper before the
@@ -89,8 +89,8 @@ OS rounding, an opaque Qt host, the legacy DWM blur region and removing the
 layered style did not fix it and were not adopted.
 
 Current PR gate: **FAIL / below verified acceptance**, with no invented numeric
-score. Blocking differences include the Acrylic silhouette, 16 providers without
-live Windows adapters, provider/window drag ordering, incomplete English, Apple
+score. Blocking differences include the remaining dark hover corner residual, four
+providers without live Windows adapters, provider/window drag ordering, incomplete English, Apple
 material/transition differences and the previously recorded unported interfaces.
 The Windows PR branch has not been pushed with these changes. Source-geometry
 checks passing, a successful capture, or large matching background areas cannot
@@ -103,7 +103,7 @@ establish overall 90% similarity.
 | One failed quota read erased usable values for three minutes | Keep the last successful reading with an explicit stale label; retry after 15/30/60/120/180 seconds from failure completion, reset on recovery. |
 | Loading, missing percentages, expired login and network failure all looked unavailable | Distinct safe states in meter tooltips, peek tooltips, full panel and tray; manual Refresh quota action. Unknown exception strings are never copied to UI or diagnostics. |
 | Authentication and network failures had the same Codex message | Classify auth/network/throttle responses; timeout, storage and disk-full categories are explicit. |
-| An empty multi-bucket response hid valid legacy quota | Fall back to the legacy bucket; accept real zero, skip null/malformed/nonfinite values. |
+| Legacy quota fallback disagreed with CodexRateLimits.buckets | A present empty map is authoritative, as in the original source. Only a missing map falls back; zero is valid, null/nonfinite values are skipped. |
 | Full disk broke health writes or left settings changed only in memory | Health-write failures no longer escape the UI callback; configuration writes retain the previous file and restore the previous model on failure. Real ENOSPC injection verifies saved bytes and theme remain unchanged. |
 | Cached session entries and repeated menu opening retained old objects | Evict sessions no longer in the bounded live selection; dispose obsolete provider submenus on rebuild. |
 | Two-step material/position changes briefly rendered an intermediate state | Validate, save and update the selected screen in one batch. |
@@ -179,3 +179,43 @@ behind a claim of complete parity or an enabled but unimplemented control.
 
 Native API references: [client-area animation preference](https://learn.microsoft.com/en-us/windows/win32/winauto/client-area-animation),
 [DWM border/corner attributes](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute).
+
+
+## Account and Token correction (current iteration)
+
+The former fixed account labels and duplicated Tokens/Sessions table were not
+functional parity. They are replaced by evidence-bearing account labels, cached
+account history, real plan names, six Cursor quota pools, official OpenAgent
+plan endpoints and a source-keyed SQLite event ledger. Thirteen groups read
+local/account Token records and GLM reads plan quotas. Other adapters are not
+silently marked supported. The same immutable request identity survives reloads,
+stream updates and database polling; cumulative source rows replace one coherent
+observation, avoiding per-column MAX overcount. Fifteen-minute buckets drive the
+24-hour hover chart; statistics use model totals and update while open. Local
+history without account evidence is explicitly labeled local, never assigned to
+the current sign-in. Billing/account identity and credentials are not persisted
+together. No prompt, model turn, shell key resolver or OAuth refresh is issued.
+
+85 regression checks cover source format examples, Codex inherited history,
+Cursor overlapping pages and equal distinct requests, account isolation, safe
+official endpoint routing, mixed cache/reasoning layouts, partial records,
+legacy SQLite schemas, restart deduplication and live statistics refresh. Native
+Windows settings were rendered and inspected with an explicitly synthetic
+account; the offscreen backend on this machine produces missing font glyphs and
+is not accepted as typography evidence. Real resident Codex health reports an
+identified account, valid quota and thousands of indexed usage records; initial
+indexing is still labeled incomplete. Health metadata excludes account labels,
+identifiers and credentials. Other providers' signed-in Windows acceptance is
+still outstanding.
+
+The material now follows the original two-layer fallback: native untinted blur
+plus source dimming inside the Qt silhouette. The former 142/138 RGB rectangular
+tint defect is substantially reduced. Strengthening the native check from one
+sample to all four outside-capsule corners exposed a remaining dark hover
+bottom-right residual at 100% (30 RGB levels, limit 16). Native 125% and 150%
+probes pass the four sampled corners, but that is not full-shape or overall
+fidelity proof. Disabling OS shadow and waiting longer for the backdrop did not
+remove the residual; those ineffective app changes were not adopted. These
+results supersede earlier single-corner passes. No >=90% claim or PR update is
+made. macOS Liquid Glass, drag ordering, complete historical statistics and the
+remaining four providers continue to block overall acceptance.

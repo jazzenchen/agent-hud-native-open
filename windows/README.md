@@ -1,4 +1,4 @@
-# Windows source port: Codex and Cursor
+# Windows source port
 
 Windows counterpart of the upstream **SimpleMeterView** and its separate-agent
 hover panels. Defaults: **Simple mode · frosted material · separate agents**.
@@ -54,8 +54,9 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
   General controls appearance, language, launch at login and reversible Cursor
   observers. Agents lists all 18 upstream detection groups with original artwork,
   passive Windows install/process discovery and a detail column. Discovery does
-  not start clients or claim authentication. Codex/Cursor have live adapters and
-  per-window visibility; other groups explicitly report the unported data paths.
+  not start clients or claim authentication. Fourteen groups now have data adapters and per-window visibility: thirteen
+  have local or account Token records, while GLM represents its official plan
+  quotas. DeepSeek, Antigravity, Grok and GitHub Copilot remain detection-only.
 - Display supports Simple, logo dock and a 200pt stand-in notch (plus original
   flares), separate/combined agents, four edges, normalized position, light/dark
   HUD, acrylic style/opacity, size, ring/number visibility, quota/token/session
@@ -73,22 +74,24 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
   rest. Interrupted panel/selector/switch transitions retain position and velocity.
   Decorative pointer lighting keeps controls/text stationary. Windows' client-area
   animation preference suppresses springs and continuous glow when disabled.
-- The Acrylic adapter uses the explicit ABGR theme tint for every glass style;
-  the legacy untinted Clear blur path was removed. Qt and HWND regions are round,
-  and DWM's extra border is suppressed. Native capture revealed Acrylic can still
-  paint outside the requested capsule despite a successful rounded region; this
-  remains a blocking visual difference. The native probe now tests a corner pixel
-  against its owned wallpaper, independently of API success.
+- Native untinted blur and the themed dimming layer are separated, matching
+  the original pre-Liquid-Glass fallback. Qt and HWND regions are rounded and
+  DWM's extra border is suppressed. The large rectangular Acrylic tint is
+  removed. Four-corner native tests still find a 30-level RGB residual on the
+  dark 100% hover bottom-right corner (threshold 16). At 125% and 150% the four
+  samples pass; this is not proof of the full silhouette or overall similarity.
   See [UI_AUDIT.md](UI_AUDIT.md) for native evidence and remaining review gates.
-- Acrylic replaces Apple Liquid Glass; Segoe UI / Microsoft YaHei UI replace
+- Native Windows blur replaces Apple Liquid Glass; Segoe UI / Microsoft YaHei UI replace
   Apple fonts. The Windows notch uses the source's fallback dimensions instead
   of claiming a physical camera notch exists.
 
 Remaining gaps are explicit in Experimental: animated Bot direction, the MCP
 draft/save host and approval bridge are not implemented. Historical statistics
-are limited to the available cumulative session records, not the full Mac
-statistics interface. English currently covers settings labels; notices and some
-panel text remain Chinese. Other providers remain outside this Codex/Cursor port.
+now use request-keyed SQLite events, model totals and 15-minute buckets;
+this still does not reproduce the full Mac statistics interface. English currently covers settings labels; notices and some
+panel text remain Chinese. The four detection-only providers above, WorkBuddy credits/context
+meters, cross-client plan attribution and multi-home account discovery still
+need further source ports and signed-in acceptance.
 These are still draft-port limitations, not promises of full Mac feature parity.
 
 ## Source correspondence
@@ -154,7 +157,7 @@ Previews use explicit fixture data, never account readings. The tests cover the
 source design contract, separated views, process gating, ignored probes/servers,
 closed-client races, read-only WAL, parser lifecycle, missing quota and reversible
 observers. Real Cursor-emitted observer delivery and signed-in Cursor quota need
-manual acceptance with a current client login. Acrylic depends on Windows/DWM;
+manual acceptance with a current client login. Native blur depends on Windows/DWM;
 the fallback remains readable and does not change system security settings.
 
 Cursor observers are backed up alongside `~/.cursor/hooks.json`. The prompt hook
@@ -164,3 +167,31 @@ then remove the Desktop/Startup shortcuts. Client data and other hooks remain.
 
 Repository Apache-2.0 and artwork notices still apply. See
 [THIRD_PARTY.md](THIRD_PARTY.md) for the dynamically installed Windows runtime.
+
+
+## Account and Token adapters
+
+Codex reads account identity and limits from the same app-server process, with
+an optional account/read reply; an unsupported identity method does not erase
+valid limits. Cursor confirms the local session by the accepted official usage
+request, exposes all six upstream quota pools and reads paginated billing Token
+events. Claude uses only the original get_usage control request with hooks
+disabled, without submitting a user message. Kimi, GLM and OpenCode Go use the
+original official metadata routes; WorkBuddy GLM plan entries are scoped to
+that group. Custom endpoints never fall back to an assumed official host.
+Credential scopes stay separate unless a provider-owned identity confirms they
+share an account. Cached history is distinguished from current sign-in.
+
+Local Token readers cover Claude, Codex, CodeBuddy, WorkBuddy, OpenClaw, Pi,
+Qwen, Kimi, OpenCode, Hermes, ZCode and Devin. Counts are keyed by request identity
+(or the source's usage row), preventing refresh/restart/stream duplicates;
+Codex forks consume inherited baselines without counting the parent's history.
+Input includes cache writes and output includes reasoning; display channels
+subtract those subsets before stacking. Unknown historical account ownership
+stays unknown. No conversation bodies or credentials are saved in the ledger.
+Initial indexing is incremental and explicitly labeled incomplete. Closed or
+disabled clients are never polled; no client is launched for detection.
+
+Windows paths and source-format fixtures have local regression coverage. Only
+Codex's current signed-in account and real Token indexing have been verified
+on this machine; other signed-in provider paths still require native acceptance.

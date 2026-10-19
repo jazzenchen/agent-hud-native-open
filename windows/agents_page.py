@@ -53,7 +53,7 @@ class AgentsPage(QWidget):
         else:active=self.manager.data
         rows=([dict(vendor=vendor,installed=vendor in self.manager.data,running=vendor in self.manager.data,supported=vendor in SUPPORTED) for vendor in VENDORS]
               if getattr(self.manager,'preview',False) else detect_sources(active))
-        signature=tuple((row['vendor'],row['installed'],row['running'],tuple(w['label'] for w in self.manager.data.get(row['vendor'],{}).get('quota',{}).get('windows',[])),self.manager.data.get(row['vendor'],{}).get('quota',{}).get('error_code')) for row in rows)
+        signature=tuple((row['vendor'],row['installed'],row['running'],repr(self.manager.data.get(row['vendor'],{}).get('quota',{})),self.manager.data.get(row['vendor'],{}).get('local',{}).get('stats',{}).get('event_count')) for row in rows)
         if signature==self.signature and not force:return
         self.signature=signature;selected=getattr(self.settings,'selected_provider',next(iter(self.manager.data),'Claude'))
         self.list.blockSignals(True);self.list.clear();target=0
@@ -77,10 +77,28 @@ class AgentsPage(QWidget):
             if item.widget():item.widget().deleteLater()
         data=self.manager.data.get(vendor,{})
         if row['supported']:
+            quota=data.get('quota',{});account=quota.get('account') or {}
+            form=self.section('账户')
+            from usage_display import account_label
+            name=QLabel(account_label(quota));name.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse);name.setWordWrap(True)
+            form.addRow('上次读数账户' if quota.get('stale') else '当前账户',name)
+            identities=quota.get('accounts') or ([account] if account else [])
+            for identity in identities:
+                evidence='服务方确认' if identity.get('evidence')=='account' else '本地资料' if identity.get('evidence')=='profile' else '凭据独立范围，身份未确认'
+                label=QLabel(evidence if len(identities)==1 else identity.get('label','')+' · '+evidence);label.setWordWrap(True)
+                form.addRow('识别依据',label) if len(identities)==1 else form.addRow(label)
+            if quota.get('plan'):form.addRow('订阅',QLabel(str(quota['plan'])))
+            if quota.get('stale'):form.addRow(QLabel('当前显示上次成功读数，正在重试。'))
+            try:
+                from providers import DATA
+                from usage_ledger import UsageLedger
+                history=UsageLedger(DATA/'usage-ledger.sqlite').report(vendor).get('accounts',[]) if not getattr(self.manager,'preview',False) else []
+                for previous in history[:4]:
+                    if previous['id']!=account.get('id'):form.addRow('曾识别账户',QLabel(previous['label']))
+            except Exception:pass
             form=self.section('显示窗口')
             switch=Switch();switch.setObjectName('agent_enabled_'+vendor);switch.setChecked(vendor in self.manager.settings['enabled_clients']);switch.setAccessibleName(vendor)
             switch.toggled.connect(lambda on:self.toggle(vendor,on));form.addRow(vendor,switch)
-            quota=data.get('quota',{})
             if quota.get('windows'):
                 for window in quota['windows']:
                     choice=Switch();choice.setChecked(window['label'] not in self.manager.settings.get('hidden_windows',{}).get(vendor,[]))
@@ -89,10 +107,16 @@ class AgentsPage(QWidget):
             else:
                 from quota_state import quota_notice
                 note=QLabel(quota_notice(quota,vendor) if row['running'] else '打开客户端后，自动读取当前账户和额度。');note.setProperty('subtitle',True);note.setWordWrap(True);form.addRow(note)
+            stats=data.get('local',{}).get('stats',{});form=self.section('Token 用量')
+            from views import compact
+            form.addRow('最近 7 天',QLabel(compact(stats.get('totals',{}).get('total'))))
+            form.addRow('用量记录',QLabel(str(stats['event_count']) if 'event_count' in stats else '尚未读取'))
+            note=QLabel('按请求去重统计；未确认账户归属的历史记录保留为本地用量。');note.setProperty('subtitle',True);note.setWordWrap(True);form.addRow(note)
         form=self.section('接入状态')
         state='运行中' if row['running'] else '已安装' if row['installed'] else '未检测到'
         status=QLabel(state);form.addRow(vendor,status)
-        detail='额度与会话已接入；只在客户端运行时读取。' if row['supported'] else '已检测到本机客户端或资料；额度和会话接入尚未完成。' if row['installed'] else '安装客户端后自动检测；额度和会话接入尚未完成。'
+        from provider_registry import QUOTA_VENDORS
+        detail=('官方计划额度已接入；Token 由实际使用计划的客户端记录。' if vendor=='GLM' else '账户额度、会话与 Token 已接入；只在客户端运行时读取。' if vendor in QUOTA_VENDORS else '本地会话与 Token 已接入；账户额度请以上方实际接入状态为准。') if row['supported'] else '已检测到本机客户端或资料；额度和会话接入尚未完成。' if row['installed'] else '安装客户端后自动检测；额度和会话接入尚未完成。'
         note=QLabel(detail);note.setProperty('subtitle',True);note.setWordWrap(True);form.addRow(note)
         self.detail_layout.addStretch()
 

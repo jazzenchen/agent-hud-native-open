@@ -129,7 +129,7 @@ def codex_executable():
 def parse_codex_quota(result):
     import math
     buckets=result.get('rateLimitsByLimitId')
-    if not isinstance(buckets,dict) or not buckets:
+    if not isinstance(buckets,dict):
         bucket=result.get('rateLimits') or {}
         buckets={bucket.get('limitId') or 'codex':bucket}
     windows=[]
@@ -144,7 +144,15 @@ def parse_codex_quota(result):
             minutes=value.get('windowDurationMins')
             label='Weekly' if minutes==10080 else '5-hour' if minutes==300 else f'{minutes or "?"} min'
             windows.append(dict(label=label if key=='codex' else f'{key} · {label}',used=used,reset=value.get('resetsAt')))
-    return dict(windows=windows,notice='Live account limits' if windows else 'Account reports no quota percentage',at=time.time())
+    account=result.get('account') or {}
+    email=str(account.get('email') or '').strip()
+    workspace=str(result.get('accountId') or '').strip()
+    identity=None
+    if email or workspace:
+        from session_formats import digest
+        identity=dict(id=digest('Codex',email.lower(),workspace),label=email or 'ChatGPT 工作区',evidence='account')
+    plan=next((b.get('planType') for b in buckets.values() if isinstance(b,dict) and b.get('planType')),account.get('planType'))
+    return dict(windows=windows,account=identity,plan=plan,notice='Live account limits' if windows else 'Account reports no quota percentage',at=time.time())
 
 
 def codex_quota(executable=None, timeout=25):
@@ -175,13 +183,19 @@ def codex_quota(executable=None, timeout=25):
         send(dict(id=1, method='initialize', params=dict(clientInfo=dict(
             name='agent_hud_windows', title='Agent HUD Windows', version='0.1.0'))))
         deadline = time.monotonic() + timeout
+        limits=None;account=None;account_done=False
         while time.monotonic() < deadline:
             try:
                 message = messages.get(timeout=max(.1, deadline - time.monotonic()))
             except queue.Empty:
                 break
+            if message is None and limits is not None:break
             if message is None:
                 raise RuntimeError('Codex quota engine exited')
+            if message.get('error') and message.get('id')==3:
+                account_done=True
+                if limits is not None:break
+                continue
             if message.get('error'):
                 error=message['error'];detail=str(error.get('message','')).lower() if isinstance(error,dict) else ''
                 code='auth' if any(word in detail for word in ('auth','sign in','login','401','403')) else 'throttled' if '429' in detail else 'network'
@@ -189,9 +203,15 @@ def codex_quota(executable=None, timeout=25):
             if message.get('id') == 1:
                 send(dict(method='initialized'))
                 send(dict(id=2, method='account/rateLimits/read'))
+                send(dict(id=3, method='account/read',params={}))
             elif message.get('id') == 2:
-                result = message.get('result') or {}
-                return parse_codex_quota(result)
+                limits=message.get('result') or {}
+                if account_done:break
+                deadline=min(deadline,time.monotonic()+2)
+            elif message.get('id') == 3:
+                account=(message.get('result') or {}).get('account');account_done=True
+                if limits is not None:break
+        if limits is not None:return parse_codex_quota({**limits,'account':account})
         raise RuntimeError('Codex quota query timed out')
     finally:
         if proc.poll() is None:
@@ -222,29 +242,39 @@ def cursor_request(token, user, endpoint, body=None):
 
 
 def parse_cursor_quota(data):
+    import math
+    from session_formats import stamp
     if not any(k in data for k in ('individualUsage', 'teamUsage', 'membershipType')):
         raise ValueError('Cursor returned an unsupported usage response')
     plan = (data.get('individualUsage') or {}).get('plan') or {}
     rows = []
     used = plan.get('totalPercentUsed')
-    if used is None and plan.get('limit', 0) > 0 and plan.get('used') is not None:
-        used = plan['used'] / plan['limit'] * 100
-    if used is not None and plan.get('enabled') is not False:
-        rows.append(dict(label='Included', used=used, reset=data.get('billingCycleEnd')))
+    def ratio(value):
+        if value.get('enabled') is not False and isinstance(value.get('limit'),(int,float)) and value['limit']>0 and isinstance(value.get('used'),(int,float)):
+            return value['used']/value['limit']*100
+    if used is None:used=ratio(plan)
+    individual=data.get('individualUsage') or {};team=data.get('teamUsage') or {}
+    pools=[('Included',used if plan.get('enabled') is not False else None),('First-party',plan.get('autoPercentUsed')),('Third-party',plan.get('apiPercentUsed')),
+           ('Spend limit',ratio(individual.get('overall') or {})),('Pooled',ratio(team.get('pooled') or {})),('On-demand',ratio(individual.get('onDemand') or {}))]
+    for label,value in pools:
+        if isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and value>=0:
+            rows.append(dict(label=label,used=value,reset=stamp(data.get('billingCycleEnd'))))
     return dict(windows=rows, plan=data.get('membershipType'), at=time.time(),
                 notice='Live account limits' if rows else 'Plan reports no quota percentage')
 
 
-def cursor_quota(db=CURSOR_DB):
+def cursor_auth(db=CURSOR_DB):
     if not db.exists():
         raise RuntimeError('Cursor is not installed or has not been opened')
     with read_db(db) as conn:
         row = conn.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'").fetchone()
+        email=conn.execute("SELECT value FROM ItemTable WHERE key='cursorAuth/cachedEmail'").fetchone()
     if not row:
         raise RuntimeError('Sign in to Cursor to read quota')
     token = row[0]
     if isinstance(token, bytes):
         token = token.decode()
+    if not isinstance(token,str) or len(token.split('.'))!=3 or any(c in token for c in '\r\n\0'):raise QuotaError('auth')
     try:
         part = token.split('.')[1]
         claims = json.loads(base64.urlsafe_b64decode(part + '=' * (-len(part) % 4)))
@@ -255,7 +285,17 @@ def cursor_quota(db=CURSOR_DB):
             raise ValueError()
     except (ValueError, KeyError, IndexError):
         raise RuntimeError('Cursor sign-in format unavailable') from None
-    return parse_cursor_quota(cursor_request(token, user, 'usage-summary'))
+    return token,user,email[0] if email else None
+
+
+def cursor_quota(db=CURSOR_DB):
+    from session_formats import digest
+    token,user,email=cursor_auth(db)
+    result=parse_cursor_quota(cursor_request(token,user,'usage-summary'))
+    _,after_user,_=cursor_auth(db)
+    if after_user!=user:raise QuotaError('auth')
+    result['account']=dict(id=digest('Cursor',user),label=email or 'Cursor 账户',evidence='account')
+    return result
 
 
 def cursor_sessions(data=DATA, db=CURSOR_DB):

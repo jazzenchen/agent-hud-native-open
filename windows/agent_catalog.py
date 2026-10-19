@@ -11,8 +11,8 @@ def vendors():
 
 
 VENDORS=vendors()
-SUPPORTED={'Codex','Cursor'}
-HOMES={'Claude':['.claude/projects','.claude'], 'Codex':['.codex'], 'DeepSeek':['.deepseek'],
+SUPPORTED={'Claude','Codex','Cursor','CodeBuddy','WorkBuddy','OpenClaw','Pi','Qwen','Kimi','OpenCode','Hermes','ZCode','Devin','GLM'}
+HOMES={'Claude':['.claude/projects','.claude'], 'Codex':['.codex'], 'DeepSeek':['.dsh'],
     'Antigravity':['.gemini/antigravity','AppData/Roaming/Antigravity'], 'Cursor':['AppData/Roaming/Cursor/User/globalStorage/state.vscdb'],
     'Grok':['.grok','AppData/Roaming/Grok Bot'],'GitHub Copilot':['.copilot/session-state','.copilot/config.json'],
     'OpenClaw':['.openclaw'],'Hermes':['.hermes/state.db'],'ZCode':['.zcode'],
