@@ -37,6 +37,7 @@ def main():
     baseline=capture();records=[]
     options=sys.argv[2:];filters=[value for value in options if not value.startswith('--')]
     news='--news' in options
+    draft='--draft' in options
     def near_shape(widget,global_point):
         local=widget.mapFromGlobal(global_point);mask=widget.mask()
         if mask.isEmpty():mask=QRegion(widget.rect())
@@ -49,6 +50,10 @@ def main():
                 if filters and f'{mode}-{edge}'!=filters[0]:continue
                 settings=load(dict(mode=mode,edge=edge,hud_appearance=theme,glass=True,glow_hidden=True))
                 meter=SimpleMeterView('Codex',screen,settings,lambda _:None)
+                if draft:
+                    from panel_layout import LayoutStore
+                    meter.layout_store=LayoutStore()
+                    meter.layout_store.propose(dict(style=dict(width=680),sections=['tokens','blocks','sessions'],hiddenSections=['sessions']))
                 current[0]=meter
                 meter.set_data(dict(quota=dict(windows=[dict(label='5-hour',used=17),dict(label='Weekly',used=42)]),local=dict(sessions=[])))
                 actual_edge='top' if mode=='notch' else edge

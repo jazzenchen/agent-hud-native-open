@@ -117,6 +117,7 @@ class Application:
             saved=json.loads(self.config.read_text(encoding='utf-8'))
             self.settings=load(saved)
         except (OSError,ValueError):pass
+        self.setup_layouts()
         self.windows={}
         self.data={}
         self.dialogs=[]
@@ -214,6 +215,26 @@ class Application:
         self.tray_menu=self.menu()
         self.tray.setContextMenu(self.tray_menu)
 
+    def setup_layouts(self):
+        from panel_layout import LayoutStore,migrate_settings
+        saved=self.settings.get('layout_documents')
+        self.layouts=LayoutStore(migrate_settings(self.settings) if saved is None else saved,self.persist_layouts)
+
+    def persist_layouts(self,value):
+        previous=deepcopy(self.settings)
+        # {} is the saved default and the migration marker. None means an older
+        # Windows profile whose scalar panel fields have not been carried yet.
+        self.settings['layout_documents']=value or {}
+        try:self.save()
+        except OSError as error:
+            self.settings=previous
+            from quota_state import failure_code
+            raise RuntimeError('磁盘空间不足，布局尚未保存。' if failure_code(error)=='disk_full' else '布局写入失败，已保留原配置和草稿。') from None
+
+    def layout_changed(self):
+        self.update(self.data)
+        if getattr(self,'settings_window',None) is not None:self.settings_window.rebuild()
+
     def commit_settings(self,previous):
         try:self.save()
         except OSError as error:
@@ -244,6 +265,9 @@ class Application:
 
     def apply_setting(self,key,value,screen=None):
         value=validate(key,value)
+        if hasattr(self,'layouts') and key in ('panel_quota','panel_tokens','panel_sessions','reset_countdown','panel_width','session_limit'):
+            self.layouts.edit_field(key,value,screen)
+            self.layout_changed();return
         previous=deepcopy(self.settings)
         if screen is None:
             if key=='client_hooks':
@@ -285,7 +309,18 @@ class Application:
         self.refresh_themes()
 
     def screen_settings(self,name):
-        return {**self.settings,**self.settings.get('placements',{}).get(name,{})}
+        settings={**self.settings,**self.settings.get('placements',{}).get(name,{})}
+        if hasattr(self,'layouts'):
+            from panel_layout import effective_settings
+            settings=effective_settings(settings,self.layouts.effective(name))
+        return settings
+
+    def saved_screen_settings(self,name):
+        settings={**self.settings,**self.settings.get('placements',{}).get(name,{})}
+        if hasattr(self,'layouts'):
+            from panel_layout import effective_settings
+            own=self.layouts.own(name);settings=effective_settings(settings,self.layouts.current if own is None else own)
+        return settings
 
     def apply_screen_settings(self,values,screen,remember=False):
         validated={key:validate(key,value) for key,value in values.items()}
@@ -305,6 +340,12 @@ class Application:
         versions.append(deepcopy(self.settings['placements'].get(screen,{})));del versions[:-8]
 
     def change_screen_layout(self,screen,action):
+        if hasattr(self,'layouts') and (action!='revert' or self.layouts.can_revert(screen)):
+            if action=='shared':self.layouts.use_shared(screen)
+            elif action=='reset':self.layouts.reset(screen)
+            elif action=='revert':self.layouts.revert(screen)
+            else:raise ValueError('Unknown layout action')
+            self.layout_changed();return
         previous=deepcopy(self.settings)
         if action=='revert':
             versions=self.settings.setdefault('screen_versions',{}).get(screen,[])
@@ -316,6 +357,13 @@ class Application:
                 if action=='shared':fields.pop(key,None)
                 elif action=='reset':fields[key]=DEFAULTS[key]
         self.commit_settings(previous);self.update(self.data);self.refresh_themes()
+
+    def change_shared_layout(self,action):
+        if not hasattr(self,'layouts'):return
+        if action=='revert':self.layouts.revert()
+        elif action=='reset':self.layouts.reset()
+        else:raise ValueError('Unknown shared layout action')
+        self.layout_changed()
 
     def dragged(self,meter,point):
         screen=meter.screen.geometry()
@@ -366,6 +414,8 @@ class Application:
                     meter.placement_callback=self.dragged
                     self.windows[key]=meter
                 meter=self.windows[key]
+                if hasattr(self,'layouts'):
+                    meter.layout_store=self.layouts;meter.layout_changed_callback=self.layout_changed
                 meter.settings=self.screen_settings(screen.name())
                 from usage_display import visible_quota
                 visible={c:{**snapshot[c],'quota':visible_quota(snapshot[c].get('quota',{}),c,self.settings)} for c in clients}
@@ -394,6 +444,8 @@ class Application:
             self._theme_signature=signature;self.refresh_themes()
         # Health metadata only; useful for checking hidden/background operation.
         status=dict(qt_platform=self.app.platformName(),running=sorted(snapshot),mode=self.settings['mode'],separates_agents=self.settings['separates_agents'],
+                    layout_documents_active=hasattr(self,'layouts'),layout_revision=self.layouts.revision if hasattr(self,'layouts') else None,
+                    layout_draft_screens=sum(self.layouts.has_draft(screen.name()) for screen in self.app.screens()) if hasattr(self,'layouts') else 0,
                     attention_pending=len(self.attention.pending) if hasattr(self,'attention') else 0,
                     quota={client:dict(state='stale' if data.get('quota',{}).get('stale') else 'available' if data.get('quota',{}).get('windows') else 'unavailable' if data.get('quota',{}).get('error_code') else 'no_percentage' if data.get('quota',{}).get('at') else 'loading',
                         error_code=data.get('quota',{}).get('error_code'),last_success_at=data.get('quota',{}).get('at'),

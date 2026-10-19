@@ -64,9 +64,9 @@ class HoverCases(unittest.TestCase):
         meter.panel.pinned=True;before=meter.client;meter.select_at(meter.cells[-1][1].center())
         self.assertEqual(meter.client,before)
 
-    def test_long_session_list_is_clamped_and_scrollable(self):
-        meter=self.meter(session_limit=20)
-        data=dict(quota=dict(windows=[]),local=dict(sessions=[dict(id=str(i),title='Session',state='done',tokens=1) for i in range(20)]))
+    def test_long_panel_content_is_clamped_and_scrollable(self):
+        meter=self.meter(session_limit=10)
+        data=dict(quota=dict(windows=[dict(label='Window '+str(i),used=10) for i in range(20)]),local=dict(sessions=[dict(id=str(i),title='Session',state='done',tokens=1) for i in range(20)]))
         meter.set_data(data)
         self.assertGreater(meter.panel.natural_height(),meter.panel.layout_height())
         self.assertLessEqual(meter.panel.layout_height(),meter.screen.availableGeometry().height()-12)

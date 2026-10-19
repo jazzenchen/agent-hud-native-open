@@ -1,0 +1,9 @@
+{
+  "upstream": "jazzenchen/agent-hud-open",
+  "upstreamRevision": "bf19ac98da11fe0f5967f5a124d42f0da4bf2cf9",
+  "qaCommit": "85e610def9fb7d38c295925c0cf0b16780212dde",
+  "qaRun": "https://github.com/nanhudev/agent-hud-open/actions/runs/39238385058",
+  "artifact": "original-layout-contract",
+  "sha256": "f193f6a0c461c63fd46d3b9f7d8eb16839e520a2937a27560a3a12c313554357",
+  "scope": "12 canonical layout normalization examples and 13 shared/screen layout document transitions compiled from unchanged original Swift. Settings-backed style/app drafts and full renderer parity are not established by this contract."
+}

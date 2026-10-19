@@ -26,6 +26,28 @@ parity with all providers, charts, approvals, MCP Host API and Mac settings.
 The source-by-source release gate, including unfinished cross-platform core
 features, is tracked in [PARITY_AUDIT.md](PARITY_AUDIT.md).
 
+## Layout documents and drafts
+
+The Windows profile now carries the original canonical shared/per-screen layout
+documents. Older scalar panel switches, widths and limits are migrated without
+changing account readings or token history. Source default widths and the
+440-point separate-agent floor apply; the original maximum of ten displayed
+sessions replaces the earlier Windows-only twenty-row setting. The underlying
+session history is not truncated.
+
+Settings' four panel switches edit the saved document that display uses; the
+Shared Layout row can reset it or restore its previous version. A draft is held
+in memory and shown by the actual panel's Save/Discard bar outside scrolling
+content. Hiding every section cannot hide those actions. Save failure keeps the
+draft and prior profile; a failed settings edit restores the visible saved value.
+Restart discards pending drafts.
+
+Block visibility, row/account selection/order, measure choices and section order
+are connected to the existing bar renderer. The schema preserves the other
+source widget/filter fields, but ring/number/chart/half-block rendering, full
+filters, style/app drafts and the five-tool MCP host remain incomplete. The
+experimental agent-layout switch stays disabled until that full path works.
+
 ## Permissions and replies
 
 Client hooks now bridge to a current-user Windows named pipe. The actual HUD

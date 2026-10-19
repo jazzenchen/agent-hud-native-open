@@ -25,6 +25,12 @@ def load_design():
     light_colors={key:'#'+value for key,value in re.findall(r'(\w+): Color\(hex: 0x([0-9a-fA-F]{6})\)',light_palette)}
     colors = {key: '#' + value for key, value in re.findall(r'(\w+): Color\(hex: 0x([0-9a-fA-F]{6})\)', palette)}
     levels = (DESKTOP / 'Theme/StatusPalette.swift').read_text(encoding='utf-8')
+    under=(DESKTOP/'Theme/Theme+Under.swift').read_text(encoding='utf-8')
+    greys={}
+    for light,black,glass,fields,values in re.findall(r'case \((false|true), (false|true|_), (false|true|_)\):\s*\(([^)]+)\) = \(([^)]+)\)',under):
+        names=[name.strip() for name in fields.split(',')];parts=[None if part.strip()=='nil' else float(part) for part in values.split(',')]
+        entry=dict(zip(names,parts));entry.setdefault('idle',entry['secondary']);greys[','.join((light,black,glass))]=entry
+    if len(greys)!=4:raise ValueError('Original SeeThroughGreys contract changed')
     status_colors={key:'#'+value for key,value in re.findall(r'static let (\w+) = RGBA\(hex: 0x([0-9a-fA-F]{6})\)',levels)}
     glass_text={key+('Light' if light=='true' else 'Dark'):'#'+value for key,light,value in re.findall(r'case \(\.(\w+), (true|false)\): return RGBA\(hex: 0x([0-9a-fA-F]{6})\)',levels)}
     colors.update({key: '#' + value for key, value in re.findall(r'static let (ok|warning|critical|idle) = RGBA\(hex: 0x([0-9a-fA-F]{6})\)', levels)})
@@ -40,7 +46,7 @@ def load_design():
     shell=(DESKTOP/'Notch/ScreenHUD.swift').read_text(encoding='utf-8')
     alerts=(DESKTOP/'Notch/Alerts/IslandAlert.swift').read_text(encoding='utf-8')
     controller=(DESKTOP/'Notch/Island/IslandController.swift').read_text(encoding='utf-8')
-    return dict(colors=colors,light_colors=light_colors,status_colors=status_colors,glass_text=glass_text,
+    return dict(colors=colors,light_colors=light_colors,status_colors=status_colors,glass_text=glass_text,see_through_greys=greys,
                 alert_seconds=number(alerts,r'visibleDuration: Duration = \.seconds\((\d+)\)'),
                 alert_width=number(controller,r'alertDetailWidth: CGFloat = (\d+)'),
                 full_corner=number(shell,r'full \? (\d+)'),bubble_corner=number(shell,r'bubble \? (\d+)'),

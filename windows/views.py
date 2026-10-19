@@ -256,15 +256,24 @@ class SimpleMeterView(QWidget):
         return resolves_light(appearance)
 
     def palette_colors(self):
-        light=self.light()
+        light=self.light();key=(light,self.settings['glass'],self.settings.get('transparency',0)>0)
+        if getattr(self,'_palette_key',None)==key:return self._palette_value
         status=DESIGN['status_colors'];see_through=self.settings['glass'] or self.settings.get('transparency',0)>0
         fill={key:status[{'ok':'okHUDLight','warning':'warningHUDLight','critical':'criticalLight'}[key]] if light else status[key] for key in ('ok','warning','critical')}
         inks={key+'Text':DESIGN['glass_text'][key+('Light' if light else 'Dark')] if see_through else status[{'ok':'okTextHUDLight','warning':'warningTextHUDLight','critical':'criticalTextHUDLight'}[key]] if light else status[key] for key in ('ok','warning','critical')}
-        return {**DESIGN['colors'],**(DESIGN['light_colors'] if light else {}),
+        palette={**DESIGN['colors'],**(DESIGN['light_colors'] if light else {}),
             **fill,**inks,'idleText':status['idleTextLight' if light else 'idle'],
             'divider':'#14000000' if light else '#1affffff',
             'outline':'#1a000000' if light else '#24ffffff',
             'track':'#1a000000' if light else '#24ffffff'}
+        if see_through:
+            values=('true' if light else 'false','true','true' if self.settings['glass'] else 'false')
+            entry=next(row for key,row in DESIGN['see_through_greys'].items() if all(asked==actual or asked=='_' for asked,actual in zip(key.split(','),values)))
+            for name in ('secondary','tertiary','idle'):
+                ink=QColor('black' if light else 'white');ink.setAlpha(round(entry[name]*255));palette[name]=ink.name(QColor.NameFormat.HexArgb)
+            palette['idleText']=palette['secondary']
+        self._palette_key=key;self._palette_value=palette
+        return palette
 
     def surface_fill(self,native):
         fill=QColor('#f5f5f7' if self.light() else '#000000')
@@ -532,6 +541,8 @@ class HoverPanelView(QWidget):
         self.resize(int(DESIGN['agent_width']),300)
         from bot_player import ReminderPlayer
         self.reminder=ReminderPlayer(self)
+        from layout_draft_bar import LayoutDraftBar
+        self.draft_bar=LayoutDraftBar(self)
 
     def showEvent(self,event):
         super().showEvent(event);self.reminder.sync()
@@ -543,23 +554,63 @@ class HoverPanelView(QWidget):
         self.data=data
         if self.isVisible() and self.progress > .99:
             self.animate(1.)
+        self.draft_bar.sync()
         self.update()
 
-    def providers(self):
+    def layout(self):
+        store=getattr(self.meter,'layout_store',None)
+        from panel_layout import legacy_layout
+        key=(id(store),store.revision,self.meter.screen.name()) if store is not None else tuple(self.meter.settings.get(name) for name in ('panel_width','session_limit','panel_quota','panel_tokens','panel_sessions','reset_countdown'))
+        if getattr(self,'_layout_key',None)!=key:
+            self._layout_value=store.effective(self.meter.screen.name()) if store is not None else legacy_layout(self.meter.settings)
+            self._layout_key=key
+        return self._layout_value
+
+    def section_order(self):
+        layout=self.layout();order=layout.get('sections',['blocks','tokens','sessions'])
+        return [section for section in order if section not in layout.get('hiddenSections',[])]
+
+    def measures(self,client):
+        from panel_layout import MEASURES
+        asked=self.layout().get('blocks',{}).get(client,{}).get('measures',[])
+        return [metric for metric in asked if metric in MEASURES] or list(MEASURES)
+
+    def measure(self,client):
+        offered=self.measures(client);selected=self.metric_selection.get(client)
+        return selected if selected in offered else offered[0]
+
+    def sources(self):
         return list(self.meter.group_data.items()) if not self.meter.settings.get('separates_agents',True) or self.meter.settings.get('mode')=='notch' else [(self.meter.client,self.data)]
 
+    def providers(self):
+        from usage_display import window_key,window_account
+        layout=self.layout();changes=layout.get('blocks',{});providers=[]
+        for client,data in self.sources():
+            change=changes.get(client,{})
+            if change.get('hidden'):continue
+            quota=data.get('quota',{});rows=quota.get('windows',[]);accounts=change.get('accounts',[])
+            fallback=(quota.get('account') or {}).get('id','')
+            kept=[row for row in rows if window_key(row) not in change.get('hiddenRows',[]) and (not accounts or (window_account(row) or fallback) in accounts)]
+            if rows and not kept:continue
+            order=change.get('rows',[]);kept=sorted(kept,key=lambda row:order.index(window_key(row)) if window_key(row) in order else len(order))
+            balance=quota.get('credit_balance') if not accounts or fallback in accounts else None
+            if not rows and accounts and not balance:continue
+            providers.append((client,{**data,'quota':{**quota,'windows':kept,'credit_balance':balance}}))
+        order=layout.get('order',[])
+        return sorted(providers,key=lambda pair:order.index(pair[0]) if pair[0] in order else len(order))
+
     def sessions(self):
-        rows=[{**row,'_client':client} for client,data in self.providers() for row in data.get('local',{}).get('sessions',[])]
+        rows=[{**row,'_client':client} for client,data in self.sources() for row in data.get('local',{}).get('sessions',[])]
         return sorted(rows,key=lambda row:(row.get('state')!='running',-row.get('updated',0)))
 
     def natural_height(self):
         if self.meter.attention_event():
             from attention_views import height
             return height(self.meter)+28
-        quota=sum(43+(22 if data.get('quota',{}).get('credit_balance') else 0)+max(1,len(data.get('quota',{}).get('windows',[])[:5]))*28+18 for _,data in self.providers())
-        sessions=self.sessions()[:int(self.meter.settings.get('session_limit',5))]
-        cfg=self.meter.settings
-        return 14+(quota if cfg.get('panel_quota',True) else 0)+(92+18 if cfg.get('panel_tokens',True) else 0)+(22+max(1,len(sessions))*25+18 if cfg.get('panel_sessions',True) else 0)+17+28+14
+        quota=sum(43+(22 if data.get('quota',{}).get('credit_balance') else 0)+max(1,len(data.get('quota',{}).get('windows',[])))*28+18 for _,data in self.providers())
+        sessions=self.sessions()[:int(self.layout().get('sessions',{}).get('limit',5))]
+        sections=self.section_order()
+        return 14+(quota if 'blocks' in sections else 0)+(92+18 if 'tokens' in sections else 0)+(22+max(1,len(sessions))*25+18 if 'sessions' in sections else 0)+17+28+14+(40 if self.draft_bar.ready() else 0)
 
     def layout_height(self):
         return min(self.natural_height(),self.meter.screen.availableGeometry().height()-12)
@@ -647,12 +698,13 @@ class HoverPanelView(QWidget):
         self.setMask(QRegion(shape.toFillPolygon().toPolygon()))
         if self.isVisible():rounded_native_window(self,self.corner)
         self.update()
+        self.draft_bar.sync()
 
     def content_width(self):
         event=self.meter.attention_event()
         if event and event['kind'] in ('quota','reset_credits'):return min(int(DESIGN['alert_width']),self.meter.screen.availableGeometry().width()-16)
         single=self.meter.settings.get('separates_agents',True) and self.meter.settings.get('mode')!='notch'
-        width=int(self.meter.settings.get('panel_width',540))
+        width=int(self.layout().get('style',{}).get('width',540))
         # PanelStyle.agentPanelWidth keeps a 440pt floor even when the shared
         # panel is configured narrower than its default 540pt width.
         if single:width=max(440,width-100)
@@ -698,18 +750,26 @@ class HoverPanelView(QWidget):
         if attention:
             from attention_views import paint
             paint(self,p,w,attention);p.end();return
-        y=0
-        if self.meter.settings.get('panel_quota',True):
-            for client,data in self.providers():
-                first_hit=len(self.hits)
-                p.save();p.translate(0,y);height=self.provider_block(p,w,client,data);p.restore()
-                for index in range(first_hit,len(self.hits)):
-                    rect,action=self.hits[index];self.hits[index]=(rect.translated(0,y),action)
-                y+=height;divider(p,y+8,w);y+=18
-        for key,block in [('panel_tokens',lambda:self.token_block(p,y,w)),('panel_sessions',lambda:self.sessions_block(p,y,w))]:
-            if self.meter.settings.get(key,True):
-                y=block();divider(p,y+8,w);y+=18
-        y+=17
+        y=0;p.save()
+        # The source draft bar and footer sit outside scrolling content. Keep
+        # them reachable even with every section hidden or a very long panel.
+        bottom=self.height()-59-(40 if self.draft_bar.ready() else 0)
+        p.setClipRect(QRectF(0,self.scroll_offset-14,w,max(0,bottom)),Qt.ClipOperation.IntersectClip)
+        for section in self.section_order():
+            if section=='blocks':
+                for client,data in self.providers():
+                    first_hit=len(self.hits)
+                    p.save();p.translate(0,y);height=self.provider_block(p,w,client,data);p.restore()
+                    for index in range(first_hit,len(self.hits)):
+                        rect,action=self.hits[index];self.hits[index]=(rect.translated(0,y),action)
+                    y+=height;divider(p,y+8,w);y+=18
+            else:
+                y=self.token_block(p,y,w) if section=='tokens' else self.sessions_block(p,y,w)
+                divider(p,y+8,w);y+=18
+        p.restore()
+        visible=QRectF(0,self.scroll_offset-14,w,max(0,bottom))
+        self.hits=[(rect.intersected(visible),action) for rect,action in self.hits if rect.intersects(visible)]
+        y=self.height()-56+self.scroll_offset
         self.gear(p,QPointF(14,y+14))
         text(p,QRectF(40,y,w-80,28),'已用额度',10,'tertiary',align=Qt.AlignmentFlag.AlignCenter)
         self.chart_icon(p,QPointF(w-14,y+14))
@@ -734,7 +794,7 @@ class HoverPanelView(QWidget):
             text(p,QRectF(6,y,w*.58,22),'剩余积分  '+credit_text(balance,'remaining'),12,'text',True)
             text(p,QRectF(w*.58,y,w*.42-6,22),'总积分  '+credit_text(balance,'total'),10,'secondary',align=Qt.AlignmentFlag.AlignRight)
             y+=22
-        rows=data.get('quota',{}).get('windows',[])[:5]
+        rows=data.get('quota',{}).get('windows',[])
         if not rows:
             from quota_state import quota_notice
             notice=quota_notice(data.get('quota',{}),client)
@@ -744,7 +804,7 @@ class HoverPanelView(QWidget):
         for row in rows:
             from quota_insights import number
             used=number(row.get('used'));ink=level(used)
-            metric=self.metric_selection.get(client,'quota')
+            metric=self.measure(client)
             import time
             at=number(quota.get('at'));fresh=not quota.get('stale') and not quota.get('error_code') and at is not None and 0<=time.time()-at<=1800
             shown=presentation(row,metric,fresh)
@@ -769,7 +829,8 @@ class HoverPanelView(QWidget):
                 p.setBrush(color(ink,painter=p))
                 p.drawRoundedRect(QRectF(start,y+12,bar_w*fraction,4),2,2)
             text(p,QRectF(start+bar_w+8,y,value_width,28),shown['value'],13,'secondary' if shown['value']=='—' else value_ink,True,Qt.AlignmentFlag.AlignRight)
-            if metric!='quota' or self.meter.settings.get('reset_countdown',True):text(p,QRectF(w-detail_width-6,y,detail_width,28),shown['detail'],12,'warning' if metric=='burn' and shown['warning'] else 'secondary',align=Qt.AlignmentFlag.AlignRight)
+            countdown=self.layout().get('blocks',{}).get(client,{}).get('countdown',self.layout().get('countdown',True))
+            if metric!='quota' or countdown:text(p,QRectF(w-detail_width-6,y,detail_width,28),shown['detail'],12,'warning' if metric=='burn' and shown['warning'] else 'secondary',align=Qt.AlignmentFlag.AlignRight)
             if metric!='quota':
                 local=(row.get('metrics') or {}).get('scope')=='local'
                 hint='本机已观测记录；未推断账户归属。' if local else '已核对的用量记录。'
@@ -791,7 +852,7 @@ class HoverPanelView(QWidget):
         from usage_display import hourly
         text(p,QRectF(0,y,100,20),'Tokens',13,'text',True)
         text(p,QRectF(100,y,w-100,20),'最近 24 小时 · 每小时',10,'secondary',align=Qt.AlignmentFlag.AlignRight)
-        reports=[data.get('local',{}).get('stats',{}) for _,data in self.providers()]
+        reports=[data.get('local',{}).get('stats',{}) for _,data in self.sources()]
         items=hourly(reports) if any(r.get('event_count') for r in reports) else []
         chart_y=y+27
         if not items:
@@ -822,7 +883,7 @@ class HoverPanelView(QWidget):
             text(p,QRectF(6,y,w-12,25),'等待新会话',11,'tertiary')
             return y+25
         fm=QFontMetricsF(font(12))
-        for row in items[:int(self.meter.settings.get('session_limit',5))]:
+        for row in items[:int(self.layout().get('sessions',{}).get('limit',5))]:
             artwork().draw(p,row.get('_client',self.meter.client),QRectF(1,y+5,14,14),.7 if row['state']!='running' else 1)
             p.setPen(QPen(self.meter.surface_fill(False),2));p.setBrush(color('ok' if row['state']=='running' else 'tertiary',painter=p))
             p.drawEllipse(QPointF(15,y+18),3,3)

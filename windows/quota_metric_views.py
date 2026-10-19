@@ -10,8 +10,10 @@ from quota_insights import number,outlook
 
 def picker(panel,p,w,client):
     from views import color,text
-    current=panel.metric_selection.get(client,'quota');x=w-108
-    for index,(metric,label) in enumerate(MEASURES):
+    current=panel.measure(client);offered=panel.measures(client)
+    if len(offered)==1:return
+    x=w-(len(offered)*22-2)
+    for index,metric in enumerate(offered):
         rect=QRectF(x+index*22,0,20,18)
         if current==metric:
             fill=color('text',painter=p);fill.setAlpha(round(.12*255))

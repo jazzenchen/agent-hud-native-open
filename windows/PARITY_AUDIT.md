@@ -20,7 +20,7 @@ is not proof that its quota, approvals, completion and navigation work.
 | Agents / Agent client list | Installed/running status backed by passive evidence | Grouping and client details not fully equal to source |
 | Agents / Client readings | Copilot quota consent works | Pi/OpenCode observer file ownership, version and last-report rows not ported |
 | Display / Screens, HUD mode, appearance, material, transparency | Per-screen settings, all three modes; separate solid/glass opacity | macOS Clear/Regular materials use a bounded sampled-frost approximation |
-| Display / Position, style reset/restore, own/shared layout/reset | Persisted, reachable-screen clamp, shared-layout restore | Layout editing schema not yet complete |
+| Display / Position, style reset/restore, own/shared layout/reset | Canonical source layout documents, shared/screen save/discard, two-way layout revert, reset and legacy scalar migration now connected. Source JSON verified against compiled Swift traces. | Whole-look style/app drafts and unified style/layout version history remain incomplete |
 | Display / Separate agents | Working in Simple and Dynamic | Native multi-agent interaction audit still required after core changes |
 | Display / Dynamic logo size, edge distance, gap, visibility | Working; no misleading notch-only logo controls | Original live preview missing for glow/dynamic settings |
 | Display / Simple size, gap, rings, thickness, numbers | Working; thickness only shown while rings enabled, source 0.5pt step | Qt continuous-corner approximation is connected to fill/clip paths; Apple's private contour is not an exact cross-platform primitive |
@@ -28,11 +28,11 @@ is not proof that its quota, approvals, completion and navigation work.
 | Display / Grid pitch/density/core/fade | Only grid styles; source ranges | UI percentage/row formatting still differs |
 | Display / Brightness/range/feather/outward | Range/feather/outward only soft glow | Source preview absent |
 | Display / Working/idle period, breathing depth | Periods apply to every effect; depth only breathing | Source percentage formatting differs |
-| Display / Expanded panel: sessions/quota/countdown/tokens | Working switches and preserved per-screen layout | Original inline samples and richer block/widget layout missing |
+| Display / Expanded panel: sessions/quota/countdown/tokens | Saved switches target the saved shared/own document and rebase only the changed draft field. Original Shared Layout reset/revert row is connected. Source 10-session cap and 440pt single-agent width floor apply. Fixed footer/draft bar stay outside scrolling content. | Inline samples, full session/token filters and ring/number/chart/half-block rendering remain incomplete |
 | Display / Logo: Bot logos | Original generated bot assets and request kinds; independent staying reminder actors from 240 original source clips; news does not replace ongoing dock work | Pointer gaze, Clawd sprite variants and some loop transitions still differ |
 | Display / Hover: Alt, immediate top edge, open/collapse delay | Native Windows behavior, same delay range/step | Option is intentionally mapped to Alt |
 | Display / Menu bar icon | Tray icon and menu | Windows tray equivalent |
-| Experimental / Let agents arrange the HUD; clients menu/copy settings | **Not implemented** | Must port draft/save/discard/hold semantics and real client setup; no fake enabled control |
+| Experimental / Let agents arrange the HUD; clients menu/copy settings | Layout normalization/documents, real draft Save/Discard controls and pure 120s hold state are implemented; external host is still disabled. | Five-tool transport/client setup, host hold scheduling, style/app drafts and complete renderer must be connected before enabling the setting |
 
 Source pages: `Sources/AgentHUDDesktop/Settings/{GeneralPane,SourcesPane,ScreensPane,GlowPane,IslandPane,DisplayPane,ExperimentalPane}.swift`.
 
@@ -53,7 +53,7 @@ Source pages: `Sources/AgentHUDDesktop/Settings/{GeneralPane,SourcesPane,Screens
 | WorkBuddy | Read-only source metering port: custom titles, session spending, context and model attribution. In addition, the installed desktop client's official billing-summary contract now supplies actual subscription name and remaining/total credits; separate enterprise metadata route and unlimited sentinel. No session spending is substituted for the account balance. Chinese SaaS gateway compatibility checked against installed 5.5.6; other deployments need separate adapters. |
 | Quota / reset-credit alerts | Real threshold/reset/grant tracking and interactive reminder cards now connected. New readings only, silent startup/sign-in baseline, no fake reset from stale/error/unknown readings; forecast warnings once per cycle and actual exhaustion as a separate event. Four-second news lifetime, pointer hold, persistent permissions, callback-independent quota news and hidden-account suppression are implemented. Source staying reset bots are connected and captured natively. Inline-in-usage presentation and static exhausted-logo sign remain differences. Original warnings use a plain logo, not a warning bot. |
 | Statistics | Channel/model/time filters and ledger exist; original richer sessions and multi-block layout incomplete. |
-| MCP layout editing | Original unchanged Swift compiled on macOS; exported exact five-tool schemas at `assets/upstream-mcp-contract.json`. Windows runtime/draft UX still missing. |
+| MCP layout editing | Original unchanged Swift schemas and layout documents compiled on macOS. Canonical normalization and 13 shared/screen transitions match the original trace; real keyboard-accessible draft bar, saved settings and disk-full rollback are connected. Native branch/row/account filtering and section order are applied without mutating readings. Transport, hold scheduling, style/app drafts and all widgets are not yet available. |
 | White rims / black collapse trails | Native 24 mode/edge/theme matrix at 100%, 125%, 150% previously passed within documented tolerance; rerun after integration. Sampled frost is frozen while open. |
 | Performance | Prior local paint measurements only; new end-to-end frame-time profiling not complete. An offline promo cannot prove live frame rate. |
 | Promo / publication | 36-second Windows tour rendered from actual Windows widgets and original-exported actors, following the original tour structure. Account/credit/token examples are isolated and disclosed; original procedural wallpaper and synthesized music. Encoded 1080p/30fps/AAC file and 11 chapter/theme frames reviewed; manifests in `promo/`. Source preview publication and draft PR refresh are separate from the remaining stable-release gate and binary dependency-license review. |
@@ -87,3 +87,22 @@ preview can be shared for review with the above gaps visible; this does **not**
 establish a measured 90% score or stable-release readiness. Fork CI is checked
 separately after pushing. No macOS or live-client pass is inferred from Windows
 unit tests or the offline promo.
+
+Layout checkpoint: 2026-10-19. `assets/upstream-layout-contract.json` and its
+provenance were produced by original macOS QA run `39238385058`, commit
+`85e610def9fb7d38c295925c0cf0b16780212dde`; the original `Sources/` tree was not
+edited. Draft documents never persist. Save writes the whole saved profile
+before advancing memory; a failed write retains the saved state, revision and
+draft. A failed settings switch rebuilds from the saved value. Detached-screen
+keys, unavailable block/row/account names and previous layouts survive.
+
+This checkpoint also ports `Theme+Under.swift`'s relative secondary/tertiary/idle
+ink tints. Fixed greys on light frost could coincide with a darker wallpaper;
+the source black/white alpha tints now preserve their ordering. Draft surface
+shape/morph tests covered 24 mode/edge/theme cases at each of 100%, 125% and
+150%; final ink/glyph checks were repeated on selected native cases. These are
+scoped visual/interaction checks, not an overall similarity measurement.
+The current local suite has 208 passing tests; native check scope is recorded
+in `assets/layout-native-checkpoint.json`, including the timing of the relative
+ink correction. The resident Windows instance was restarted and reports active
+layout documents with only the currently running Codex visible.

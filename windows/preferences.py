@@ -14,7 +14,7 @@ DEFAULTS=dict(mode='simple',glass=True,separates_agents=True,size=DESIGN['simple
     ring_width=DESIGN['ring_width'],edge='top',offset=.5,placements={},
     show_rings=True,show_numbers=True,show_logos=True,logo_size=20,logo_gap=.4,edge_distance=2,
     gap=.45,hud_appearance='dark',glass_style='material',transparency=50,glass_transparency=50,solid_transparency=0,
-    screen_versions={},hidden_windows={},window_order={},hidden_accounts=[],disabled_live_status_sources=[],
+    screen_versions={},layout_documents=None,hidden_windows={},window_order={},hidden_accounts=[],disabled_live_status_sources=[],
     appearance='system',match_screen=False,language='zh',launch_at_login=False,client_hooks=True,approval_wait_minutes=10,bot_logos=True,
     enabled_clients=[name for name in VENDORS if name in SUPPORTED],provider_order=list(VENDORS),adapter_schema=2,read_copilot_quota=False,show_tray=True,hover_delay=400,collapse_delay=200,
     requires_alt=False,immediate_top=False,panel_quota=True,panel_tokens=True,
@@ -25,7 +25,7 @@ DEFAULTS=dict(mode='simple',glass=True,separates_agents=True,size=DESIGN['simple
 
 RANGES=dict(size=(20,60),ring_width=(1,4),offset=(0,1),logo_size=(20,60),logo_gap=(.1,.6),
     edge_distance=(0,20),gap=(.1,.6),transparency=(0,100),glass_transparency=(0,100),solid_transparency=(0,100),hover_delay=(0,1500),collapse_delay=(0,1500),
-    panel_width=(480,720),session_limit=(1,20),glow_brightness=(.2,1),glow_range=(0,36),glow_blur=(0,36),
+    panel_width=(480,720),session_limit=(1,10),glow_brightness=(.2,1),glow_range=(0,36),glow_blur=(0,36),
     glow_working=(1,12),glow_idle=(1,24),glow_depth=(0,1),grid_pitch=(4,12),grid_density=(.5,1.5),grid_core=(0,8),grid_fade=(0,8))
 CHOICES=dict(mode=('notch','logos','simple'),edge=('top','right','bottom','left'),
     approval_wait_minutes=APPROVAL_WAIT_CHOICES,
@@ -36,6 +36,9 @@ CHOICES=dict(mode=('notch','logos','simple'),edge=('top','right','bottom','left'
 
 def validate(key,value):
     if key not in DEFAULTS:raise ValueError('Unknown setting: '+key)
+    if key=='layout_documents':
+        if value is not None and not isinstance(value,dict):raise ValueError('Layout documents must be an object')
+        return value
     if key in RANGES:
         import math
         n=float(value)

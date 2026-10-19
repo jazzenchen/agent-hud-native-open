@@ -10,6 +10,7 @@ from PySide6.QtGui import QIcon
 
 
 EN={'通用':'General','智能体':'Agents','显示':'Display','实验选项':'Experimental','外观与语言':'Appearance & language',
+    '面板布局':'Panel layout','共用布局':'Shared layout','恢复上一版':'Revert to Previous','恢复默认':'Reset to Default','使用共用布局':'Use Shared Layout',
     '外观':'Appearance','跟随系统':'System','深色':'Dark','浅色':'Light','语言':'Language','启动':'Startup',
     '登录时启动':'Launch at login','客户端':'Clients','客户端回调':'Client hooks','跟随所在屏幕':'Match screen',
     '显示器':'Display','屏幕':'Screens','HUD 形态':'HUD','刘海':'Notch','简约':'Simple','动态':'Dynamic',
@@ -142,12 +143,13 @@ class SettingsWindow(QDialog):
         layout.addWidget(section);return form
 
     def value(self,key,screen=False):
-        return (self.manager.screen_settings(self.selected_screen) if screen else self.manager.settings)[key]
+        saved=getattr(self.manager,'saved_screen_settings',self.manager.screen_settings)
+        return (saved(self.selected_screen) if screen else self.manager.settings)[key]
 
     def write(self,key,value,screen=False,rebuild=False):
         try:self.manager.apply_setting(key,value,self.selected_screen if screen else None)
         except Exception as error:
-            QMessageBox.warning(self,'Agent HUD',str(error));return
+            QMessageBox.warning(self,'Agent HUD',str(error));QTimer.singleShot(0,self.rebuild);return
         if self.hud_preview is not None:self.hud_preview.refresh()
         if rebuild:QTimer.singleShot(0,self.rebuild)
 
@@ -214,13 +216,25 @@ class SettingsWindow(QDialog):
         button=QPushButton(self.tr('重置位置'));button.setProperty('smallAction',True);button.clicked.connect(self.reset_position);form.addRow('位置',button)
         button=QPushButton('恢复默认');button.setProperty('smallAction',True);button.setObjectName('reset_style');button.clicked.connect(self.reset_style);form.addRow('HUD 样式',button)
         own=any(key in self.manager.settings['placements'].get(self.selected_screen,{}) for key in ('panel_quota','panel_tokens','panel_sessions','panel_width','session_limit','reset_countdown'))
+        status='这块屏幕的布局' if own else '使用共用布局';draft=None
+        if hasattr(self.manager,'layouts'):
+            store=self.manager.layouts;document=store.screens.get(self.selected_screen,{})
+            draft=document.get('draft');own=store.own(self.selected_screen) is not None or isinstance(draft,dict)
+            if isinstance(draft,dict):status='面板正显示这块屏幕未保存的布局'
+            elif draft=='shared':status='面板正显示未保存的改动：改用共用布局'
+            elif store.own(self.selected_screen) is not None:status='这块屏幕的自定义布局' if store.own(self.selected_screen) else '这块屏幕的默认布局'
+            else:status='面板正显示未保存的共用布局' if store.draft is not None else '使用共用布局'
         actions=QWidget();actions.setProperty('wideActions',True);row=QHBoxLayout(actions);row.setContentsMargins(0,0,0,0);row.setSpacing(8)
         def action(text,name,callback,enabled=True):
-            button=QPushButton(text);button.setProperty('smallAction',True);button.setObjectName(name);button.setEnabled(enabled);button.clicked.connect(callback);row.addWidget(button)
-        if own:action('使用共用布局','shared_layout',self.shared_layout)
-        action('恢复上一版','revert_layout',lambda:self.layout_action('revert'),bool(self.manager.settings.get('screen_versions',{}).get(self.selected_screen)))
-        if own:action('恢复默认','reset_layout',lambda:self.layout_action('reset'))
-        label=QLabel('面板布局\n'+('这块屏幕的布局' if own else '使用共用布局'));form.addRow(label,actions)
+            button=QPushButton(self.tr(text));button.setProperty('smallAction',True);button.setObjectName(name);button.setEnabled(enabled);button.clicked.connect(callback);row.addWidget(button)
+        if own or draft is not None:action('使用共用布局','shared_layout',self.shared_layout)
+        can_revert=bool(self.manager.settings.get('screen_versions',{}).get(self.selected_screen))
+        if hasattr(self.manager,'layouts'):can_revert=can_revert or self.manager.layouts.can_revert(self.selected_screen)
+        action('恢复上一版','revert_layout',lambda:self.layout_action('revert'),can_revert)
+        if own:
+            can_reset=self.manager.layouts.own(self.selected_screen)!={} or draft is not None if hasattr(self.manager,'layouts') else True
+            action('恢复默认','reset_layout',lambda:self.layout_action('reset'),can_reset)
+        form.subtitles[self.tr('面板布局')]=status;form.addRow(self.tr('面板布局'),actions)
         if self.value('mode',True)!='notch':self.check(form,'按 agent 分开','separates_agents',True)
         if self.value('mode',True)=='simple':
             self.hud_preview=HudSample(self.manager,self.selected_screen);form.addRow(self.hud_preview)
@@ -238,8 +252,15 @@ class SettingsWindow(QDialog):
         else:self.glow(layout)
         form=self.group(layout,'展开面板')
         for label,key in [('会话列表','panel_sessions'),('额度明细','panel_quota'),('重置倒计时','reset_countdown'),('Token 消耗','panel_tokens')]:self.check(form,label,key,True)
-        self.number(form,'面板宽度','panel_width',480,720,10,suffix=' pt')
-        self.number(form,'会话上限','session_limit',1,20,1)
+        if hasattr(self.manager,'layouts'):
+            store=self.manager.layouts;state='面板正显示未保存的布局' if store.draft is not None else '自定义布局' if store.current else '默认布局'
+            users=[screen.model() or '显示器 '+str(i+1) for i,screen in enumerate(self.manager.app.screens()) if store.uses_shared(screen.name())]
+            status=state+'\n'+('使用它的显示器：'+'、'.join(users) if users else '每块显示器都在用自己的布局。')
+            actions=QWidget();actions.setProperty('wideActions',True);buttons=QHBoxLayout(actions);buttons.setContentsMargins(0,0,0,0);buttons.setSpacing(8)
+            for text,name,operation,enabled in [('恢复上一版','settings-layout-revert','revert',store.can_revert()),('恢复默认','settings-layout-reset','reset',bool(store.current) or store.draft is not None)]:
+                button=QPushButton(self.tr(text));button.setProperty('smallAction',True);button.setObjectName(name);button.setEnabled(enabled)
+                button.clicked.connect(lambda _,action=operation:self.shared_layout_action(action));buttons.addWidget(button)
+            form.subtitles[self.tr('共用布局')]=status;form.addRow(self.tr('共用布局'),actions)
         form=self.group(layout,'Logo')
         self.check(form,'Bot 形象','bot_logos')
         note=QLabel('工作时保持 Bot；空闲时偶尔变成 Bot 活动几秒，再回到 Logo。悬停或等待批准时也显示 Bot。');note.setProperty('subtitle',True);note.setWordWrap(True);form.addRow(note)
@@ -299,6 +320,11 @@ class SettingsWindow(QDialog):
 
     def shared_layout(self):
         self.layout_action('shared')
+
+    def shared_layout_action(self,action):
+        try:self.manager.change_shared_layout(action)
+        except RuntimeError as error:QMessageBox.warning(self,DESIGN['app_name'],str(error))
+        self.rebuild()
 
     def layout_action(self,action):
         if hasattr(self.manager,'change_screen_layout'):
