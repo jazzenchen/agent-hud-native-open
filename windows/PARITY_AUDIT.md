@@ -56,7 +56,7 @@ Source pages: `Sources/AgentHUDDesktop/Settings/{GeneralPane,SourcesPane,Screens
 | MCP layout editing | Original unchanged Swift compiled on macOS; exported exact five-tool schemas at `assets/upstream-mcp-contract.json`. Windows runtime/draft UX still missing. |
 | White rims / black collapse trails | Native 24 mode/edge/theme matrix at 100%, 125%, 150% previously passed within documented tolerance; rerun after integration. Sampled frost is frozen while open. |
 | Performance | Prior local paint measurements only; new end-to-end frame-time profiling not complete. An offline promo cannot prove live frame rate. |
-| Promo / publication | Original tour structure inspected; actual-app recording, review, complete attribution/package license audit and upstream PR update still pending. |
+| Promo / publication | 36-second Windows tour rendered from actual Windows widgets and original-exported actors, following the original tour structure. Account/credit/token examples are isolated and disclosed; original procedural wallpaper and synthesized music. Encoded 1080p/30fps/AAC file and 11 chapter/theme frames reviewed; manifests in `promo/`. Source preview publication and draft PR refresh are separate from the remaining stable-release gate and binary dependency-license review. |
 
 ## Genuine platform adaptations
 
@@ -77,3 +77,13 @@ SHA-256: `9047484fb73cb94e16b8519ae9b3bcdca63ea6518bfc43e788eca8e16ba7186e`.
 Original names, schemas, descriptions and protocol revisions are retained for
 translation and contract tests. Windows transport must describe its own platform
 honestly rather than copy the source's Mac-specific handshake text.
+
+## Current checkpoint
+
+2026-10-19: 187 local Windows unit/integration tests passed. Source files under
+`Sources/` remain byte-for-byte unchanged from the pinned original. Original
+`main` was checked against GitHub and still matches that revision. The source
+preview can be shared for review with the above gaps visible; this does **not**
+establish a measured 90% score or stable-release readiness. Fork CI is checked
+separately after pushing. No macOS or live-client pass is inferred from Windows
+unit tests or the offline promo.

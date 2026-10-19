@@ -1,5 +1,16 @@
 # Windows source port
 
+Community Windows port of [jazzenchen/agent-hud-open](https://github.com/jazzenchen/agent-hud-open),
+originally created by **jazzenchen**. Windows adaptation maintained by
+[nanhudev](https://github.com/nanhudev). Original source, license and attribution
+are retained. No upstream endorsement, approval or joint-development agreement
+is assumed.
+
+[Watch the 36-second Windows preview](../docs/videos/windows-preview.mp4)
+(actual Windows widgets and source-generated animations; disclosed sample usage).
+
+[![Windows preview](../docs/screenshots/windows-preview.png)](../docs/videos/windows-preview.mp4)
+
 Windows counterpart of the upstream **SimpleMeterView** and its separate-agent
 hover panels. Defaults: **Simple mode · frosted material · separate agents**.
 Only running clients appear. Merely having a database or being signed in never

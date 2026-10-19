@@ -31,3 +31,17 @@ Apache-2.0 BotRenderer/BotSpec/BotForm/BotMotion, using the original bundled age
 artwork. Original artwork notices remain applicable. The original drawn Claude
 fallback is used here; this pack does not add or redistribute Clawd game sprite
 sheets. `provenance.json` records the original revision and every generated file.
+
+`windows/assets/bot-reminders` likewise contains generated procedural reminder
+frames from unchanged original BotRenderer/BotMotion code, with its own export
+provenance. Neither Windows actor pack uses `clawd-sprites.json`; that existing
+upstream asset remains separately identified as Anthropic artwork in the
+original `THIRD_PARTY_NOTICES.txt` and is not relicensed by the Windows port.
+
+The optional `windows/promo` video tooling references [Remotion's own license](https://www.remotion.dev/license),
+not Apache-2.0. Remotion and React packages are development dependencies installed
+separately; no dependency runtime is redistributed in this source preview, and
+the resident HUD does not load them. See each selected package's license before
+using that tooling. The published preview uses original programmatically
+synthesized music with no third-party samples and an original procedural
+wallpaper. Its product names/marks remain their respective owners' property.

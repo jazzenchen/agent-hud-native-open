@@ -1,5 +1,11 @@
 <h1 align="center">Agent HUD</h1>
 
+> **Windows 社区移植开发预览：**本分支在原项目基础上增加 Windows 源码移植。
+> [Windows 安装与功能范围](windows/README.md) ·
+> [Windows 宣传片](docs/videos/windows-preview.mp4) ·
+> [差异审计与待办](windows/PARITY_AUDIT.md)。
+> 下方保留原版 Mac 应用的介绍。本分支并非原作者官方 Windows 发行版，也不宣称全部功能已经对齐。
+
 <p align="center">
   <strong>你的 Agent，抬眼可见。</strong><br>
   Claude Code、Codex 以及另外 16 款 agent 的用量、Token 与会话，就在 Mac 灵动岛或任意屏幕边缘。

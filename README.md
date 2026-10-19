@@ -1,5 +1,12 @@
 <h1 align="center">Agent HUD</h1>
 
+> **Windows community development preview:** this branch adds a Windows source
+> port of the original project. [Windows setup and scope](windows/README.md) ·
+> [Windows preview video](docs/videos/windows-preview.mp4) ·
+> [Parity audit and remaining work](windows/PARITY_AUDIT.md).
+> The original Mac app and its documentation continue below. This is not an
+> official upstream Windows release or a claim of full feature parity.
+
 <p align="center">
   <strong>Your agents, at a glance.</strong><br>
   Usage, tokens and sessions for Claude Code, Codex and 16 more agents, at your Mac's notch or any screen edge.
