@@ -652,7 +652,11 @@ class HoverPanelView(QWidget):
         event=self.meter.attention_event()
         if event and event['kind'] in ('quota','reset_credits'):return min(int(DESIGN['alert_width']),self.meter.screen.availableGeometry().width()-16)
         single=self.meter.settings.get('separates_agents',True) and self.meter.settings.get('mode')!='notch'
-        return min(int(self.meter.settings.get('panel_width',540)-(100 if single else 0)),self.meter.screen.availableGeometry().width()-16)
+        width=int(self.meter.settings.get('panel_width',540))
+        # PanelStyle.agentPanelWidth keeps a 440pt floor even when the shared
+        # panel is configured narrower than its default 540pt width.
+        if single:width=max(440,width-100)
+        return min(width,self.meter.screen.availableGeometry().width()-16)
 
     def finished(self):
         if self.progress < .01:

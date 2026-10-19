@@ -1,0 +1,55 @@
+{
+  "demo": true,
+  "no_account_access": true,
+  "no_settings_writes": true,
+  "clips": [
+    {
+      "file": "01-simple.mp4",
+      "frames": 120,
+      "source": "Actual Windows Qt widgets + Windows compositor",
+      "demo": true
+    },
+    {
+      "file": "02-details.mp4",
+      "frames": 120,
+      "source": "Actual Windows Qt widgets + Windows compositor",
+      "demo": true
+    },
+    {
+      "file": "03-approval.mp4",
+      "frames": 120,
+      "source": "Actual Windows Qt widgets + Windows compositor",
+      "demo": true
+    },
+    {
+      "file": "04-reply.mp4",
+      "frames": 120,
+      "source": "Actual Windows Qt widgets + Windows compositor",
+      "demo": true
+    },
+    {
+      "file": "05-modes.mp4",
+      "frames": 120,
+      "source": "Actual Windows Qt widgets + Windows compositor",
+      "demo": true
+    },
+    {
+      "file": "06-settings.mp4",
+      "frames": 120,
+      "source": "Actual Windows Qt widgets + Windows compositor",
+      "demo": true
+    },
+    {
+      "file": "07-accounts.mp4",
+      "frames": 120,
+      "source": "Actual Windows Qt widgets + Windows compositor",
+      "demo": true
+    },
+    {
+      "file": "08-tokens.mp4",
+      "frames": 120,
+      "source": "Actual Windows Qt widgets + Windows compositor",
+      "demo": true
+    }
+  ]
+}

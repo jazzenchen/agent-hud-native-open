@@ -304,3 +304,13 @@ for Codex, Claude, Cursor and WorkBuddy. It supplies fictional Token history and
 sessions with internally consistent totals. A recorder must show its disclosure
 (`演示数据 · Demo data`). The resident application never loads this module; it
 does not modify account readings, client logs or the usage ledger.
+
+`promo_record.py` captures the implemented Windows widgets over its own procedural
+wallpaper, including original-exported bot animation frames, settings and token
+statistics. It performs no account or provider reads and writes no resident
+settings. `promo/` contains the reproducible Remotion edit, dependency lockfile,
+original synthesized score generator and credits. The primary 36-second tour
+follows `docs/videos/simple-mode-tour.zh-CN.webp`: hover, details, permission,
+reply and modes, followed by Windows settings/account/statistics demonstrations.
+Demo history and credit figures are disclosed in the video. Generating a promo
+does not satisfy or replace the release parity gate.

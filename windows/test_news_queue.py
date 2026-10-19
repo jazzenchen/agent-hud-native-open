@@ -84,6 +84,17 @@ class NewsQueue(unittest.TestCase):
         QTest.mouseRelease(meter.panel,Qt.MouseButton.LeftButton,pos=point)
         self.assertEqual(actions,[(event['id'],'dismiss')]);self.assertEqual(usage[0][0],'Codex')
 
+    def test_separate_agent_width_has_source_floor_and_screen_bound(self):
+        meter=SimpleMeterView('Codex',self.app.primaryScreen(),load(dict(panel_width=480)),lambda _:None,preview=True)
+        self.addCleanup(lambda:(meter.hide_all(),meter.peek.close(),meter.panel.close(),meter.glow.close(),meter.close()))
+        panel=meter.panel
+        available=meter.screen.availableGeometry().width()-16
+        self.assertEqual(panel.content_width(),min(440,available))
+        meter.settings['panel_width']=720
+        self.assertEqual(panel.content_width(),min(620,available))
+        meter.settings['mode']='notch'
+        self.assertEqual(panel.content_width(),min(720,available))
+
     def test_notch_reminder_ignores_saved_dock_edge(self):
         for edge in ('top','right','bottom','left'):
             meter=SimpleMeterView('Codex',self.app.primaryScreen(),load(dict(mode='notch',edge=edge)),lambda _:None,preview=True)
