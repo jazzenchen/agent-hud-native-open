@@ -59,6 +59,7 @@ def build_demo(now, elapsed=0):
             row['tokens'] += event['total']
         session_rows = sorted(sessions.values(), key=lambda row:row['updated'], reverse=True)
         session_rows[0]['state'] = 'running'
+        session_rows[0]['updated'] = now
         account = dict(id=f'demo-{vendor.lower()}', label='Demo account', evidence='demo')
         buckets = [{key:value for key,value in event.items() if key!='session'} for event in events]
         stats = dict(totals=totals, buckets=buckets,

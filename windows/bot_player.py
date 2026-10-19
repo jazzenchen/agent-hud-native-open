@@ -207,7 +207,7 @@ class ReminderPlayer(BotPlayer):
     """One actual reminder surface on the shared, visible-only bot clock."""
     def assets(self):return reminder_library()
     def enabled(self):
-        return self.meter.meter.settings.get('bot_logos',True) and animations_enabled() and self.assets().ready and reminder_state(self.meter.meter.attention_event()) is not None
+        return self.meter.meter.settings.get('bot_logos',True) and animations_enabled() and reminder_state(self.meter.meter.attention_event()) is not None and self.assets().ready
     def advance(self,now):
         event=self.meter.meter.attention_event();state=reminder_state(event)
         if not state:self.shown.clear();return None

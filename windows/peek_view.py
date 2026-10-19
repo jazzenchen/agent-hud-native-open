@@ -7,6 +7,7 @@ from source_design import DESIGN
 from motion import SpringDriver,SourceCurveDriver
 from material import frosted_backdrop,rounded_native_window,PanelFrost
 from theme import apply_widget_theme
+from surface_shape import surface_path
 
 class AgentPeekView(QWidget):
     def __init__(self,meter):
@@ -33,8 +34,9 @@ class AgentPeekView(QWidget):
         self.row_height=round(18*scale);self.top_padding=round(10*scale);self.title_size=round(13*scale)
         self.spacing=round(12*scale);self.pair_gap=round(5*scale);self.padding=round(12*scale)
         self.rows=[]
+        from quota_insights import number
         for row in self.meter.data.get('quota',{}).get('windows',[]):
-            used=row.get('used');label={'5-hour':'5h'}.get(row['label'],row['label'])
+            used=number(row.get('used'));label={'5-hour':'5h'}.get(row['label'],row['label'])
             self.rows.append((label,'–' if used is None else f'{used:.0f}%',used))
         running=sum(row.get('state')=='running' for row in self.meter.data.get('local',{}).get('sessions',[]))
         self.running=running
@@ -84,7 +86,7 @@ class AgentPeekView(QWidget):
         self.progress=max(0,min(1,float(progress)))
         start=max(1,min(self.target_width,self.meter.width()/2))
         self.setFixedSize(max(1,round(start+(self.target_width-start)*self.progress)),self.target_height)
-        path=QPainterPath();path.addRoundedRect(QRectF(self.rect()),self.corner,self.corner)
+        path=surface_path(self.rect(),self.corner)
         self.setMask(QRegion(path.toFillPolygon().toPolygon()))
         self.reposition()
         if self.isVisible():rounded_native_window(self,self.corner)
@@ -112,7 +114,7 @@ class AgentPeekView(QWidget):
     def paintEvent(self,event):
         from views import text,color,level,font
         p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        path=QPainterPath();path.addRoundedRect(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),self.corner,self.corner)
+        path=surface_path(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),self.corner)
         sampled=self.frost.paint(p,self,path)
         p.fillPath(path,self.meter.surface_fill(sampled))
         if not sampled or self.meter.settings.get('glass_style')=='material':

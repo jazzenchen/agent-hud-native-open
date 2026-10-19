@@ -23,6 +23,20 @@ class NewsQueue(unittest.TestCase):
         tracker.update(snapshot(80,10000),now=10000)
         return tracker.update(snapshot(used,10001),now=10001)[0]
 
+    def test_unknown_quota_rows_can_be_painted_without_becoming_zero_or_crashing(self):
+        from PySide6.QtGui import QImage,QPainter
+        meter=SimpleMeterView('Codex',self.app.primaryScreen(),load({}),lambda _:None,preview=True)
+        self.addCleanup(lambda:(meter.hide_all(),meter.peek.close(),meter.panel.close(),meter.glow.close(),meter.close()))
+        panel=meter.panel;target=QImage(440,300,QImage.Format.Format_ARGB32_Premultiplied)
+        for used in (None,float('nan'),float('inf'),False):
+            data=dict(quota=dict(windows=[dict(label='5-hour',used=used)]),local=dict(sessions=[]))
+            meter.set_data(data);p=QPainter(target)
+            try:self.assertEqual(panel.provider_block(p,404,data=data),71)
+            finally:p.end()
+            from views import tightest
+            self.assertIsNone(tightest(data));meter.peek.refresh()
+            self.assertEqual(meter.peek.rows[0][1],'–')
+
     def test_source_four_second_lifetime_starts_when_shown_and_resets_after_pointer_leaves(self):
         displayed=set();held=set();server=self.server(presentation=lambda:(displayed,held));event=self.event();key=event['id']
         self.assertEqual(DESIGN['alert_seconds'],4)

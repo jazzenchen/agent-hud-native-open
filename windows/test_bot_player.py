@@ -105,6 +105,24 @@ class Bots(unittest.TestCase):
                     frame=clip['frames'][min(36,len(clip['frames'])-1)];self.assertFalse(lib.image(frame['image']).isNull())
         self.assertLessEqual(len(lib.cache),192);self.assertLessEqual(len(lib.pages),4);self.assertLessEqual(len(lib.loaded),8)
 
+    def test_source_staying_reminder_pack_covers_every_agent_and_keeps_bots_raised(self):
+        from bot_player import ASSETS
+        from agent_catalog import VENDORS
+        lib=BotLibrary(ASSETS.parent/'bot-reminders');self.assertTrue(lib.ready)
+        self.assertEqual(len(lib.clips),240)
+        for vendor in VENDORS:
+            for light in (False,True):
+                for state in ('card-done','card-long-done','card-reset','card-asking','card-question','card-plan'):
+                    clip=lib.clip(vendor,light,state);self.assertIsNotNone(clip,(vendor,light,state))
+                    self.assertEqual(len(clip['frames']),192)
+                    # First shows its logo through the source opening delay;
+                    # later remains a bot for as long as the card is presented.
+                    self.assertEqual(clip['frames'][0]['image'],clip['frames'][12]['image'])
+                    self.assertEqual(clip['frames'][0]['pose'],[0,0,0,1,1,0])
+                    self.assertFalse(clip['frames'][120]['rest'])
+                    self.assertFalse(lib.image(clip['frames'][120]['image']).isNull())
+        self.assertLessEqual(len(lib.cache),192);self.assertLessEqual(len(lib.pages),4);self.assertLessEqual(len(lib.loaded),8)
+
     def test_hidden_accounts_and_window_order_only_change_presentation(self):
         quota=dict(windows=[dict(label='Weekly',account='a'),dict(label='5h',account='b')],wallets=[dict(balance=3,account='a')])
         settings=dict(window_order={'Kimi':['5h','Weekly']},hidden_accounts=['a'])

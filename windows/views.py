@@ -16,6 +16,7 @@ from look_logic import stand_in,dimming
 from theme import resolves_light,apply_widget_theme
 from motion import SpringDriver,SourceCurveDriver,animations_enabled
 from peek_view import AgentPeekView
+from surface_shape import surface_path
 
 COLORS = DESIGN['colors']
 
@@ -43,7 +44,8 @@ def level(used):
 
 
 def tightest(data):
-    values = [float(row['used']) for row in data.get('quota', {}).get('windows', []) if row.get('used') is not None]
+    from quota_insights import number
+    values = [value for row in data.get('quota', {}).get('windows', []) if (value:=number(row.get('used'))) is not None]
     return max(values) if values else None
 
 
@@ -231,7 +233,7 @@ class SimpleMeterView(QWidget):
             shape.moveTo(0,0);shape.quadTo(top,0,top,top);shape.lineTo(top,h-bottom)
             shape.quadTo(top,h,top+bottom,h);shape.lineTo(w-top-bottom,h)
             shape.quadTo(w-top,h,w-top,h-bottom);shape.lineTo(w-top,top);shape.quadTo(w-top,0,w,0);shape.closeSubpath()
-        else:shape.addRoundedRect(QRectF(self.rect()),self.corner,self.corner)
+        else:shape=surface_path(self.rect(),self.corner)
         return shape
 
     def apply_material(self):
@@ -640,7 +642,7 @@ class HoverPanelView(QWidget):
         self.setGeometry(QRect(self.position_for(self.progress),extent))
         self.corner=self.meter.corner+(DESIGN['full_corner']-self.meter.corner)*self.progress
         shape=QPainterPath()
-        shape.addRoundedRect(QRectF(self.rect()),self.corner,self.corner)
+        shape=surface_path(self.rect(),self.corner)
         self.setMask(QRegion(shape.toFillPolygon().toPolygon()))
         if self.isVisible():rounded_native_window(self,self.corner)
         self.update()
@@ -673,7 +675,7 @@ class HoverPanelView(QWidget):
         p.setOpacity(shell_alpha)
         path=QPainterPath()
         radius=getattr(self,'corner',16)
-        path.addRoundedRect(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),radius,radius)
+        path=surface_path(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),radius)
         sampled=self.frost.paint(p,self,path)
         fill=self.meter.surface_fill(sampled)
         p.fillPath(path,fill)
@@ -731,7 +733,8 @@ class HoverPanelView(QWidget):
             text(p,QRectF(6,y,w-12,28),fm.elidedText(notice,Qt.TextElideMode.ElideRight,w-12),11,'secondary')
             return y+28
         for row in rows:
-            used=float(row['used']);ink=level(used)
+            from quota_insights import number
+            used=number(row.get('used'));ink=level(used)
             p.setPen(Qt.PenStyle.NoPen);p.setBrush(color(ink,painter=p))
             p.drawEllipse(QPointF(10,y+14),4,4)
             label={'Weekly':'每周限额','5-hour':'5 小时限额','Included':'包含用量'}.get(row['label'],row['label'])
@@ -740,9 +743,10 @@ class HoverPanelView(QWidget):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(color('track',painter=p))
             p.drawRoundedRect(QRectF(start,y+12,bar_w,4),2,2)
-            p.setBrush(color(ink,painter=p))
-            p.drawRoundedRect(QRectF(start,y+12,bar_w*max(0,min(1,used/100)),4),2,2)
-            text(p,QRectF(start+bar_w+8,y,45,28),f'{used:.0f}%',12,ink,True,Qt.AlignmentFlag.AlignRight)
+            if used is not None:
+                p.setBrush(color(ink,painter=p))
+                p.drawRoundedRect(QRectF(start,y+12,bar_w*max(0,min(1,used/100)),4),2,2)
+            text(p,QRectF(start+bar_w+8,y,45,28),'—' if used is None else f'{used:.0f}%',12,ink,True,Qt.AlignmentFlag.AlignRight)
             if self.meter.settings.get('reset_countdown',True):text(p,QRectF(w-76,y,70,28),reset_label(row.get('reset')),10,'secondary',align=Qt.AlignmentFlag.AlignRight)
             y+=28
         return y

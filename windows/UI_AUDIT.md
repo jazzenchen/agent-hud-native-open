@@ -478,3 +478,36 @@ exceeded 1.5 target frames in this run. Evidence:
 `E:/AI-Data/agent-hud-promo-20261019/playback-cpu.json`. This covers an owned Qt
 window's CPU/event loop, not GPU/vsync, full resident activity, or a universal FPS
 claim. Cold loading still deserves optimization before the performance gate.
+
+### Reminder export accepted; continuous-corner and unknown-value regression
+
+Actions run `39232230900` succeeded. The supplementary pack contains 240 original
+reminder clips, 5,669 unique images and 6,275,434 bytes before extra provenance
+fields. All 311 packed file hashes and 120 sampled premultiplied PNG pixels
+match the original export. The unchanged source keeps the initial logo through
+its card-opening delay and the bot raised afterwards. All agents/themes/six
+states have pack tests. The original procedural Claude recording form is used;
+this does not claim its separate Clawd sprite performer is ported.
+
+Actual Windows panels were captured for request/reply/reset, dark and light,
+at six recording times each: four changes among five adjacent pairs per case.
+Evidence: `E:/AI-Data/agent-hud-promo-20261019/actual-reminder-animations-native`.
+Dark reply and light request were visually inspected over the owned QA backdrop.
+Transparent QWidget grabs were replaced with bounded native screen capture to
+avoid interpreting transparent-image fringes as desktop compositor evidence.
+
+`surface_shape.py` provides two cubic segments per continuous panel corner,
+matching second derivatives at the diagonal and zero curvature at straight
+edges. It approximates the platform-specific SwiftUI continuous contour; it
+does not assert Apple's exact path. Circular capsules and notch-specific geometry
+remain source-shaped. Fill and native clip share this path. The 24-case news
+matrix passed at 100%, 125%, 150% (72 cases) within the existing 2pt/RGB tolerance;
+dark left-edge details were inspected. Evidence is under
+`E:/AI-Data/agent-hud-promo-20261019/continuous-{100,125,150}`.
+
+Unknown/invalid quota values no longer crash the panel or become a numeric zero:
+panel, meter selection and peek preserve an unknown value. Its actual paint path
+is covered for null, non-finite and boolean readings. All 177 regression tests
+passed, including complete supplementary pack coverage.
+Special tiny-mark sign sampling, pointer gaze, richer settings/statistics, MCP,
+remaining callback channels, performance and the full promo/release gates remain.
