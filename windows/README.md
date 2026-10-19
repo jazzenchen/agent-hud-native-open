@@ -76,15 +76,18 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
   rest. Interrupted panel/selector/switch transitions retain position and velocity.
   Decorative pointer lighting keeps controls/text stationary. Windows' client-area
   animation preference suppresses springs and continuous glow when disabled.
-- Native untinted blur and the themed dimming layer are separated, matching
-  the original pre-Liquid-Glass fallback. Qt and HWND regions are rounded and
-  DWM's extra border is suppressed. The large rectangular Acrylic tint is
-  removed. The custom region now uses exclusive right/bottom bounds and owns
-  rounding without a second DWM radius. Four outside-capsule corner samples
-  pass in both themes at 100%, 125% and 150%; this is not full-shape or overall
-  similarity proof.
+- Frost and themed dimming use one Qt shape mask. Windows Accent blur ignores
+  the silhouette of layered windows on the tested machine and left rectangular
+  corner tint and collapse trails. These surfaces therefore sample a bounded
+  desktop backdrop into memory before opening and blur it in Qt. That snapshot
+  stays fixed throughout the morph; details/peeks refresh on reopening, while
+  the collapsed strip refreshes when shown or moved outside its cached strip.
+  It does **not** continuously follow windows moving behind the HUD. No backdrop
+  images are written to disk, and closed surfaces release their snapshots.
+  DWM's extra frame is suppressed; Qt alone owns the physical mask, avoiding a
+  second native radius that disagreed at fractional display scales.
   See [UI_AUDIT.md](UI_AUDIT.md) for native evidence and remaining review gates.
-- Native Windows blur replaces Apple Liquid Glass; Segoe UI / Microsoft YaHei UI replace
+- Sampled Windows frost replaces Apple Liquid Glass; Segoe UI / Microsoft YaHei UI replace
   Apple fonts. The Windows notch uses the source's fallback dimensions instead
   of claiming a physical camera notch exists.
 
@@ -159,8 +162,8 @@ Previews use explicit fixture data, never account readings. The tests cover the
 source design contract, separated views, process gating, ignored probes/servers,
 closed-client races, read-only WAL, parser lifecycle, missing quota and reversible
 observers. Real Cursor-emitted observer delivery and signed-in Cursor quota need
-manual acceptance with a current client login. Native blur depends on Windows/DWM;
-the fallback remains readable and does not change system security settings.
+manual acceptance with a current client login. If desktop capture is unavailable,
+the themed stand-in remains readable and does not change system security settings.
 
 Cursor observers are backed up alongside `~/.cursor/hooks.json`. The prompt hook
 returns `{"continue":true}`; stop returns `{}`; neither changes tool approvals or

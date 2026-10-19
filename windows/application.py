@@ -378,7 +378,9 @@ class Application:
                         indexing=bool(data.get('local',{}).get('indexing')),models=len(data.get('local',{}).get('stats',{}).get('models',[]))) for client,data in snapshot.items()},
                     settings_visible=self.settings_window.isVisible() if self.settings_window else False,
                     window_appearance='light' if self.window_light() else 'dark',
-                    windows=[dict(agent=m.client,screen=key[0],glass=m.native_glass,visible=m.isVisible(),mode=m.settings['mode'],
+                    windows=[dict(agent=m.client,screen=key[0],glass=m.native_glass or m.frost.image is not None,
+                                  backdrop='sampled' if m.frost.image is not None else 'native' if m.native_glass else 'stand_in',
+                                  visible=m.isVisible(),mode=m.settings['mode'],
                                   appearance='light' if m.light() else 'dark',edge=m.settings['edge'],offset=m.settings['offset'])
                              for key,m in self.windows.items()])
         temporary=DATA/'windows-status.tmp'

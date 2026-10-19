@@ -43,7 +43,8 @@ def main():
         capture_valid=bool(samples and max(samples)-min(samples)>10)
         capture_file='native-'+scheme+('' if capture_valid else '-unavailable')+'.png'
         screenshot.save(str(destination/capture_file))
-        result[scheme]=dict(meter_glass=bool(meter.native_glass),peek_glass=bool(meter.peek.native_glass),
+        result[scheme]=dict(meter_glass=bool(meter.native_glass or meter.frost.image is not None),peek_glass=bool(meter.peek.native_glass or meter.peek.frost.image is not None),
+            backdrop='sampled on opening',
             capture_valid=capture_valid,capture_file=capture_file,
             capture_note='Owned native scene captured' if capture_valid else 'Desktop capture unavailable/blank; cannot establish compositor fidelity',
             meter_size=[meter.width(),meter.height()],peek_size=[meter.peek.width(),meter.peek.height()],

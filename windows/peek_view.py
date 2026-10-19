@@ -5,17 +5,18 @@ from PySide6.QtGui import QPainter,QPainterPath,QPen,QFontMetricsF,QRegion
 from PySide6.QtWidgets import QWidget
 from source_design import DESIGN
 from motion import SpringDriver,SourceCurveDriver
-from material import frosted_backdrop,rounded_native_window
+from material import frosted_backdrop,rounded_native_window,PanelFrost
 from theme import apply_widget_theme
 
 class AgentPeekView(QWidget):
     def __init__(self,meter):
         super().__init__(None,Qt.WindowType.Tool|Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint|Qt.WindowType.WindowDoesNotAcceptFocus)
         self.meter=meter;self.progress=0.;self.native_glass=False;self.rows=[]
+        self.frost=PanelFrost()
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground);self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setWindowTitle(DESIGN['app_name']);self.setMouseTracking(True)
         self.animation=SourceCurveDriver(self,duration=DESIGN['animation_ms']/1000);self.animation.valueChanged.connect(self.animate)
-        self.animation.finished.connect(lambda:self.hide() if self.progress<.001 else None)
+        self.animation.finished.connect(self.finished)
         self.target_width=1;self.target_height=26;self.corner=13
 
     @property
@@ -50,7 +51,15 @@ class AgentPeekView(QWidget):
         if self.isVisible():self.animate(self.progress)
 
     def open(self):
-        self.refresh();self.animate(self.progress)
+        self.refresh()
+        if not self.isVisible():
+            value=self.progress
+            self.animate(1.)
+            if self.meter.settings['glass'] and not self.meter.preview:
+                self.frost.capture(self.meter.screen,self.geometry().united(self.meter.geometry()))
+            else:self.frost.clear()
+            self.animate(value)
+        else:self.animate(self.progress)
         if not self.isVisible():self.show();self.apply_material();self.meter.raise_()
         self.animation.retarget(1.)
 
@@ -58,6 +67,10 @@ class AgentPeekView(QWidget):
         if immediate:
             self.animation.jump(0.);self.hide()
         elif self.isVisible():self.animation.retarget(0.)
+
+    def finished(self):
+        if self.progress<.001:
+            self.hide();self.frost.clear()
 
     def animate(self,progress):
         self.progress=max(0,min(1,float(progress)))
@@ -83,15 +96,20 @@ class AgentPeekView(QWidget):
     def apply_material(self):
         apply_widget_theme(self,self.meter.light())
         cfg=self.meter.settings
-        self.native_glass=not self.meter.preview and cfg['glass'] and frosted_backdrop(self.winId(),True,cfg['transparency'],self.meter.light(),cfg['glass_style'])
-        if not self.meter.preview and not cfg['glass']:frosted_backdrop(self.winId(),False)
+        self.native_glass=False
+        if not self.meter.preview:frosted_backdrop(self.winId(),False)
+        if not cfg['glass']:self.frost.clear()
         rounded_native_window(self,self.corner);self.update()
 
     def paintEvent(self,event):
         from views import text,color,level,font
         p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing)
         path=QPainterPath();path.addRoundedRect(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),self.corner,self.corner)
-        p.fillPath(path,self.meter.surface_fill(self.native_glass));p.setPen(QPen(color('outline',painter=p),1));p.drawPath(path);p.setClipPath(path)
+        sampled=self.frost.paint(p,self,path)
+        p.fillPath(path,self.meter.surface_fill(sampled))
+        if not sampled or self.meter.settings.get('glass_style')=='material':
+            p.setPen(QPen(color('outline',painter=p),1));p.drawPath(path)
+        p.setClipPath(path)
         p.setOpacity(self.progress)
         x=self.padding+(self.tuck if self.meter.settings['edge']=='left' else 0)
         if self.line:

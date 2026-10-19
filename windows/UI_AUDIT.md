@@ -330,3 +330,36 @@ all 116 checks at that checkpoint and the passive presence probe passed. Current
 statistics changes also add model-bucket queries/model filters using the original
 agent palette; per-kind filters retain at least one selection. Model menu actions
 are kept alive while toggled rather than rebuilding/deleting the active action.
+
+### Detached-surface clipping and lifecycle follow-up
+
+The earlier four-corner checks covered the small peek, not the full details.
+Full-panel native captures exposed Accent blur outside rounded layered HWNDs.
+An additional CreateRoundRectRgn disagreed with Qt's mask at fractional scales.
+This iteration replaces that backdrop on HUD/peek/details with a bounded,
+in-memory sampled frost, drawn through the same path as the tint and content.
+Qt alone owns the shape mask; DWM's second frame/radius stays disabled. The
+sample remains fixed during a morph and refreshes on reopening or strip
+relocation. **Live background changes are not continuously blurred.** This is a
+documented Windows adaptation gap, not a claim of native Liquid Glass parity.
+
+Move and resize the detail window in one geometry transaction. Changing an edge
+cancels the old origin and detached surfaces. Hiding a strip cancels all hover,
+detail and glow clocks. Cached strip coverage permits ordinary label reflow
+without dismissing an open panel. Dynamic queues have no capsule mask that cuts
+the first/last logos.
+
+126 unit/regression checks pass. Native controlled-wallpaper audits cover 24
+mode/configured-edge/theme combinations per scale at 100%, 125% and 150%. Notch
+retains upstream's top placement regardless of the stored dock edge. Intermediate
+expand/shrink frames, timed reversal, outside corners, a 17pt travel-corridor grid,
+the former panel centre after close and full detached-window hiding are checked.
+The grid excludes a 2pt fractional-DPI antialias fringe; it is not a pixel-perfect
+full-edge comparison. Accepted runs report no out-of-shape tint or trail beyond
+the specified tolerance. Native diagnostic PNGs and JSON are under local ignored
+`previews/`; they contain only the owned QA wallpaper and sample data.
+
+Further work requested: profile frame time/cold-open cost, refine continuous
+curvature and prepare an actual-app demonstration video with clearly labeled
+sample usage. A promotional recording is not performance acceptance evidence.
+The overall >=90% gate and upstream PR update are still pending.

@@ -6,11 +6,11 @@ The Windows layer supplies native glass, font substitution, windows and painting
 from datetime import datetime
 import math
 
-from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QTimer, QVariantAnimation, QEasingCurve, QEvent
+from PySide6.QtCore import Qt, QRect, QRectF, QPointF, QSize, QTimer, QVariantAnimation, QEasingCurve, QEvent
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter, QPainterPath, QPen, QPixmap, QRegion,QCursor
 from PySide6.QtWidgets import QWidget, QMenu, QApplication
 
-from material import frosted_backdrop,rounded_native_window
+from material import frosted_backdrop,rounded_native_window,PanelFrost
 from source_design import DESIGN
 from look_logic import stand_in,dimming
 from theme import resolves_light,apply_widget_theme
@@ -135,6 +135,7 @@ class SimpleMeterView(QWidget):
         self.cells=[]
         self.anchor = QPointF(0, 0)
         self.native_glass = False
+        self.frost=PanelFrost()
         self.dragging=False
         self.press_position=None
         self.press_origin=None
@@ -163,8 +164,12 @@ class SimpleMeterView(QWidget):
 
     def refresh_size(self):
         mode=self.settings.get('mode','simple')
-        if getattr(self,'_previous_mode',mode)!=mode:
+        placement=(mode,self.settings.get('edge','top'))
+        if getattr(self,'_previous_placement',placement)!=placement:
             self.peek.dismiss(immediate=True);self.panel.pinned=False;self.panel.animation.jump(0.);self.panel.hide()
+            self.glow.hide();self.glow.timer.stop()
+            self.frost.clear()
+        self._previous_placement=placement
         self._previous_mode=mode
         self.enter_timer.setInterval(round(self.settings.get('hover_delay',400)))
         self.leave_timer.setInterval(round(self.settings.get('collapse_delay',200)))
@@ -205,6 +210,11 @@ class SimpleMeterView(QWidget):
         self.round_mask()
 
     def round_mask(self):
+        if self.settings.get('mode')=='logos':
+            # A bare logo queue has no capsule silhouette. Applying the Simple
+            # rounded mask shaved the outside agents' artwork on side docks.
+            self.clearMask()
+            return
         shape = self.surface_path()
         self.setMask(QRegion(shape.toFillPolygon().toPolygon()))
         if self.settings.get('mode','simple')=='simple' and self.isVisible():rounded_native_window(self,self.corner)
@@ -222,9 +232,13 @@ class SimpleMeterView(QWidget):
     def apply_material(self):
         apply_widget_theme(self,self.light())
         glass=self.settings['glass'] and self.settings.get('mode','simple')=='simple'
-        self.native_glass = not self.preview and glass and frosted_backdrop(self.winId(),True,self.settings.get('transparency',50),self.light(),self.settings.get('glass_style','material'))
-        if not glass and not self.preview:
-            frosted_backdrop(self.winId(), False)
+        self.native_glass=False
+        if not self.preview:frosted_backdrop(self.winId(),False)
+        if not glass:self.frost.clear()
+        elif self.frost.image is None and self.isVisible() and not self.preview and not self.panel.isVisible() and not self.peek.isVisible():
+            # A newly enabled glass look must not sample its own opaque/tinted
+            # surface. This runs on a look change, never on an idle paint timer.
+            self.hide();self.show()
         if self.panel.isVisible():self.panel.apply_material()
         if self.peek.isVisible():self.peek.apply_material()
         if self.settings.get('mode','simple')=='simple':rounded_native_window(self,self.corner)
@@ -285,7 +299,12 @@ class SimpleMeterView(QWidget):
         self.update()
 
     def place(self, x, y):
+        from PySide6.QtCore import QPoint
+        target=QRect(QPoint(int(x),int(y)),self.size())
+        recapture=self.isVisible() and not self.preview and not self.dragging and not self.frost.covers(target) and self.settings.get('mode')=='simple' and self.settings['glass']
+        if recapture:self.hide()
         self.move(int(x), int(y))
+        if recapture:self.show()
         self.anchor = QPointF(self.geometry().center().x(), self.geometry().bottom()+6)
         if self.panel.isVisible():
             self.panel.reposition()
@@ -299,11 +318,13 @@ class SimpleMeterView(QWidget):
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         path = self.surface_path()
         # The dark glass stand-in is used only for an offscreen preview/fallback.
-        fill = self.surface_fill(self.native_glass)
         mode=self.settings.get('mode','simple')
         if mode!='logos':
+            sampled=mode=='simple' and self.frost.paint(p,self,path)
+            fill=self.surface_fill(sampled)
             p.fillPath(path,QColor('black') if mode=='notch' else fill)
-            if mode!='notch':p.setPen(QPen(color('outline',painter=p),1));p.drawPath(path)
+            if mode!='notch' and (not sampled or self.settings.get('glass_style')=='material'):
+                p.setPen(QPen(color('outline',painter=p),1));p.drawPath(path)
         for client,cell in self.cells:
             if mode!='simple':
                 if self.settings.get('show_logos',True) and not self.bots.draw(p,client,cell):artwork().draw(p,client,cell)
@@ -336,6 +357,17 @@ class SimpleMeterView(QWidget):
                 self.check_alt()
             else:self.enter_timer.start()
 
+    def show(self):
+        if not self.isVisible() and not self.preview and self.settings['glass'] and self.settings.get('mode')=='simple':
+            bounds=QRect(self.geometry());screen=self.screen.geometry()
+            # Cache the strip's travel axis so changes in agent count or label
+            # width don't expose the end of a previously smaller snapshot.
+            if self.settings.get('edge') in ('top','bottom'):
+                bounds.setLeft(screen.left());bounds.setRight(screen.right())
+            else:bounds.setTop(screen.top());bounds.setBottom(screen.bottom())
+            self.frost.capture(self.screen,bounds)
+        super().show()
+
     def showEvent(self,event):
         super().showEvent(event)
         self.bots.sync()
@@ -343,6 +375,11 @@ class SimpleMeterView(QWidget):
 
     def hideEvent(self,event):
         self.bots.stop()
+        self.enter_timer.stop();self.leave_timer.stop()
+        self.peek.dismiss(immediate=True)
+        self.panel.pinned=False;self.panel.animation.jump(0.)
+        self.glow.hide();self.glow.timer.stop()
+        self.frost.clear()
         super().hideEvent(event)
 
     def check_alt(self):
@@ -400,6 +437,7 @@ class SimpleMeterView(QWidget):
         delta=event.globalPosition().toPoint()-self.press_position
         if not self.dragging and delta.manhattanLength() < QApplication.startDragDistance():return
         self.dragging=True
+        self.frost.clear()
         self.leave_timer.stop();self.enter_timer.stop()
         self.panel.pinned=False;self.panel.hide()
         self.panel.animation.stop();self.peek.dismiss(immediate=True)
@@ -419,7 +457,7 @@ class SimpleMeterView(QWidget):
     def hide_all(self):
         self.enter_timer.stop();self.leave_timer.stop()
         self.reading_animation.stop()
-        self.panel.animation.stop()
+        self.panel.animation.jump(0.)
         self.peek.dismiss(immediate=True)
         self.alt_timer.stop();self.edge_timer.stop()
         self.glow.hide();self.glow.timer.stop()
@@ -441,12 +479,13 @@ class HoverPanelView(QWidget):
         self.pinned = False
         self.progress = 0.
         self.native_glass = False
+        self.frost=PanelFrost()
         self.hits = []
         self.scroll_offset=0.
         self.animation = SourceCurveDriver(self,duration=DESIGN['animation_ms']/1000)
         self.animation.valueChanged.connect(self.animate)
         self.animation.finished.connect(self.finished)
-        self.setFixedSize(int(DESIGN['agent_width']),300)
+        self.resize(int(DESIGN['agent_width']),300)
 
     def set_data(self,data):
         self.data=data
@@ -471,6 +510,9 @@ class HoverPanelView(QWidget):
         return min(self.natural_height(),self.meter.screen.availableGeometry().height()-12)
 
     def reposition(self):
+        self.move(self.position_for(self.progress))
+
+    def position_for(self,progress):
         screen=self.meter.screen.availableGeometry()
         edge='top' if self.meter.settings.get('mode')=='notch' else self.meter.settings.get('edge','top')
         geom=self.meter.geometry()
@@ -485,9 +527,18 @@ class HoverPanelView(QWidget):
         x=max(screen.left()+6,min(x,screen.right()-width-6))
         y=max(screen.top()+3,min(y,screen.bottom()-height-3))
         origin=getattr(self,'source_rect',geom)
-        self.move(round(origin.x()+(x-origin.x())*self.progress),round(origin.y()+(y-origin.y())*self.progress))
+        from PySide6.QtCore import QPoint
+        return QPoint(round(origin.x()+(x-origin.x())*progress),round(origin.y()+(y-origin.y())*progress))
 
     def open(self):
+        if not self.isVisible():
+            # Capture the full travel corridor before either surface is shown.
+            # This also covers side/bottom anchored shrink animations.
+            target=QRect(self.position_for(1.),QSize(self.content_width(),self.layout_height()))
+            corridor=target.united(getattr(self,'source_rect',self.meter.geometry()))
+            if self.meter.settings['glass'] and not self.meter.preview:
+                self.frost.capture(self.meter.screen,corridor)
+            else:self.frost.clear()
         self.animate(self.progress)
         self.show()
         self.reposition()
@@ -513,8 +564,9 @@ class HoverPanelView(QWidget):
     def apply_material(self):
         apply_widget_theme(self,self.meter.light())
         cfg=self.meter.settings
-        self.native_glass=not self.meter.preview and cfg['glass'] and frosted_backdrop(self.winId(),True,cfg.get('transparency',50),self.meter.light(),cfg.get('glass_style','material'))
-        if not cfg['glass'] and not self.meter.preview:frosted_backdrop(self.winId(),False)
+        self.native_glass=False
+        if not self.meter.preview:frosted_backdrop(self.winId(),False)
+        if not cfg['glass']:self.frost.clear()
         rounded_native_window(self,getattr(self,'corner',DESIGN['full_corner']))
         self.update()
 
@@ -529,9 +581,11 @@ class HoverPanelView(QWidget):
         target=self.content_width()
         origin=getattr(self,'source_rect',self.meter.geometry())
         start=min(target,max(1,origin.width()));start_height=origin.height()
-        self.setFixedSize(round(start+(target-start)*self.progress),max(1,round(start_height+(self.layout_height()-start_height)*self.progress)))
+        extent=QSize(round(start+(target-start)*self.progress),max(1,round(start_height+(self.layout_height()-start_height)*self.progress)))
+        # Move and resize in one native transaction. Separate calls briefly put
+        # the old backing surface at the new side-edge position while shrinking.
+        self.setGeometry(QRect(self.position_for(self.progress),extent))
         self.corner=self.meter.corner+(DESIGN['full_corner']-self.meter.corner)*self.progress
-        self.reposition()
         shape=QPainterPath()
         shape.addRoundedRect(QRectF(self.rect()),self.corner,self.corner)
         self.setMask(QRegion(shape.toFillPolygon().toPolygon()))
@@ -545,6 +599,7 @@ class HoverPanelView(QWidget):
     def finished(self):
         if self.progress < .01:
             self.hide()
+            self.frost.clear()
 
     def enterEvent(self,event):
         self.meter.leave_timer.stop()
@@ -562,10 +617,12 @@ class HoverPanelView(QWidget):
         path=QPainterPath()
         radius=getattr(self,'corner',16)
         path.addRoundedRect(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),radius,radius)
-        fill=self.meter.surface_fill(self.native_glass)
+        sampled=self.frost.paint(p,self,path)
+        fill=self.meter.surface_fill(sampled)
         p.fillPath(path,fill)
-        p.setPen(QPen(color('outline',painter=p),1))
-        p.drawPath(path)
+        # Clear/regular glass has no extra hairline in HUDLook.outline.
+        if not sampled or self.meter.settings.get('glass_style')=='material':
+            p.setPen(QPen(color('outline',painter=p),1));p.drawPath(path)
         p.setClipPath(path)
         phase=min(1,max(0,(self.progress-.1)/.9))
         p.setOpacity(phase*phase*(3-2*phase))

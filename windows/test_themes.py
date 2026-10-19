@@ -92,8 +92,8 @@ class ThemeAudit(unittest.TestCase):
             meter.apply_material();native.reset_mock();meter.settings['hud_appearance']='light';meter.apply_material()
             calls=[call.args for call in native.call_args_list]
             self.assertEqual(len(calls),2)
-            self.assertTrue(all(args[3] is True for args in calls))
-            self.assertTrue(meter.native_glass);self.assertTrue(meter.panel.native_glass)
+            self.assertTrue(all(not args[1] for args in calls))
+            self.assertFalse(meter.native_glass);self.assertFalse(meter.panel.native_glass)
         meter.preview=True
 
     def test_per_monitor_override_and_system_following_have_explicit_resolution(self):
