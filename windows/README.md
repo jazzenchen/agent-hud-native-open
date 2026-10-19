@@ -39,6 +39,16 @@ custom session titles and charged session credits, including unattributed
 amounts and context size. Charged credits are never presented as remaining
 subscription credits.
 
+WorkBuddy's Chinese desktop account also uses the official billing-summary
+metadata endpoint for its subscription name and remaining/total credits, with
+the client's current signed-in account read from its existing auth file. This
+adapter follows the installed 5.5.6 request/header contract; no proprietary app
+code is redistributed. It makes no model call, login refresh, purchase or
+check-in. Credentials stay in memory and the HTTPS origin is fixed; redirects
+are refused. An expired/missing/unsupported protected login asks for sign-in in
+WorkBuddy. An account switch during a read discards that result. Optional GLM
+plan windows stay separate from the official WorkBuddy subscription and balance.
+
 ## Install
 
 Python 3.10+ and an Internet connection for first installation are required.

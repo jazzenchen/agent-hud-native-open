@@ -56,4 +56,5 @@ def visible_quota(quota,vendor,settings):
     rows=[row for row in quota.get('windows',[]) if window_key(row) not in excluded and row['label'] not in excluded and visible(row)]
     rows=ordered_windows(rows,order)
     return {**quota,'windows':rows,'wallets':[row for row in quota.get('wallets',[]) if visible(row)],
+            'credit_balance':quota.get('credit_balance') if fallback not in hidden else None,
             'hidden':bool(quota.get('windows')) and not rows}

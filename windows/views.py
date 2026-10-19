@@ -544,7 +544,7 @@ class HoverPanelView(QWidget):
         if self.meter.attention_event():
             from attention_views import height
             return height(self.meter)+28
-        quota=sum(43+max(1,len(data.get('quota',{}).get('windows',[])[:5]))*28+18 for _,data in self.providers())
+        quota=sum(43+(22 if data.get('quota',{}).get('credit_balance') else 0)+max(1,len(data.get('quota',{}).get('windows',[])[:5]))*28+18 for _,data in self.providers())
         sessions=self.sessions()[:int(self.meter.settings.get('session_limit',5))]
         cfg=self.meter.settings
         return 14+(quota if cfg.get('panel_quota',True) else 0)+(92+18 if cfg.get('panel_tokens',True) else 0)+(22+max(1,len(sessions))*25+18 if cfg.get('panel_sessions',True) else 0)+17+28+14
@@ -706,6 +706,12 @@ class HoverPanelView(QWidget):
         text(p,QRectF(6,23,w*.66,15),QFontMetricsF(font(10)).elidedText(label,Qt.TextElideMode.ElideRight,w*.66),10,'secondary')
         text(p,QRectF(w*.68,23,w*.32-6,15),'上次读数 · 重试中' if quota.get('stale') else str(quota.get('plan') or ''),10,'tertiary',align=Qt.AlignmentFlag.AlignRight)
         y=43
+        balance=quota.get('credit_balance')
+        if balance:
+            from workbuddy_quota import credit_text
+            text(p,QRectF(6,y,w*.58,22),'剩余积分  '+credit_text(balance,'remaining'),12,'text',True)
+            text(p,QRectF(w*.58,y,w*.42-6,22),'总积分  '+credit_text(balance,'total'),10,'secondary',align=Qt.AlignmentFlag.AlignRight)
+            y+=22
         rows=data.get('quota',{}).get('windows',[])[:5]
         if not rows:
             from quota_state import quota_notice

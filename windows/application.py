@@ -399,6 +399,7 @@ class Application:
                         error_code=data.get('quota',{}).get('error_code'),last_success_at=data.get('quota',{}).get('at'),
                         retry_seconds=data.get('quota',{}).get('retry_seconds')) for client,data in snapshot.items()},
                     usage={client:dict(account_identified=(data.get('quota',{}).get('account') or {}).get('evidence')=='account',indexed_records=data.get('local',{}).get('stats',{}).get('event_count'),
+                        plan_present=bool(data.get('quota',{}).get('plan')),credit_balance_read=bool(data.get('quota',{}).get('credit_balance')),
                         indexing=bool(data.get('local',{}).get('indexing')),models=len(data.get('local',{}).get('stats',{}).get('models',[]))) for client,data in snapshot.items()},
                     settings_visible=self.settings_window.isVisible() if self.settings_window else False,
                     window_appearance='light' if self.window_light() else 'dark',

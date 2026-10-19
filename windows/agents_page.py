@@ -144,6 +144,11 @@ class AgentsPage(QWidget):
                     visible.toggled.connect(lambda on,key=identity['id']:self.toggle_account(key,on))
                     form.addRow(identity.get('label') or '显示账户',visible)
             if quota.get('plan'):form.addRow('订阅',QLabel(str(quota['plan'])))
+            balance=quota.get('credit_balance')
+            if balance:
+                from workbuddy_quota import credit_text
+                form.addRow('剩余积分',QLabel(credit_text(balance,'remaining')))
+                form.addRow('总积分',QLabel(credit_text(balance,'total')))
             for wallet in quota.get('wallets',[]):
                 form.addRow('余额',QLabel(f"{wallet.get('currency','')} {wallet['balance']:.2f}"))
             if quota.get('stale'):form.addRow(QLabel('当前显示上次成功读数，正在重试。'))

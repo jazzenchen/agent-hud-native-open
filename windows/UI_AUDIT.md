@@ -388,3 +388,29 @@ macOS (Actions run 39223404514) and stored with provenance. MCP runtime/layout
 drafts, quota/reset-credit reminders, richer statistics and remaining callback
 channels still block the mature-release claim. Performance work and the actual
 UI promo remain required; no upstream review is requested on this checkpoint.
+
+### WorkBuddy official subscription and balance
+
+The earlier local `session_usage.credit_json` integration measures spending; it
+does not answer subscription or remaining-credit questions. The installed
+WorkBuddy 5.5.6 client's own account UI/AuthService identified a separate official
+billing-summary metadata API. Its request needs the desktop product/client
+headers as well as the existing login. A direct incomplete request returned
+HTTP 403/code 10085; the source-compatible request returned code 0 with actual
+subscription and package credit counters. The gateway already de-duplicates
+subscription packages; sum its summary without another local filtering pass.
+
+Independent Windows adapter, no proprietary client implementation redistributed.
+Fixed HTTPS origin, no redirects, in-memory credentials from the existing login
+file, no writes to the session and no refresh/check-in/purchase/model request.
+The current-user identity is checked again after the request. Enterprise scope
+uses its separate route and unlimited is displayed explicitly. Hidden accounts
+also hide the new balance. Actual HUD and Agents settings show subscription and
+remaining/total credits. Fixture-only native light/dark panels were inspected.
+Credential expiry/logout, wrong domain, account switch, invalid counters,
+enterprise routing and unlimited sentinel are covered by adapter tests.
+
+161 regression checks passed at this checkpoint. New source-derived quota pace
+history and pure threshold/reset-credit tracking tests are included; their full
+reminder UI/queue integration remains pending, so those tests are not a claim
+that all original alert functionality has shipped.

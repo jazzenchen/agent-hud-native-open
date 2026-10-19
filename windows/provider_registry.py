@@ -58,7 +58,7 @@ def claude_quota(timeout=25):
             if payload.get('rate_limits_available'):
                 for slot,label in [('five_hour','5-hour'),('seven_day','Weekly'),('seven_day_sonnet','Sonnet Weekly'),('seven_day_opus','Opus Weekly')]:
                     value=limits.get(slot) or {};used=value.get('utilization')
-                    if isinstance(used,(int,float)) and 0<=used<=100:windows.append(dict(label=label,used=used,reset=stamp(value.get('resets_at'))))
+                    if isinstance(used,(int,float)) and 0<=used<=100:windows.append(dict(label=label,used=used,reset=stamp(value.get('resets_at')),duration=18000 if slot=='five_hour' else 604800))
             # Original profile identity is scoped by UUID and organization, never by a cached email alone.
             after=profile_identity()
             if before!=after:raise ValueError('Claude account changed during read')
@@ -100,8 +100,16 @@ def defaults(copilot_consent=lambda:False):
         credentials=discover()
         return fetch('OpenCode',credentials) if any(c.group=='OpenCode' for c in credentials) else pending_quota()
     def work_quota():
+        from workbuddy_quota import fetch as workbuddy_account
+        official=workbuddy_account()
         credentials=discover()
-        return fetch('WorkBuddy',credentials) if any(c.group=='WorkBuddy' for c in credentials) else no_quota()
+        if any(c.group=='WorkBuddy' for c in credentials):
+            try:
+                external=fetch('WorkBuddy',credentials)
+                official['windows']+=external.get('windows',[])
+                official['accounts']+=external.get('accounts') or ([external['account']] if external.get('account') else [])
+            except Exception:pass  # Third-party plan failure cannot erase the official account balance.
+        return official
     quota.update(OpenCode=go_quota,WorkBuddy=work_quota)
     from remaining_quota import copilot_quota,grok_quota,antigravity_quota
     from upstream_runtime import balance
