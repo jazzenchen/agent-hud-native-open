@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sys
 import threading
+from copy import deepcopy
 
 from PySide6.QtCore import QObject, Signal, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
@@ -107,13 +108,16 @@ class Application:
         return menu
 
     def populate_menu(self,menu):
+        for previous in getattr(menu,'_agent_menus',[]):previous.deleteLater()
         menu.clear()
         menu._agent_menus=[]
         for client,data in self.data.items():
             agent=QMenu(client,menu);menu.addMenu(agent)
             menu._agent_menus.append(agent)
             rows=data.get('quota',{}).get('windows',[])
-            if not rows:agent.addAction('额度暂不可用').setEnabled(False)
+            from quota_state import quota_notice
+            state=quota_notice(data.get('quota',{}),client)
+            if state:agent.addAction(state).setEnabled(False)
             for row in rows:
                 label=f"{row['label']}   {row['used']:.0f}%"
                 if row.get('reset'):label+=' · '+reset_label(row['reset'])
@@ -123,6 +127,7 @@ class Application:
         menu.addSeparator()
         menu.addAction('显示灵动岛光晕' if self.settings['glow_hidden'] else '隐藏灵动岛光晕',lambda:self.apply_setting('glow_hidden',not self.settings['glow_hidden']))
         menu.addSeparator();menu.addAction('设置…',self.show_settings)
+        menu.addAction('刷新额度',self.refresh_now)
         menu.addAction('退出',self.app.quit)
         self.theme_menu(menu)
 
@@ -153,6 +158,17 @@ class Application:
         self.tray_menu=self.menu()
         self.tray.setContextMenu(self.tray_menu)
 
+    def commit_settings(self,previous):
+        try:self.save()
+        except OSError as error:
+            self.settings=previous
+            if hasattr(self,'monitor'):self.monitor.enabled=set(previous['enabled_clients'])
+            self.tray.setVisible(previous['show_tray'])
+            self.update(self.data);self.refresh_themes()
+            from quota_state import failure_code
+            message='磁盘空间不足，设置尚未保存。' if failure_code(error)=='disk_full' else '设置无法写入，已恢复上次配置。'
+            raise RuntimeError(message) from None
+
     def set_glass(self,value):
         self.apply_setting('glass',value)
 
@@ -168,6 +184,7 @@ class Application:
 
     def apply_setting(self,key,value,screen=None):
         value=validate(key,value)
+        previous=deepcopy(self.settings)
         if screen is None:
             if key=='client_hooks':
                 from install_hooks import configure
@@ -187,7 +204,7 @@ class Application:
         else:self.settings['placements'].setdefault(screen,{})[key]=value
         self.monitor.enabled=set(self.settings['enabled_clients'])
         self.tray.setVisible(self.settings['show_tray'])
-        self.save();self.update(self.data)
+        self.commit_settings(previous);self.update(self.data)
         for meter in self.windows.values():meter.apply_material()
         self.refresh_themes()
 
@@ -196,8 +213,9 @@ class Application:
 
     def apply_screen_settings(self,values,screen):
         validated={key:validate(key,value) for key,value in values.items()}
+        previous=deepcopy(self.settings)
         self.settings['placements'].setdefault(screen,{}).update(validated)
-        self.save();self.update(self.data);self.refresh_themes()
+        self.commit_settings(previous);self.update(self.data);self.refresh_themes()
 
     def dragged(self,meter,point):
         screen=meter.screen.geometry()
@@ -267,14 +285,22 @@ class Application:
             self._theme_signature=signature;self.refresh_themes()
         # Health metadata only; useful for checking hidden/background operation.
         status=dict(running=sorted(snapshot),mode=self.settings['mode'],separates_agents=self.settings['separates_agents'],
+                    quota={client:dict(state='stale' if data.get('quota',{}).get('stale') else 'available' if data.get('quota',{}).get('windows') else 'unavailable' if data.get('quota',{}).get('error_code') else 'no_percentage' if data.get('quota',{}).get('at') else 'loading',
+                        error_code=data.get('quota',{}).get('error_code'),last_success_at=data.get('quota',{}).get('at'),
+                        retry_seconds=data.get('quota',{}).get('retry_seconds')) for client,data in snapshot.items()},
                     settings_visible=self.settings_window.isVisible() if self.settings_window else False,
                     window_appearance='light' if self.window_light() else 'dark',
                     windows=[dict(agent=m.client,screen=key[0],glass=m.native_glass,visible=m.isVisible(),mode=m.settings['mode'],
                                   appearance='light' if m.light() else 'dark',edge=m.settings['edge'],offset=m.settings['offset'])
                              for key,m in self.windows.items()])
         temporary=DATA/'windows-status.tmp'
-        temporary.write_text(json.dumps(status,ensure_ascii=False),encoding='utf-8')
-        temporary.replace(DATA/'windows-status.json')
+        try:
+            temporary.write_text(json.dumps(status,ensure_ascii=False),encoding='utf-8')
+            temporary.replace(DATA/'windows-status.json')
+            self.health_write_error=None
+        except OSError as error:
+            from quota_state import failure_code
+            self.health_write_error=failure_code(error)
 
     def tray_click(self,reason):
         if reason==QSystemTrayIcon.ActivationReason.Trigger:

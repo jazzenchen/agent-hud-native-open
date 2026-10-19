@@ -123,14 +123,17 @@ class SettingsWindow(QDialog):
         label=QLabel(self.tr(name));label.setStyleSheet('font-size:24px;font-weight:600');self._header_layout.addWidget(label)
         small=QLabel(subtitle);small.setProperty('subtitle',True);small.setWordWrap(True);self._header_layout.addWidget(small)
 
-    def group(self,layout,title):
+    def group(self,layout,title,subtitle=None):
         section=QWidget();column=QVBoxLayout(section);column.setContentsMargins(0,0,0,0);column.setSpacing(12)
         heading=QLabel(self.tr(title));heading.setProperty('sectionTitle',True);column.addWidget(heading)
+        if subtitle:
+            note=QLabel(subtitle);note.setProperty('subtitle',True);note.setWordWrap(True);column.addWidget(note)
         card=CardSurface();column.addWidget(card)
         form=SettingRows(card,{'登录时启动':'登录后，自动开始监测用量。','按 agent 分开':'悬停某个标志只展开该 agent 的面板，不再展开全部 agent 的面板。','按 Alt 才展开':'指针经过时不展开，悬停后按 Alt 打开。',
             '跟随所在屏幕':'每个窗口和菜单栏采用所在屏幕的 HUD 外观，移到另一块屏幕时跟着变。HUD 外观在「显示」中单独设置，与这里的窗口外观独立。',
             '客户端回调':'显示会话的开始与完成状态，用量和额度读取不受影响。',
             '位置':'回到这块屏幕的顶部安全位置。','HUD 样式':'形态、位置、大小、外观和光晕一起回到默认。'})
+        if title=='屏幕':form.subtitles['HUD 形态']={'simple':'贴着屏幕边缘的悬浮面板，没有背景光晕。','logos':'贴着屏幕边缘停靠，向屏幕内展开。','notch':'固定在屏幕顶部的刘海面板。'}[self.value('mode',True)]
         layout.addWidget(section);return form
 
     def value(self,key,screen=False):
@@ -197,7 +200,7 @@ class SettingsWindow(QDialog):
 
     def display(self,layout):
         self.title(layout,'显示','自定义灵动岛光晕与面板内容，更改自动生效。')
-        form=self.group(layout,'屏幕')
+        form=self.group(layout,'屏幕','每块屏幕单独设置。')
         if len(self.manager.app.screens())>1:
             choose=QComboBox()
             for screen in self.manager.app.screens():choose.addItem(screen.name(),screen.name())
@@ -205,6 +208,7 @@ class SettingsWindow(QDialog):
             choose.currentIndexChanged.connect(lambda _:self.change_screen(choose.currentData()))
             form.addRow(self.tr('显示器'),choose)
         self.combo(form,'HUD 形态','mode',[('notch','刘海'),('simple','简约'),('logos','动态')],True,True)
+        hint=QLabel('直接拖动可见的 HUD。拖动刘海会切换为「动态」。');hint.setProperty('subtitle',True);hint.setWordWrap(True);hint.setContentsMargins(0,0,0,12);form.addWidget(hint)
         self.combo(form,'HUD 外观','hud_appearance',[('dark','深色'),('light','浅色'),('system','跟随系统')],True)
         surface=Segmented([('solid','实色'),('clear','Clear'),('regular','Regular'),('material','磨砂')])
         selected=self.value('glass_style',True) if self.value('glass',True) else 'solid'
@@ -261,19 +265,27 @@ class SettingsWindow(QDialog):
         self.selected_screen=name;QTimer.singleShot(0,self.rebuild)
 
     def reset_position(self):
-        self.write('edge','top',True);self.write('offset',.5,True);self.rebuild()
+        self.write_screen_values(dict(edge='top',offset=.5));self.rebuild()
 
     def set_surface(self,value):
-        self.write('glass',value!='solid',True)
-        if value!='solid':self.write('glass_style',value,True)
+        values=dict(glass=value!='solid')
+        if value!='solid':values['glass_style']=value
+        self.write_screen_values(values)
+
+    def write_screen_values(self,values):
+        try:
+            if hasattr(self.manager,'apply_screen_settings'):self.manager.apply_screen_settings(values,self.selected_screen)
+            else:
+                for key,value in values.items():self.write(key,value,True)
+            if self.hud_preview is not None:self.hud_preview.refresh()
+        except RuntimeError as error:
+            QMessageBox.warning(self,DESIGN['app_name'],str(error));QTimer.singleShot(0,self.rebuild)
 
     def reset_style(self):
         keys=('mode','edge','offset','size','ring_width','show_rings','show_numbers','show_logos','logo_size','logo_gap','edge_distance','gap','hud_appearance','glass','glass_style','transparency','separates_agents')
         keys+=tuple(key for key in DEFAULTS if key.startswith(('glow_','grid_')))
         values={key:DEFAULTS[key] for key in keys}
-        if hasattr(self.manager,'apply_screen_settings'):self.manager.apply_screen_settings(values,self.selected_screen)
-        else:
-            for key,value in values.items():self.write(key,value,True)
+        self.write_screen_values(values)
         self.rebuild()
 
     def shared_layout(self):

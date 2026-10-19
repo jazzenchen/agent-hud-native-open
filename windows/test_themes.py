@@ -43,6 +43,16 @@ class ThemeAudit(unittest.TestCase):
             widget.transition.animation.stop();widget.transition.effect.setOpacity(1.)
         return widget.grab().toImage().pixelColor(x,y)
 
+    def test_disk_full_rolls_back_settings_and_keeps_last_saved_config(self):
+        import errno
+        manager,meter=self.manager();manager.save();before=manager.config.read_bytes()
+        with patch.object(Path,'write_text',side_effect=OSError(errno.ENOSPC,'private path')):
+            with self.assertRaisesRegex(RuntimeError,'磁盘空间不足'):
+                manager.apply_screen_settings({'hud_appearance':'light'},meter.screen.name())
+            self.assertEqual(manager.health_write_error,'disk_full')
+        self.assertEqual(manager.config.read_bytes(),before);self.assertFalse(meter.light())
+        self.assertEqual(manager.screen_settings(meter.screen.name())['hud_appearance'],'dark')
+
     def test_ui_click_changes_real_window_menu_statistics_and_saved_value(self):
         manager,meter=self.manager();settings=manager.settings_window
         settings.sidebar.setCurrentRow(0);settings.show();self.app.processEvents()

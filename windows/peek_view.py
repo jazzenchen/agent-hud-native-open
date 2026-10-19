@@ -34,6 +34,8 @@ class AgentPeekView(QWidget):
         running=sum(row.get('state')=='running' for row in self.meter.data.get('local',{}).get('sessions',[]))
         self.running=running
         self.fallback=f'{running} 个运行中' if running else self.meter.client
+        from quota_state import quota_notice
+        self.setToolTip(quota_notice(self.meter.data.get('quota',{}),self.meter.client))
         fm=QFontMetricsF(font(self.font_size));bold=QFontMetricsF(font(self.font_size,True))
         edge=cfg['edge'];self.tuck=round(self.meter.width()/2) if self.line and edge in ('left','right') else 0
         if self.line:

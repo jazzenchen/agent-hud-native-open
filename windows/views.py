@@ -256,7 +256,9 @@ class SimpleMeterView(QWidget):
         self.panel.set_data(self.data)
         self.peek.refresh()
         used = tightest(self.data)
-        self.setToolTip(f'{self.client} · 已用 {used:.0f}%' if used is not None else f'{self.client} · 额度暂不可用')
+        from quota_state import quota_notice
+        quota=self.data.get('quota',{});state=quota_notice(quota,self.client)
+        self.setToolTip(f'{self.client} · 已用 {used:.0f}%'+(' · '+state if state else '') if used is not None else f'{self.client} · {state}')
         self.update()
 
     def reading_frame(self,progress):
@@ -529,13 +531,12 @@ class HoverPanelView(QWidget):
         text(p,QRectF(26,0,w-100,20),self.meter.client,13,'text',True)
         text(p,QRectF(w-64,0,64,20),'%',10,'secondary',align=Qt.AlignmentFlag.AlignRight)
         text(p,QRectF(6,23,w/2,15),'个人账户',10,'secondary')
-        text(p,QRectF(w/2,23,w/2-6,15),'当前账户',10,'tertiary',align=Qt.AlignmentFlag.AlignRight)
+        text(p,QRectF(w/2,23,w/2-6,15),'上次读数 · 重试中' if self.data.get('quota',{}).get('stale') else '当前账户',10,'tertiary',align=Qt.AlignmentFlag.AlignRight)
         y=43
         rows=self.data.get('quota',{}).get('windows',[])[:5]
         if not rows:
-            notice=self.data.get('quota',{}).get('notice','正在读取额度…')
-            if 'expired' in notice:
-                notice='登录已过期，请在 Cursor 重新登录'
+            from quota_state import quota_notice
+            notice=quota_notice(self.data.get('quota',{}),self.meter.client)
             fm=QFontMetricsF(font(11))
             text(p,QRectF(6,y,w-12,28),fm.elidedText(notice,Qt.TextElideMode.ElideRight,w-12),11,'secondary')
             return y+28

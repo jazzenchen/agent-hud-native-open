@@ -16,6 +16,7 @@ import threading
 import time
 import urllib.request
 from datetime import datetime
+from quota_state import QuotaError
 
 HOME = Path.home()
 DATA = Path(os.environ.get('LOCALAPPDATA', HOME / '.local/share')) / 'AgentHUDOpen'
@@ -108,6 +109,8 @@ class CodexLocal:
             except OSError:
                 continue
         result.sort(key=lambda x: (x['state'] != 'running', -x['updated']))
+        active={row[0] for row in rows}
+        self.cache={key:value for key,value in self.cache.items() if key in active}
         return dict(connected=True, sessions=result, notice='Local session records · refreshed every 3s')
 
 
@@ -121,6 +124,27 @@ def codex_executable():
     if candidates:
         return str(max(candidates, key=lambda p: p.stat().st_mtime))
     return None
+
+
+def parse_codex_quota(result):
+    import math
+    buckets=result.get('rateLimitsByLimitId')
+    if not isinstance(buckets,dict) or not buckets:
+        bucket=result.get('rateLimits') or {}
+        buckets={bucket.get('limitId') or 'codex':bucket}
+    windows=[]
+    for key,bucket in buckets.items():
+        if not isinstance(bucket,dict):continue
+        for slot in ('primary','secondary'):
+            value=bucket.get(slot)
+            if not isinstance(value,dict) or value.get('usedPercent') is None:continue
+            try:used=float(value['usedPercent'])
+            except (ValueError,TypeError):continue
+            if not math.isfinite(used) or used<0:continue
+            minutes=value.get('windowDurationMins')
+            label='Weekly' if minutes==10080 else '5-hour' if minutes==300 else f'{minutes or "?"} min'
+            windows.append(dict(label=label if key=='codex' else f'{key} · {label}',used=used,reset=value.get('resetsAt')))
+    return dict(windows=windows,notice='Live account limits' if windows else 'Account reports no quota percentage',at=time.time())
 
 
 def codex_quota(executable=None, timeout=25):
@@ -159,26 +183,15 @@ def codex_quota(executable=None, timeout=25):
             if message is None:
                 raise RuntimeError('Codex quota engine exited')
             if message.get('error'):
-                raise RuntimeError('Codex quota unavailable; check sign-in in Codex')
+                error=message['error'];detail=str(error.get('message','')).lower() if isinstance(error,dict) else ''
+                code='auth' if any(word in detail for word in ('auth','sign in','login','401','403')) else 'throttled' if '429' in detail else 'network'
+                raise QuotaError(code)
             if message.get('id') == 1:
                 send(dict(method='initialized'))
                 send(dict(id=2, method='account/rateLimits/read'))
             elif message.get('id') == 2:
                 result = message.get('result') or {}
-                buckets = result.get('rateLimitsByLimitId')
-                if buckets is None:
-                    bucket = result.get('rateLimits') or {}
-                    buckets = {bucket.get('limitId') or 'codex': bucket}
-                windows = []
-                for key, bucket in buckets.items():
-                    for slot in ('primary', 'secondary'):
-                        value = bucket.get(slot)
-                        if value and value.get('usedPercent') is not None:
-                            minutes = value.get('windowDurationMins')
-                            label = 'Weekly' if minutes == 10080 else ('5-hour' if minutes == 300 else f'{minutes or "?"} min')
-                            windows.append(dict(label=label if key == 'codex' else f'{key} · {label}',
-                                                used=value['usedPercent'], reset=value.get('resetsAt')))
-                return dict(windows=windows, notice='Live account limits' if windows else 'Account reports no quota percentage', at=time.time())
+                return parse_codex_quota(result)
         raise RuntimeError('Codex quota query timed out')
     finally:
         if proc.poll() is None:

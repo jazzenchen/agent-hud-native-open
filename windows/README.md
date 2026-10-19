@@ -123,6 +123,14 @@ fail explicitly if the required constants change upstream. No Swift file changes
 - Credentials remain in memory. No prompts, replies, commands or credentials are
   persisted. SQLite includes committed WAL records and stays read-only.
 - Activity/config/health metadata lives in `%LOCALAPPDATA%/AgentHUDOpen`.
+- Failed quota reads keep the last successful values marked as stale. Transient
+  failures retry after 15/30/60/120/180 seconds; login failures back off for two
+  minutes. The tray's Refresh quota action requests another read. Loading and
+  accounts without percentages are distinct from failures. Health metadata
+  records error categories and last-success times without raw exception text.
+- If configuration cannot be written, the previous configuration is retained
+  and display-setting changes roll back. Full-disk health writes do not interrupt
+  the HUD. See [UI_AUDIT.md](UI_AUDIT.md) for collected failure cases and evidence.
 
 ## Verify / remove
 

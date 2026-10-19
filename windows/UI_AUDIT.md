@@ -34,7 +34,7 @@ without satisfying the user's visual acceptance gate.
 
 ## Verification
 
-42 tests pass locally, including real control clicks through persistence and
+50 tests pass locally, including real control clicks through persistence and
 rendered-pixel checks for window/HUD/panel/peek light/dark changes. Regressions
 cover live menu dispatch, click versus drag, compact hover versus click-to-pin,
 rapid reversal, stable spring integration, reduced motion, and canceled/keyboard
@@ -42,6 +42,25 @@ switch activation. Existing data/presence/hook checks remain in the suite.
 Style reset also persists glass/glow defaults while preserving panel layout.
 A newly started spring no longer inherits time spent on an earlier animation
 while the UI was busy rebuilding; a regression covers that first-frame jump.
+
+## Additional bad cases collected and corrected
+
+| Case | Correction and evidence |
+| --- | --- |
+| One failed quota read erased usable values for three minutes | Keep the last successful reading with an explicit stale label; retry after 15/30/60/120/180 seconds from failure completion, reset on recovery. |
+| Loading, missing percentages, expired login and network failure all looked unavailable | Distinct safe states in meter tooltips, peek tooltips, full panel and tray; manual Refresh quota action. Unknown exception strings are never copied to UI or diagnostics. |
+| Authentication and network failures had the same Codex message | Classify auth/network/throttle responses; timeout, storage and disk-full categories are explicit. |
+| An empty multi-bucket response hid valid legacy quota | Fall back to the legacy bucket; accept real zero, skip null/malformed/nonfinite values. |
+| Full disk broke health writes or left settings changed only in memory | Health-write failures no longer escape the UI callback; configuration writes retain the previous file and restore the previous model on failure. Real ENOSPC injection verifies saved bytes and theme remain unchanged. |
+| Cached session entries and repeated menu opening retained old objects | Evict sessions no longer in the bounded live selection; dispose obsolete provider submenus on rebuild. |
+| Two-step material/position changes briefly rendered an intermediate state | Validate, save and update the selected screen in one batch. |
+| Display settings lacked the source's screen/mode/drag explanations | Restore source section hierarchy and hints without adding platform branding. |
+
+Live local verification after restart reports Codex quota `available`, no error,
+and only the currently open Codex client. The original transient failure had no
+structured diagnostic record, so its historical root cause is not established.
+The new health file records only client/state/error category/last-success time,
+not credentials, conversation text or account identifiers. No model turn is sent.
 
 `native_material_preview.py` renders an explicitly owned sample scene with the
 normal Windows Qt backend. Its bounded screen captures include the compositor,
@@ -52,10 +71,10 @@ and does not alter the resident configuration. On Windows build 22631 at 1×:
   successful Acrylic calls and native rounded regions. Default 22pt sizing is
   separately checked at a 26pt hover-line height.
 - Actual open/close/open reversal settled correctly. The latest sample recorded
-  a median 17.24ms and P95 25.21ms between spring callbacks.
-- Qt paint/readback P95 was 0.585ms for the compact line and 3.135ms for the full
-  panel. Cached soft breathing glow was 0.404ms; grid styles ranged from 2.175ms
-  to 4.977ms in that run. These are CPU/readback costs, **not measured GPU frame
+  a median 15.24ms and P95 25.52ms between spring callbacks.
+- Qt paint/readback P95 was 0.506ms for the compact line and 1.616ms for the full
+  panel. Cached soft breathing glow was 0.216ms; grid styles ranged from 1.175ms
+  to 3.414ms in that run. These are CPU/readback costs, **not measured GPU frame
   time or an assurance of 60fps on every machine**.
 
 Reproduce fixtures (generated files stay ignored under windows/previews):
@@ -73,8 +92,11 @@ If a remote/disconnected desktop returns a blank capture, the probe names it
 `*-unavailable.png` and records `capture_valid: false`; a blank image is never
 accepted as evidence of fidelity. Earlier successful visual observations and
 their limitations must be distinguished from an unavailable later capture.
-The latest probe returned blank captures for both themes. Native Acrylic calls
-and rounded regions succeeded, but latest compositor fidelity is unverified.
+After the desktop became available again, the latest probe captured both themes
+successfully (`capture_valid: true`). The images were visually inspected: the
+compact line and meter change tint and have rounded surfaces. These replace the
+earlier blank captures as current evidence, without establishing pixel identity
+with Apple's compositor or a 90% score.
 
 ## Acceptance gate and remaining gaps
 
