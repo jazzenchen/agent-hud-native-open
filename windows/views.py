@@ -157,6 +157,8 @@ class SimpleMeterView(QWidget):
         self.edge_timer=QTimer(self);self.edge_timer.setInterval(50);self.edge_timer.timeout.connect(self.check_top_edge)
         from glow_view import GlowView
         self.glow=GlowView(self)
+        from bot_player import BotPlayer
+        self.bots=BotPlayer(self)
         self.refresh_size()
 
     def refresh_size(self):
@@ -269,6 +271,7 @@ class SimpleMeterView(QWidget):
         self.refresh_size()
         self.panel.set_data(self.data)
         self.peek.refresh()
+        self.bots.sync()
         used = tightest(self.data)
         from quota_state import quota_notice
         quota=self.data.get('quota',{});state=quota_notice(quota,self.client)
@@ -303,7 +306,7 @@ class SimpleMeterView(QWidget):
             if mode!='notch':p.setPen(QPen(color('outline',painter=p),1));p.drawPath(path)
         for client,cell in self.cells:
             if mode!='simple':
-                if self.settings.get('show_logos',True):artwork().draw(p,client,cell)
+                if self.settings.get('show_logos',True) and not self.bots.draw(p,client,cell):artwork().draw(p,client,cell)
                 continue
             p.save();p.translate(cell.topLeft())
             rect = QRectF(0,0,self.mark_size,self.mark_size)
@@ -315,7 +318,8 @@ class SimpleMeterView(QWidget):
                 p.setPen(QPen(color(level(used),painter=p),width,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap))
                 p.drawArc(ring,90*16,-round(min(100,max(0,used))*3.6*16))
             logo = self.logo_size
-            artwork().draw(p,client,QRectF(rect.center().x()-logo/2,rect.center().y()-logo/2,logo,logo))
+            logo_rect=QRectF(rect.center().x()-logo/2,rect.center().y()-logo/2,logo,logo)
+            if not self.bots.draw(p,client,logo_rect):artwork().draw(p,client,logo_rect)
             label_rect = QRectF(rect.right()+self.label_spacing,0,max(0,cell.width()-rect.right()-self.label_spacing),cell.height())
             label='–' if used is None else f'{used:.0f}%'
             if self.settings.get('show_numbers',True):text(p,label_rect,label,self.figure_size,level(used),align=Qt.AlignmentFlag.AlignRight)
@@ -334,7 +338,12 @@ class SimpleMeterView(QWidget):
 
     def showEvent(self,event):
         super().showEvent(event)
+        self.bots.sync()
         if self.settings.get('immediate_top') and not self.preview:self.edge_timer.start()
+
+    def hideEvent(self,event):
+        self.bots.stop()
+        super().hideEvent(event)
 
     def check_alt(self):
         if self.underMouse() and QApplication.queryKeyboardModifiers() & Qt.KeyboardModifier.AltModifier:
@@ -372,7 +381,7 @@ class SimpleMeterView(QWidget):
         else:self.open_panel()
 
     def maybe_close(self):
-        if not self.underMouse() and not self.peek.underMouse() and not self.panel.underMouse() and not self.panel.pinned:
+        if not self.underMouse() and not self.peek.underMouse() and not self.panel.underMouse():
             self.peek.dismiss();self.panel.collapse()
 
     def mousePressEvent(self, event):

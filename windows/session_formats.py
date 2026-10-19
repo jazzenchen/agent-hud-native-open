@@ -43,7 +43,7 @@ def tencent_tokens(usage):
 
 class Transcript:
     def __init__(self,vendor,sid):
-        self.vendor=vendor;self.sid=sid;self.model='Unknown';self.events={};self.title=vendor+' · '+sid[:8];self.title_priority=0;self.updated=0.;self.state='unknown';self.previous_total=None;self.started=None;self.boundary=None
+        self.vendor=vendor;self.sid=sid;self.model='Unknown';self.events={};self.title=vendor+' · '+sid[:8];self.title_priority=0;self.updated=0.;self.state='unknown';self.previous_total=None;self.started=None;self.boundary=None;self.active_calls={};self.activity=None
     def add(self,key,at,tokens,model=None):
         if at is None or not sum(tokens[k] for k in ('input','output','cache')):return
         self.updated=max(self.updated,at)
@@ -68,10 +68,19 @@ class Transcript:
                 self.sid=payload.get('id') or self.sid;self.started=stamp(payload.get('timestamp')) or at;self.boundary=payload.get('subagent_history_start_ordinal');return
             inherited=(at is not None and self.started is not None and at<self.started) or (isinstance(self.boundary,int) and isinstance(row.get('ordinal'),int) and row['ordinal']<=self.boundary)
             if kind=='turn_context':self.model=payload.get('model') or self.model
+            if kind=='response_item' and self.state=='running' and not inherited and at is not None:
+                call=payload.get('call_id');name=str(payload.get('name') or '').rsplit('.',1)[-1]
+                if pk in ('function_call','custom_tool_call','local_shell_call') and call:
+                    work='command' if pk=='local_shell_call' or name in ('exec','shell','shell_command','exec_command','write_stdin','js','js_reset') or name.startswith('mcp__') else 'edit' if name=='apply_patch' else 'read' if name=='view_image' else 'question' if name=='request_user_input_async' else None
+                    if work:self.active_calls[call]=work
+                    while len(self.active_calls)>256:self.active_calls.pop(next(iter(self.active_calls)))
+                elif pk in ('function_call_output','custom_tool_call_output') and call:self.active_calls.pop(call,None)
+                self.activity=next(reversed(self.active_calls.values()),'thinking');self.updated=max(self.updated,at)
             if kind!='event_msg':return
-            if pk=='task_started':self.state='running'
-            elif pk in ('task_complete','task_completed'):self.state='done'
-            elif pk=='turn_aborted':self.state='stopped'
+            if pk=='task_started' and not inherited:self.state='running';self.active_calls.clear();self.activity='thinking'
+            elif pk in ('task_complete','task_completed') and not inherited:self.state='done';self.active_calls.clear();self.activity=None
+            elif pk=='turn_aborted' and not inherited:self.state='stopped';self.active_calls.clear();self.activity=None
+            if pk in ('task_started','task_complete','task_completed','turn_aborted') and at is not None and not inherited:self.updated=max(self.updated,at)
             if pk!='token_count':return
             info=payload.get('info') or {};total=info.get('total_token_usage');usage=info.get('last_token_usage')
             if total is not None and total==self.previous_total:return
@@ -128,4 +137,4 @@ class Transcript:
     def summary(self):
         totals={key:sum(row.get(key,0) for row in self.events.values()) for key in ('input','output','cache','cache_write','reasoning')}
         return dict(id=self.sid,title=self.title,state=self.state,updated=self.updated,tokens=sum(totals[k] for k in ('input','output','cache')),
-                    model=self.model,priority=max((e.get('priority',0) for e in self.events.values()),default=0),breakdown=dict(input=max(0,totals['input']-totals['cache_write']),cache=totals['cache'],output=max(0,totals['output']-totals['reasoning']),reasoning=totals['reasoning']),**totals)
+                    model=self.model,activity=self.activity if self.state=='running' else None,priority=max((e.get('priority',0) for e in self.events.values()),default=0),breakdown=dict(input=max(0,totals['input']-totals['cache_write']),cache=totals['cache'],output=max(0,totals['output']-totals['reasoning']),reasoning=totals['reasoning']),**totals)

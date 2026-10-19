@@ -66,6 +66,19 @@ class SettingsCases(unittest.TestCase):
         self.assertEqual(saved['provider_order'][:2],['Cursor','Codex'])
         self.assertEqual(set(saved['enabled_clients']),set(manager.settings['enabled_clients']))
 
+    def test_window_order_and_account_visibility_controls_persist(self):
+        from agents_page import WindowOrderList
+        manager=self.manager();manager.windows={};manager.data={'Codex':dict(quota=dict(account=dict(id='account',label='Personal',evidence='account'),windows=[dict(label='5h',used=10),dict(label='Weekly',used=30)]),local={})}
+        window=SettingsWindow(manager);self.addCleanup(window.close);page=window.agent_page
+        row=next(i for i in range(page.list.count()) if page.list.item(i).data(256)['vendor']=='Codex');page.select(row)
+        choices=page.findChildren(WindowOrderList);view=choices[-1]
+        # moveRows follows the same model operation as InternalMove drag, preserving controls.
+        view.model().moveRow(view.rootIndex(),0,view.rootIndex(),2);view.persist()
+        page.toggle_account('account',False)
+        saved=load(json.loads(manager.config.read_text()))
+        self.assertEqual(saved['window_order']['Codex'],['Weekly','5h']);self.assertEqual(saved['hidden_accounts'],['account'])
+        page.toggle_account('account',True);self.assertFalse(manager.settings['hidden_accounts'])
+
     def test_agent_page_has_full_inventory_and_supported_provider_switches(self):
         manager=self.manager();window=SettingsWindow(manager);self.addCleanup(window.close)
         page=window.agent_page;self.assertEqual(page.list.count(),18)

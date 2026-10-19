@@ -265,3 +265,48 @@ sign-ins or launching those clients are not acceptance requirements for this run
 sources remain unchanged. PR visual gate is still **not met**: no numeric >=90%
 claim, upstream push/review request or release is made by this iteration. The local
 changes can be reviewed in Git without implying upstream endorsement.
+
+
+## In progress toward the maturity goal — 2026-10-19
+
+The user has explicitly requested continued work until roughly 90% maturity,
+including the missing small animations. The goal remains active; this is not a
+release or similarity acceptance claim.
+
+- Fix the corrected interaction: clicked details also close on pointer departure,
+  without a second click or focus change. Pointer handoff into details cancels
+  collapse. A regression covers leave/reenter and deactivation separately.
+- Export original BotRenderer/BotMotion frames on macOS without changing Sources.
+  Reference build 39212227517 succeeded. All 18 catalog providers have original
+  forms in dark/light; the pack also preserves the original additional forms.
+  600 clips / 23,184 unique frames are packed into about 22 MB. All 888 generated
+  files pass SHA-256 verification. 120 sampled packed frames preserve exact
+  premultiplied source pixels and their sRGB profiles.
+- Native Windows contact sheets show the original work, thinking, waiting, hover,
+  failed and limited looks. A 48-frame native probe observes 47 frame changes.
+  Actual one-meter paint/readback p95 is 0.573 ms over 60 frames; contact-sheet
+  timing is a separate much heavier 36-character workload. No GPU FPS claim.
+- Keep temporally adjacent frames on adjacent atlas pages: this halves pack size
+  versus hash ordering and avoids scattering a blinking mark across hundreds of
+  pages. Clip/image/page caches are bounded. Reduced motion and hidden windows
+  stop the bot clock; missing assets safely retain the original logo.
+- Decode only actual Codex call IDs/tool categories; do not retain arguments or
+  results. Work endings return to thinking; turn endings clear activity. A bounded
+  tail missing task_started no longer erases a full reader's recent running state;
+  old evidence still expires. No quota percentage invents a failure/limit event.
+- Per-window internal drag and account visibility now persist and affect the
+  displayed HUD, preserving full underlying records. Synchronous persistence
+  avoids a queued write firing after a settings view has closed.
+- Initial stats hierarchy now includes token consumption, an agent breakdown,
+  today/7/30-day usage and a heatmap. Source token colors, default exclusion of
+  cache reads, time ranges, bucket choices and at-least-one-kind semantics are
+  translated. The full original statistics references are building separately;
+  model filtering, session detail layouts, pricing and exact range-edge accounting
+  are not yet accepted. Initial local discovery now includes 31 days and exposes
+  longer ledger history to the statistics view.
+
+116 checks pass. Remaining bot gaps: continuous pointer gaze, all live-status
+variants, sprite-specific Clawd and seamless stochastic looping. Remaining release
+checks include statistics/source comparison, clean installation, attribution and
+third-party binary packaging, and the overall acceptance matrix. Do not treat the
+new test count or the source-pixel samples as an overall 90% similarity score.

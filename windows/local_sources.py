@@ -52,9 +52,9 @@ class LocalSource:
     def __init__(self,vendor,home=None,env=None,ledger=None):
         self.vendor=vendor;self.paths=roots(vendor,home,env);self.files=[];self.cache={};self.last_scan=0.;self.ledger=ledger or UsageLedger(DATA/'usage-ledger.sqlite')
         self.exporter=(os.environ if env is None else env).get('COPILOT_OTEL_FILE_EXPORTER_PATH')
-        self.last_report=None;self.report_at=0.;self.errors=0
+        self.last_report=None;self.history_report=None;self.report_at=0.;self.errors=0
     def scan(self):
-        found=[];cutoff=time.time()-8*86400
+        found=[];cutoff=time.time()-31*86400
         for root in self.paths:
             if not root.exists():continue
             for base,dirs,files in os.walk(root,followlinks=False):
@@ -128,8 +128,8 @@ class LocalSource:
         sessions.sort(key=lambda row:(row['state']!='running',-row['updated']))
         if changed:self.ledger.record(self.vendor,changed)
         if changed or self.last_report is None or time.time()-self.report_at>60:
-            self.last_report=self.ledger.report(self.vendor);self.report_at=time.time()
-        return dict(connected=bool(self.files),sessions=sessions[:64],stats=self.last_report,indexing=incomplete,
+            self.last_report=self.ledger.report(self.vendor);self.history_report=self.ledger.report(self.vendor,hours=24*400);self.report_at=time.time()
+        return dict(connected=bool(self.files),sessions=sessions[:64],stats=self.last_report,history_stats=self.history_report,indexing=incomplete,
                     notice='正在索引本地用量，统计尚不完整' if incomplete else '部分记录无法核对，未计入统计' if self.errors else '本地用量 · 按请求去重')
 
     def database(self,path):

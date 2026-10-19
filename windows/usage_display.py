@@ -19,3 +19,16 @@ def account_label(quota):
     account=quota.get('account') or {}
     if len(quota.get('accounts') or [])>1:return str(len(quota['accounts']))+' 个账户／凭据范围'
     return account.get('label') or '账户身份未确认'
+
+
+def visible_quota(quota,vendor,settings):
+    """Presentation choices never mutate account readings or historical usage."""
+    hidden=set(settings.get('hidden_accounts',[]));fallback=(quota.get('account') or {}).get('id')
+    def visible(row):
+        identity=row.get('account_id') or row.get('account') or fallback
+        return (identity if isinstance(identity,str) else fallback) not in hidden
+    excluded=set(settings.get('hidden_windows',{}).get(vendor,[]));order=settings.get('window_order',{}).get(vendor,[])
+    rows=[row for row in quota.get('windows',[]) if row['label'] not in excluded and visible(row)]
+    rows.sort(key=lambda row:order.index(row['label']) if row['label'] in order else len(order))
+    return {**quota,'windows':rows,'wallets':[row for row in quota.get('wallets',[]) if visible(row)],
+            'hidden':bool(quota.get('windows')) and not rows}

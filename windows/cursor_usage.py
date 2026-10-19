@@ -73,14 +73,14 @@ class CursorSource:
             if digest('Cursor',user)!=identity:raise ValueError('Account switched during read')
             parsed=parse_events(fetch_events(token,user),identity)
             self.ledger.record('Cursor',[event for parser in parsed for event in parser.events.values()])
-            self.cached=dict(sessions=[p.summary() for p in parsed],stats=self.ledger.report('Cursor',account=identity));self.notice=None
+            self.cached=dict(sessions=[p.summary() for p in parsed],stats=self.ledger.report('Cursor',account=identity),history_stats=self.ledger.report('Cursor',hours=24*400,account=identity));self.notice=None
         except Exception:
             self.notice='账户 Token 用量读取失败，稍后重试；额度读数仍有效'
         return result
     def sessions(self):
         local=cursor_sessions()
         if self.cached:
-            local['stats']=self.cached['stats'];known={r['id'] for r in local['sessions']}
+            local['stats']=self.cached['stats'];local['history_stats']=self.cached.get('history_stats') or self.cached['stats'];known={r['id'] for r in local['sessions']}
             local['sessions']+= [r for r in self.cached['sessions'] if r['id'] not in known]
         if self.notice:local['notice']=self.notice
         return local

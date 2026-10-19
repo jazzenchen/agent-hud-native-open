@@ -25,7 +25,7 @@ EN={'通用':'General','智能体':'Agents','显示':'Display','实验选项':'E
     '动效':'Effect','呼吸':'Breathe','流光':'Flow','扫描':'Scan','涟漪':'Ripple','闪烁':'Shimmer','启动':'Boot',
     '光晕亮度':'Brightness','光晕范围':'Glow range','羽化':'Feather','仅向外扩散':'Outward only',
     '工作时周期':'Working period','空闲时周期':'Idle period','呼吸幅度':'Breath depth','点距':'Grid pitch',
-    '密度':'Density','实心':'Solid rows','渐隐':'Fade rows','关闭':'Close'}
+    '密度':'Density','实心':'Solid rows','渐隐':'Fade rows','关闭':'Close','Bot 形象':'Bot logos'}
 
 
 class SettingsWindow(QDialog):
@@ -236,6 +236,9 @@ class SettingsWindow(QDialog):
         for label,key in [('会话列表','panel_sessions'),('额度明细','panel_quota'),('重置倒计时','reset_countdown'),('Token 消耗','panel_tokens')]:self.check(form,label,key,True)
         self.number(form,'面板宽度','panel_width',480,720,10,suffix=' pt')
         self.number(form,'会话上限','session_limit',1,20,1)
+        form=self.group(layout,'Logo')
+        self.check(form,'Bot 形象','bot_logos')
+        note=QLabel('工作时保持 Bot；空闲时偶尔变成 Bot 活动几秒，再回到 Logo。悬停或等待批准时也显示 Bot。');note.setProperty('subtitle',True);note.setWordWrap(True);form.addRow(note)
         form=self.group(layout,'悬停交互')
         self.check(form,'按 Alt 才展开','requires_alt');self.check(form,'鼠标触顶立即展开','immediate_top')
         self.number(form,'展开延迟','hover_delay',0,1500,50,False,' ms')
@@ -256,7 +259,7 @@ class SettingsWindow(QDialog):
     def experimental(self,layout):
         self.title(layout,'实验选项','仍在验证的功能，以后可能会变。')
         form=self.group(layout,'Agent 工具')
-        note=QLabel('MCP 布局草稿、权限审批和 Bot 动画暂未开放。')
+        note=QLabel('MCP 布局草稿和权限审批暂未开放。')
         note.setWordWrap(True);form.addRow(note)
 
     def change_screen(self,name):

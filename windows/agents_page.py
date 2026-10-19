@@ -15,6 +15,33 @@ class ProviderList(QListWidget):
         super().dropEvent(event)
 
 
+class WindowOrderList(QListWidget):
+    """Only the row moves; the switch still has native click/keyboard behavior."""
+    def __init__(self,page,vendor,windows):
+        super().__init__();self.page=page;self.vendor=vendor
+        self.setObjectName('windowOrder_'+vendor);self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction);self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setStyleSheet('QListWidget{background:transparent;border:0;padding:0} QListWidget::item{padding:0;background:transparent;border-radius:0} QListWidget::item:selected{background:transparent}')
+        order=page.manager.settings.get('window_order',{}).get(vendor,[])
+        for window in sorted(windows,key=lambda row:order.index(row['label']) if row['label'] in order else len(order)):
+            label=window['label'];item=QListWidgetItem();item.setData(Qt.ItemDataRole.UserRole,label);item.setSizeHint(QSize(200,46));self.addItem(item)
+            widget=QWidget();layout=QHBoxLayout(widget);layout.setContentsMargins(0,0,0,0);layout.setSpacing(12)
+            grip=QLabel('≡');grip.setProperty('subtitle',True);grip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            name=QLabel(label);name.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents);layout.addWidget(grip);layout.addWidget(name,1)
+            switch=Switch();switch.setAccessibleName(vendor+' '+label);switch.setChecked(label not in page.manager.settings.get('hidden_windows',{}).get(vendor,[]))
+            switch.toggled.connect(lambda on,label=label:page.toggle_window(vendor,label,on));layout.addWidget(switch);self.setItemWidget(item,widget)
+        self.setFixedHeight(max(1,len(windows))*46)
+        self.model().rowsMoved.connect(lambda *args:self.persist())
+    def startDrag(self,actions):
+        self.page.dragging=True
+        try:super().startDrag(actions)
+        finally:self.page.dragging=False
+    def persist(self):
+        values={key:list(labels) for key,labels in self.page.manager.settings.get('window_order',{}).items()}
+        values[self.vendor]=[self.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.count())]
+        self.page.settings.write('window_order',values)
+
+
 class ProviderDelegate(QStyledItemDelegate):
     def paint(self,p,option,index):
         row=index.data(Qt.ItemDataRole.UserRole);t=tokens(is_light(self.parent()))
@@ -63,6 +90,7 @@ class AgentsPage(QWidget):
     def refresh_accounts(self):
         self.manager.refresh_now();self.refresh(force=True)
     def refresh(self,force=False):
+        if getattr(self,'dragging',False):return
         if not getattr(self.manager,'preview',False):
             from runtime import running_clients
             active=running_clients()
@@ -106,6 +134,10 @@ class AgentsPage(QWidget):
                 evidence='服务方确认' if identity.get('evidence')=='account' else '本地资料' if identity.get('evidence')=='profile' else '凭据独立范围，身份未确认'
                 label=QLabel(evidence if len(identities)==1 else identity.get('label','')+' · '+evidence);label.setWordWrap(True)
                 form.addRow('识别依据',label) if len(identities)==1 else form.addRow(label)
+                if identity.get('id'):
+                    visible=Switch();visible.setAccessibleName('显示账户 '+identity.get('label',vendor));visible.setChecked(identity['id'] not in self.manager.settings.get('hidden_accounts',[]))
+                    visible.toggled.connect(lambda on,key=identity['id']:self.toggle_account(key,on))
+                    form.addRow(identity.get('label') or '显示账户',visible)
             if quota.get('plan'):form.addRow('订阅',QLabel(str(quota['plan'])))
             for wallet in quota.get('wallets',[]):
                 form.addRow('余额',QLabel(f"{wallet.get('currency','')} {wallet['balance']:.2f}"))
@@ -124,10 +156,7 @@ class AgentsPage(QWidget):
                 consent=Switch();consent.setObjectName('read_copilot_quota');consent.setChecked(self.manager.settings.get('read_copilot_quota',False))
                 consent.toggled.connect(lambda on:self.copilot_consent(consent,on));form.addRow('读取 GitHub Copilot 额度',consent)
             if quota.get('windows'):
-                for window in quota['windows']:
-                    choice=Switch();choice.setChecked(window['label'] not in self.manager.settings.get('hidden_windows',{}).get(vendor,[]))
-                    choice.setAccessibleName(vendor+' '+window['label']);choice.toggled.connect(lambda on,label=window['label']:self.toggle_window(vendor,label,on))
-                    form.addRow(window['label'],choice)
+                form.addRow(WindowOrderList(self,vendor,quota['windows']))
             else:
                 from quota_state import quota_notice
                 note=QLabel(quota_notice(quota,vendor) if row['running'] else '打开客户端后，自动读取当前账户和额度。');note.setProperty('subtitle',True);note.setWordWrap(True);form.addRow(note)
@@ -151,3 +180,6 @@ class AgentsPage(QWidget):
     def toggle_window(self,vendor,label,on):
         values={key:list(labels) for key,labels in self.manager.settings.get('hidden_windows',{}).items()};hidden=set(values.get(vendor,[]))
         hidden.discard(label) if on else hidden.add(label);values[vendor]=sorted(hidden);self.settings.write('hidden_windows',values)
+    def toggle_account(self,key,on):
+        values=set(self.manager.settings.get('hidden_accounts',[]));values.discard(key) if on else values.add(key)
+        self.settings.write('hidden_accounts',sorted(values))

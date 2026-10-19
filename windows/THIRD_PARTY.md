@@ -24,3 +24,10 @@ original formats, retaining the CodexBar/Tokscale notices in the repository's
 THIRD_PARTY_NOTICES.txt. The original Apache-2.0 license and all attribution must
 accompany source redistribution. No endorsement or joint-development agreement
 is claimed. A bundled binary release needs a separate dependency-license review.
+
+
+`windows/assets/bots` contains generated output of the repository's unchanged
+Apache-2.0 BotRenderer/BotSpec/BotForm/BotMotion, using the original bundled agent
+artwork. Original artwork notices remain applicable. The original drawn Claude
+fallback is used here; this pack does not add or redistribute Clawd game sprite
+sheets. `provenance.json` records the original revision and every generated file.

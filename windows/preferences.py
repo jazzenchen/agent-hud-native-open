@@ -7,8 +7,8 @@ DEFAULTS=dict(mode='simple',glass=True,separates_agents=True,size=DESIGN['simple
     ring_width=DESIGN['ring_width'],edge='top',offset=.5,placements={},
     show_rings=True,show_numbers=True,show_logos=True,logo_size=20,logo_gap=.4,edge_distance=2,
     gap=.45,hud_appearance='dark',glass_style='material',transparency=50,glass_transparency=50,solid_transparency=0,
-    screen_versions={},hidden_windows={},
-    appearance='system',match_screen=False,language='zh',launch_at_login=False,client_hooks=True,
+    screen_versions={},hidden_windows={},window_order={},hidden_accounts=[],
+    appearance='system',match_screen=False,language='zh',launch_at_login=False,client_hooks=True,bot_logos=True,
     enabled_clients=[name for name in VENDORS if name in SUPPORTED],provider_order=list(VENDORS),adapter_schema=2,read_copilot_quota=False,show_tray=True,hover_delay=400,collapse_delay=200,
     requires_alt=False,immediate_top=False,panel_quota=True,panel_tokens=True,
     panel_sessions=True,reset_countdown=True,panel_width=540,session_limit=5,
@@ -46,6 +46,12 @@ def validate(key,value):
     if key=='hidden_windows':
         if not isinstance(value,dict):raise ValueError('Window choices must be a map')
         return {client:[label for label in labels if isinstance(label,str)] for client,labels in value.items() if client in SUPPORTED and isinstance(labels,list)}
+    if key=='window_order':
+        if not isinstance(value,dict):raise ValueError('Window order must be a map')
+        return {client:list(dict.fromkeys(label for label in labels if isinstance(label,str))) for client,labels in value.items() if client in SUPPORTED and isinstance(labels,list)}
+    if key=='hidden_accounts':
+        if not isinstance(value,list):raise ValueError('Account choices must be a list')
+        return list(dict.fromkeys(key for key in value if isinstance(key,str)))
     return value
 
 

@@ -9,7 +9,7 @@ from copy import deepcopy
 
 from PySide6.QtCore import QObject, Signal, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QDialog, QVBoxLayout, QLabel, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QDialog, QVBoxLayout, QLabel, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView,QScrollArea,QWidget
 
 from providers import DATA
 from runtime import Monitor
@@ -31,10 +31,9 @@ class UsageWindow(QDialog):
         super().__init__()
         self.client=client;self.usage_signature=None
         self.setWindowTitle(client+' · 用量统计')
-        self.resize(680,460)
+        self.resize(900,740)
         self.apply_theme(light)
         layout=QVBoxLayout(self)
-        layout.addWidget(QLabel(client))
         tabs=QTabWidget()
         sessions=data.get('local',{}).get('sessions',[])
         stats=data.get('local',{}).get('stats',{})
@@ -48,7 +47,12 @@ class UsageWindow(QDialog):
         for i,row in enumerate(models):
             for j,value in enumerate([row['model']]+[compact(row.get(k)) for k in ('fresh_input','cache','cache_write','visible_output','reasoning','total')]):model_table.setItem(i,j,QTableWidgetItem(value))
         for column in range(1,7):model_table.setColumnWidth(column,75)
-        token_layout.addWidget(model_table);tabs.addTab(token_page,'Tokens')
+        from stats_widgets import TokenDashboard
+        token_content=QWidget();content_layout=QVBoxLayout(token_content);content_layout.setContentsMargins(6,0,6,0);content_layout.setSpacing(12)
+        self.dashboard=TokenDashboard(client);content_layout.addWidget(self.dashboard)
+        model_table.setMinimumHeight(170);model_table.setMaximumHeight(230);content_layout.addWidget(model_table)
+        scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QScrollArea.Shape.NoFrame);scroll.setWidget(token_content)
+        token_layout.addWidget(scroll);tabs.addTab(token_page,'Tokens')
         for label in ('Sessions',):
             table=QTableWidget(len(sessions),3);table.setObjectName('usageSessions')
             table.setHorizontalHeaderLabels(['会话','状态','已索引 Tokens'])
@@ -73,7 +77,8 @@ class UsageWindow(QDialog):
         from usage_display import account_label
         total=stats.get('totals',{}).get('total')
         scope=account_label(data.get('quota',{})) if stats.get('scope')=='account' else '本地用量，未推断历史账户归属'
-        self.summary.setText('最近 7 天 · '+compact(total)+' Tokens · '+str(stats.get('event_count',0))+' 条用量记录 · '+scope)
+        self.summary.setText(str(stats.get('event_count',0))+' 条用量记录 · '+scope)
+        self.dashboard.set_data(local.get('history_stats') or stats)
         models=stats.get('models',[])
         values=[[r['model']]+[compact(r.get(k)) for k in ('fresh_input','cache','cache_write','visible_output','reasoning','total')] for r in models]
         session_values=[[r['title'],{'running':'运行中','done':'已结束','stopped':'已停止','error':'异常'}.get(r.get('state'),'最后记录'),compact(r.get('tokens'))] for r in sessions]
@@ -89,10 +94,12 @@ class UsageWindow(QDialog):
 
     def apply_theme(self,light):
         apply_widget_theme(self,light);t=tokens(light)
-        self.setStyleSheet(f"QDialog,QTabWidget::pane{{background:{t['bg']};color:{t['ink']}}} "
+        self.setStyleSheet(f"QWidget,QDialog,QTabWidget::pane{{background:{t['bg']};color:{t['ink']}}} "
+            "QTabWidget::tab-bar{alignment:center} "
             f"QLabel,QTabBar::tab{{color:{t['ink']};padding:8px;font-family:'Microsoft YaHei UI'}} "
             f"QTabBar::tab{{background:{t['card']};border-radius:7px;margin:3px}} QTabBar::tab:selected{{background:{t['segment']}}} "
             f"QTableWidget{{background:{t['card']};color:{t['ink']};border:1px solid {t['border']};border-radius:10px;gridline-color:{t['divider']}}} "
+            f"QScrollArea{{border:0}} QComboBox{{background:{t['card']};color:{t['ink']};padding:4px;border:1px solid {t['border']};border-radius:5px}} "
             f"QHeaderView::section{{background:{t['bg']};color:{t['muted']};border:0;padding:10px}}")
 
     def showEvent(self,event):
@@ -335,9 +342,8 @@ class Application:
                     self.windows[key]=meter
                 meter=self.windows[key]
                 meter.settings=self.screen_settings(screen.name())
-                visible={c:{**snapshot[c],'quota':{**snapshot[c].get('quota',{}),'windows':[row for row in snapshot[c].get('quota',{}).get('windows',[]) if row['label'] not in self.settings.get('hidden_windows',{}).get(c,[])]}} for c in clients}
-                for client,data in visible.items():
-                    if snapshot[client].get('quota',{}).get('windows') and not data['quota']['windows']:data['quota']['hidden']=True
+                from usage_display import visible_quota
+                visible={c:{**snapshot[c],'quota':visible_quota(snapshot[c].get('quota',{}),c,self.settings)} for c in clients}
                 meter.set_group_data(visible);meters.append(meter)
             cfg=self.screen_settings(screen.name())
             edge=cfg['edge'] if cfg['mode']!='notch' else 'top';horizontal=edge in ('top','bottom')

@@ -11,6 +11,18 @@ LOCAL_VENDORS=('Claude','Codex','CodeBuddy','WorkBuddy','OpenClaw','Pi','Qwen','
 QUOTA_VENDORS={'Codex','Cursor','Claude','Kimi','OpenCode','GLM','WorkBuddy','DeepSeek','Antigravity','Grok','GitHub Copilot'}
 
 
+def merge_codex_metadata(row,metadata,now=None):
+    now=time.time() if now is None else now
+    # A bounded tail can miss task_started in a long active turn. Its lack of a
+    # marker must not erase stronger lifecycle evidence from the full reader.
+    state=metadata.get('state')
+    if state!='unknown' or row.get('state') not in ('running','done','stopped','error') or now-metadata.get('updated',0)>1800:
+        if state is not None:row['state']=state
+    row.update({key:metadata[key] for key in ('title','cwd','updated') if key in metadata})
+    if row.get('state')!='running':row['activity']=None
+    return row
+
+
 def claude_quota(timeout=25):
     def profile_identity():
         try:
@@ -72,7 +84,7 @@ def defaults(copilot_consent=lambda:False):
             recent={row['id']:row for row in codex_titles.sessions()['sessions']}
             for row in result['sessions']:
                 if row['id'] in recent:
-                    metadata=recent.pop(row['id']);row.update({key:metadata[key] for key in ('title','cwd','state','updated') if key in metadata})
+                    merge_codex_metadata(row,recent.pop(row['id']))
             result['sessions'].extend(recent.values())
             result['sessions'].sort(key=lambda row:(row.get('state')!='running',-row.get('updated',0)))
         except Exception:pass

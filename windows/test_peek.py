@@ -54,6 +54,19 @@ class PeekAudit(unittest.TestCase):
             self.app.sendEvent(meter.panel,QEvent(QEvent.Type.FocusOut))
             self.assertTrue(meter.panel.isVisible())
 
+    def test_clicked_detail_closes_when_pointer_leaves_without_another_click(self):
+        meter=self.meter()
+        with patch('motion.animations_enabled',return_value=False):
+            meter.panel.pinned=True;meter.open_panel()
+            self.assertTrue(meter.panel.isVisible())
+            with patch.object(meter,'underMouse',return_value=False),patch.object(meter.peek,'underMouse',return_value=False),patch.object(meter.panel,'underMouse',return_value=False):
+                meter.maybe_close()
+            self.assertFalse(meter.panel.isVisible());self.assertFalse(meter.panel.pinned)
+            meter.panel.pinned=True;meter.open_panel()
+            with patch.object(meter,'underMouse',return_value=False),patch.object(meter.peek,'underMouse',return_value=False),patch.object(meter.panel,'underMouse',return_value=True):
+                meter.maybe_close()
+            self.assertTrue(meter.panel.isVisible())
+
     def test_dynamic_mode_uses_the_source_compact_bubble(self):
         meter=self.meter();meter.settings['mode']='logos';meter.refresh_size()
         with patch('motion.animations_enabled',return_value=False):meter.hover()

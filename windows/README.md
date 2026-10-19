@@ -33,8 +33,8 @@ appearance setting change is needed. Open **Settings** from the tray, HUD right
 click menu, or the panel's gear. Launching the Desktop shortcut again raises the
 settings window of the existing instance. Hover opens the selected agent's
 compact one-line quota peek in Simple mode (26pt at the default size), or a small
-bubble in Dynamic mode. Click opens that agent's full 440pt panel. It closes when another window
-takes focus, including settings. Leaving dismisses a hover peek. With Separate agents off, hover opens the shared
+bubble in Dynamic mode. Click opens that agent's full 440pt panel. It closes after the pointer leaves the HUD/peek/details region, without another
+click. It also closes when another window takes focus, including settings. With Separate agents off, hover opens the shared
 panel instead. Separation scopes the hover; the agents retain one source-shaped
 strip rather than being split into separate capsules.
 
@@ -88,8 +88,8 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
   Apple fonts. The Windows notch uses the source's fallback dimensions instead
   of claiming a physical camera notch exists.
 
-Remaining gaps are explicit in Experimental: animated Bot direction, the MCP
-draft/save host and approval bridge are not implemented. Historical statistics
+Bot figures now play original-source frames in both HUD modes and themes.
+The MCP draft/save host and approval bridge remain unimplemented. Historical statistics
 now use request-keyed SQLite events, model totals and 15-minute buckets;
 this still does not reproduce the full Mac statistics interface. English currently covers settings labels; notices and some
 panel text remain Chinese. WorkBuddy credits/context
@@ -199,3 +199,26 @@ Windows paths and source-format fixtures have local regression coverage. Only
 Codex's current signed-in account and real Token indexing have been verified
 on this machine. At the user's direction, the other providers are accepted at
 code/fixture level: no login or real-client launch was performed for them.
+
+
+## Original Bot animation source
+
+The bundled animation atlases are rendered by the unchanged original
+`BotMotion`, `BotRenderer`, `BotSpec` and `BotForm` at upstream revision
+`bf19ac98da11fe0f5967f5a124d42f0da4bf2cf9`. Windows plays their 24 fps frames,
+pose and opacity; it does not redraw lookalike characters. `WindowsBotExportTests.swift`
+is the reproducible export harness for macOS, and `pack_bot_assets.py` packs its
+output into lossless, sRGB-preserving PNG atlases with temporal locality.
+`assets/bots/provenance.json` records every output hash. The pack is about 22 MB,
+loads only selected clips, and uses bounded image/page caches.
+
+The setting **Display → Logos → Bot logos** follows the original default. Real
+session states select the animation: work/thinking/tools, waits, hover, or an idle
+visit. A full percentage does not invent a limit-hit event. Source fallback Clawd
+is used instead of copying new game sprite assets. Continuous pointer-directed
+gaze and every original sprite/event variant remain acceptance gaps.
+
+Clicking details does not make them permanent: leaving HUD/peek/details starts
+the configured collapse delay; entering details cancels it. Window deactivation
+also dismisses details. Account visibility and per-window drag order persist,
+change only quota/wallet presentation, and never erase recorded usage.
