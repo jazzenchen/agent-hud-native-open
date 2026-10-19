@@ -5,7 +5,7 @@ This is a release gate, **not a measured 90% similarity score**. A detected clie
 is not proof that its quota, approvals, completion and navigation work.
 
 Latest checkpoint: account sections and DeepSeek API balances now render from
-their separate observations. The local suite has 234 passing tests; 72 original
+their separate observations. The local suite has 244 passing tests; 72 original
 compiled Swift balance-spend cases also match. The native API surface matrix
 passed 24 mode/edge/theme cases at 150% scaling. These are scoped checks, not a
 whole-product similarity score. Remaining release gates below still apply.
@@ -177,3 +177,24 @@ Still open: full statistics-window API cards, external account/pool consumer
 bindings, earned-reset rows, complete account-source assessment/accessibility,
 chart inspection/transitions and exact token-chart time bins. No overall 90%
 claim or stable binary release follows from these checks.
+
+MCP wire checkpoint: `mcp_protocol.py` translates the unchanged original
+`MCPServer`, `MCPProtocol` and line-buffer behavior, using the exported five tool
+definitions directly. All 63 compiled-original wire cases match, including the
+source JSON parser's first-duplicate-key and whole-number-ID rules, handshake
+and stateless revisions, batches, subscriptions, notifications and app errors.
+Only the platform sentence in server instructions changes from Mac to Windows;
+tool schemas do not change. Export provenance is committed beside the fixture.
+
+The internal stdio runner and current-user `QLocalServer` channel are tested in
+separate processes. Checks include an interactive response before input EOF,
+Unicode, a 2 MiB reply draining before disconnect, request/reply bounds, disabled
+tools not invoking their handler and an unresponsive app respecting its deadline.
+The Windows adaptation uses one bounded length-prefixed frame in each direction.
+It never starts the resident application or any agent.
+
+This is transport groundwork, **not installed-client or resident MCP support**.
+The ordinary HUD entry point and Experimental page do not enable it yet. The
+resident GUI handler, whole-proposal validation, style/app drafts, real hold
+scheduling, masked offscreen pictures and client setup remain to be connected
+before enabling the feature. No MCP configuration was written to any client.
