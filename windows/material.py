@@ -41,7 +41,9 @@ def rounded_native_window(widget,radius):
     try:
         handle=int(widget.winId());dwm=ctypes.WinDLL('dwmapi');user=ctypes.WinDLL('user32');gdi=ctypes.WinDLL('gdi32')
         dwm.DwmSetWindowAttribute.argtypes=[wintypes.HWND,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD]
-        border=wintypes.DWORD(0xfffffffe);corners=wintypes.DWORD(2)
+        # The custom region owns the silhouette. A second DWM corner treatment
+        # can round an already rounded layered surface with a different radius.
+        border=wintypes.DWORD(0xfffffffe);corners=wintypes.DWORD(1)
         dwm.DwmSetWindowAttribute(handle,34,ctypes.byref(border),ctypes.sizeof(border))
         dwm.DwmSetWindowAttribute(handle,33,ctypes.byref(corners),ctypes.sizeof(corners))
         user.GetClientRect.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.RECT)]
@@ -51,6 +53,8 @@ def rounded_native_window(widget,radius):
         rect=wintypes.RECT()
         if user.GetClientRect(handle,ctypes.byref(rect)):
             diameter=max(1,round(2*radius*widget.devicePixelRatioF()))
-            region=gdi.CreateRoundRectRgn(0,0,rect.right+1,rect.bottom+1,diameter,diameter)
+            # GetClientRect and CreateRoundRectRgn both use exclusive right and
+            # bottom bounds; adding one leaks the blur at the far two corners.
+            region=gdi.CreateRoundRectRgn(0,0,rect.right,rect.bottom,diameter,diameter)
             if region and not user.SetWindowRgn(handle,region,True):gdi.DeleteObject(region)
     except (OSError,AttributeError):pass

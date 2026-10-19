@@ -121,7 +121,7 @@ class Application:
         self.tray.setContextMenu(self.tray_menu)
         self.tray.activated.connect(self.tray_click)
         self.tray.show()
-        self.monitor=Monitor(self.bridge.snapshot.emit)
+        self.monitor=Monitor(self.bridge.snapshot.emit,copilot_consent=lambda:self.settings.get('read_copilot_quota',False))
         self.monitor.enabled=set(self.settings['enabled_clients'])
         self.tray.setVisible(self.settings['show_tray'])
         threading.Thread(target=self.monitor.run,daemon=True).start()
@@ -243,6 +243,11 @@ class Application:
                 self.apply_screen_settings({key:value},screen);return
             self.settings['placements'].setdefault(screen,{})[key]=value
         self.monitor.enabled=set(self.settings['enabled_clients'])
+        if key=='read_copilot_quota':
+            with self.monitor.lock:
+                self.monitor.epochs['GitHub Copilot']=self.monitor.epochs.get('GitHub Copilot',0)+1
+                self.monitor.quotas.pop('GitHub Copilot',None)
+                self.monitor.last_query.pop('GitHub Copilot',None)
         self.tray.setVisible(self.settings['show_tray'])
         self.commit_settings(previous);self.update(self.data)
         for meter in self.windows.values():meter.apply_material()
@@ -305,6 +310,7 @@ class Application:
 
     def update(self,snapshot):
         snapshot={k:v for k,v in snapshot.items() if k in self.settings['enabled_clients']}
+        snapshot={name:snapshot[name] for name in self.settings.get('provider_order',list(snapshot)) if name in snapshot}
         self.data=snapshot
         for dialog in self.dialogs:
             if isinstance(dialog,UsageWindow) and dialog.client in snapshot:dialog.sync(snapshot[dialog.client])

@@ -37,7 +37,7 @@ def classify_clients(processes, visible_pids):
                 if name in tuple(command+'.exe' for command in commands)+tuple(commands) and name not in desktop:found.add(vendor)
                 if name in ('node.exe','node','bun.exe','bun'):
                     script=next((arg.replace('\\','/') for arg in args[1:] if arg.endswith(('.js','.mjs','.cjs'))),'')
-                    markers={'Claude':'@anthropic-ai/claude-code/','CodeBuddy':'@tencent-ai/codebuddy-code/','WorkBuddy':'@tencent-ai/workbuddy/','OpenClaw':'/openclaw/','Pi':'@mariozechner/pi-coding-agent/','Qwen':'@qwen-code/qwen-code/','Kimi':'/kimi-cli/','OpenCode':'/opencode-ai/'}
+                    markers={'Claude':'@anthropic-ai/claude-code/','CodeBuddy':'@tencent-ai/codebuddy-code/','WorkBuddy':'@tencent-ai/workbuddy/','OpenClaw':'/openclaw/','Pi':'@mariozechner/pi-coding-agent/','Qwen':'@qwen-code/qwen-code/','Kimi':'/kimi-cli/','OpenCode':'/opencode-ai/','DeepSeek':'@deepseek-ai/dsh/','GitHub Copilot':'@github/copilot/','Grok':'@xai/grok/'}
                     if markers.get(vendor,'\0') in script:found.add(vendor)
     if found & {'Claude','Pi','OpenCode','WorkBuddy'}:
         try:
@@ -80,11 +80,11 @@ def running_clients():
 
 class Monitor:
     """Never reads an inactive client's records or launches its quota engine."""
-    def __init__(self, emit, presence=running_clients, local=None, quota=None):
+    def __init__(self, emit, presence=running_clients, local=None, quota=None,copilot_consent=lambda:False):
         self.emit, self.presence = emit, presence
         if local is None:
             from provider_registry import defaults
-            local,default_quota=defaults()
+            local,default_quota=defaults(copilot_consent)
         else:default_quota={}
         self.readers = local
         self.quota_readers = quota if quota is not None else default_quota

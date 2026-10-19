@@ -6,7 +6,7 @@ The Windows layer supplies native glass, font substitution, windows and painting
 from datetime import datetime
 import math
 
-from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QTimer, QVariantAnimation, QEasingCurve
+from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QTimer, QVariantAnimation, QEasingCurve, QEvent
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter, QPainterPath, QPen, QPixmap, QRegion,QCursor
 from PySide6.QtWidgets import QWidget, QMenu, QApplication
 
@@ -14,7 +14,7 @@ from material import frosted_backdrop,rounded_native_window
 from source_design import DESIGN
 from look_logic import stand_in,dimming
 from theme import resolves_light,apply_widget_theme
-from motion import SpringDriver,animations_enabled
+from motion import SpringDriver,SourceCurveDriver,animations_enabled
 from peek_view import AgentPeekView
 
 COLORS = DESIGN['colors']
@@ -434,7 +434,7 @@ class HoverPanelView(QWidget):
         self.native_glass = False
         self.hits = []
         self.scroll_offset=0.
-        self.animation = SpringDriver(self,frequency=1520/DESIGN['animation_ms'])
+        self.animation = SourceCurveDriver(self,duration=DESIGN['animation_ms']/1000)
         self.animation.valueChanged.connect(self.animate)
         self.animation.finished.connect(self.finished)
         self.setFixedSize(int(DESIGN['agent_width']),300)
@@ -484,6 +484,22 @@ class HoverPanelView(QWidget):
         self.reposition()
         self.apply_material()
         self.animation.retarget(1.)
+        if self.pinned:
+            self.raise_()
+            self.activateWindow()
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
+
+    def event(self,event):
+        # A click keeps the panel open while interacting with it, not forever.
+        # WindowDeactivate also covers switching to settings or another app;
+        # FocusOut alone would fire when moving between controls in this panel.
+        if event.type()==QEvent.Type.WindowDeactivate and self.isVisible():
+            self.pinned=False
+            self.meter.enter_timer.stop()
+            self.meter.leave_timer.stop()
+            self.meter.peek.dismiss(immediate=True)
+            self.collapse()
+        return super().event(event)
 
     def apply_material(self):
         apply_widget_theme(self,self.meter.light())
@@ -494,6 +510,7 @@ class HoverPanelView(QWidget):
         self.update()
 
     def collapse(self):
+        self.pinned=False
         self.animation.retarget(0.)
 
     def animate(self,value):

@@ -57,12 +57,21 @@ class SettingsCases(unittest.TestCase):
         manager.change_screen_layout(screen,'revert');self.assertEqual(manager.screen_settings(screen)['panel_width'],680)
         self.assertFalse(manager.screen_settings(screen)['panel_sessions'])
 
-    def test_agent_page_has_full_inventory_and_unimplemented_providers_get_no_fake_switch(self):
+    def test_provider_reorder_persists_without_enabling_closed_clients(self):
+        manager=self.manager();manager.windows={};manager.data={'Codex':dict(quota={},local={}), 'Cursor':dict(quota={},local={})}
+        window=SettingsWindow(manager);self.addCleanup(window.close);page=window.agent_page
+        first=page.list.takeItem(0);page.list.insertItem(1,first)
+        with patch('settings_window.QMessageBox.warning',side_effect=lambda *args:(_ for _ in ()).throw(RuntimeError(args[-1]))):page.persist_order()
+        saved=load(json.loads(manager.config.read_text()))
+        self.assertEqual(saved['provider_order'][:2],['Cursor','Codex'])
+        self.assertEqual(set(saved['enabled_clients']),set(manager.settings['enabled_clients']))
+
+    def test_agent_page_has_full_inventory_and_supported_provider_switches(self):
         manager=self.manager();window=SettingsWindow(manager);self.addCleanup(window.close)
         page=window.agent_page;self.assertEqual(page.list.count(),18)
         index=next(i for i in range(page.list.count()) if page.list.item(i).data(256)['vendor']=='Antigravity')
         page.list.setCurrentRow(index);self.app.processEvents()
-        self.assertIsNone(page.findChild(QCheckBox,'agent_enabled_Antigravity'))
+        self.assertIsNotNone(page.findChild(QCheckBox,'agent_enabled_Antigravity'))
         index=next(i for i in range(page.list.count()) if page.list.item(i).data(256)['vendor']=='Claude')
         page.list.setCurrentRow(index);self.app.processEvents()
         self.assertIsNotNone(page.findChild(QCheckBox,'agent_enabled_Claude'))

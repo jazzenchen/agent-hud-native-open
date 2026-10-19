@@ -1,5 +1,5 @@
 """Capabilities are explicit: discovery alone never enables a provider adapter."""
-import json,queue,shutil,subprocess,threading,time
+import os,json,queue,shutil,subprocess,threading,time
 from pathlib import Path
 from providers import DATA,HIDDEN,PROBE_PIDS,codex_quota,CodexLocal
 from local_sources import LocalSource
@@ -7,8 +7,8 @@ from cursor_usage import CursorSource
 from usage_ledger import UsageLedger
 from session_formats import stamp,digest
 
-LOCAL_VENDORS=('Claude','Codex','CodeBuddy','WorkBuddy','OpenClaw','Pi','Qwen','Kimi','OpenCode','Hermes','ZCode','Devin')
-QUOTA_VENDORS={'Codex','Cursor','Claude','Kimi','OpenCode','GLM','WorkBuddy'}
+LOCAL_VENDORS=('Claude','Codex','CodeBuddy','WorkBuddy','OpenClaw','Pi','Qwen','Kimi','OpenCode','Hermes','ZCode','Devin','DeepSeek','Antigravity','Grok','GitHub Copilot')
+QUOTA_VENDORS={'Codex','Cursor','Claude','Kimi','OpenCode','GLM','WorkBuddy','DeepSeek','Antigravity','Grok','GitHub Copilot'}
 
 
 def claude_quota(timeout=25):
@@ -61,7 +61,7 @@ def claude_quota(timeout=25):
         proc.stdin.close();proc.stdout.close();PROBE_PIDS.discard(proc.pid)
 
 
-def defaults():
+def defaults(copilot_consent=lambda:False):
     ledger=UsageLedger(DATA/'usage-ledger.sqlite');sources={name:LocalSource(name,ledger=ledger) for name in LOCAL_VENDORS}
     cursor=CursorSource(ledger)
     local={name:source.sessions for name,source in sources.items()};local['Cursor']=cursor.sessions
@@ -91,5 +91,8 @@ def defaults():
         credentials=discover()
         return fetch('WorkBuddy',credentials) if any(c.group=='WorkBuddy' for c in credentials) else no_quota()
     quota.update(OpenCode=go_quota,WorkBuddy=work_quota)
+    from remaining_quota import copilot_quota,grok_quota,antigravity_quota
+    from upstream_runtime import balance
+    quota.update({'DeepSeek':lambda:balance(Path(os.environ.get('DSH_HOME') or Path.home()/'.dsh').expanduser()),'Grok':grok_quota,'Antigravity':antigravity_quota,'GitHub Copilot':lambda:copilot_quota(enabled=copilot_consent())})
     local['GLM']=lambda:dict(sessions=[],notice='计划额度；Token 用量由实际调用的客户端记录')
     return local,quota

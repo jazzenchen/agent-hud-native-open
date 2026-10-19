@@ -13,3 +13,14 @@ repository's Apache-2.0 license.
 
 Original client artwork stays in `Sources/AgentHUDDesktop/Resources` and retains
 the repository's `THIRD_PARTY_NOTICES.txt` / `docs/brand-assets.md` attribution.
+
+- [Node.js](https://github.com/nodejs/node/blob/main/LICENSE): separately installed
+  runtime for the original DeepSeek balance and zstd scripts; no Node binary is
+  redistributed. Use Node 24+ with built-in zstd support.
+
+The Windows adaptation reuses unchanged upstream source files for design constants,
+artwork and the DeepSeek helper scripts. Additional provider parsers translate the
+original formats, retaining the CodexBar/Tokscale notices in the repository's
+THIRD_PARTY_NOTICES.txt. The original Apache-2.0 license and all attribution must
+accompany source redistribution. No endorsement or joint-development agreement
+is claimed. A bundled binary release needs a separate dependency-license review.

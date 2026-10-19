@@ -11,7 +11,7 @@ def vendors():
 
 
 VENDORS=vendors()
-SUPPORTED={'Claude','Codex','Cursor','CodeBuddy','WorkBuddy','OpenClaw','Pi','Qwen','Kimi','OpenCode','Hermes','ZCode','Devin','GLM'}
+SUPPORTED={'Claude','Codex','Cursor','CodeBuddy','WorkBuddy','OpenClaw','Pi','Qwen','Kimi','OpenCode','Hermes','ZCode','Devin','GLM','DeepSeek','Grok','Antigravity','GitHub Copilot'}
 HOMES={'Claude':['.claude/projects','.claude'], 'Codex':['.codex'], 'DeepSeek':['.dsh'],
     'Antigravity':['.gemini/antigravity','AppData/Roaming/Antigravity'], 'Cursor':['AppData/Roaming/Cursor/User/globalStorage/state.vscdb'],
     'Grok':['.grok','AppData/Roaming/Grok Bot'],'GitHub Copilot':['.copilot/session-state','.copilot/config.json'],
@@ -20,7 +20,7 @@ HOMES={'Claude':['.claude/projects','.claude'], 'Codex':['.codex'], 'DeepSeek':[
     'WorkBuddy':['.workbuddy/projects','.workbuddy'],'Qwen':['.qwen'],'Devin':['.local/share/devin/cli/sessions.db'],
     'OpenCode':['.local/share/opencode','AppData/Roaming/opencode','.config/opencode'],
     'Kimi':['.kimi-code/sessions','.kimi/sessions'],'GLM':['.glm'],'Pi':['.pi/agent/sessions']}
-COMMANDS={'Claude':['claude'],'Codex':['codex'],'Cursor':['cursor'],'Antigravity':['antigravity'],
+COMMANDS={'Claude':['claude'],'Codex':['codex'],'Cursor':['cursor'],'DeepSeek':['dsh'],'Antigravity':['antigravity','agy'],
     'Grok':['grok'],'GitHub Copilot':['copilot'],'OpenClaw':['openclaw'],'Hermes':['hermes'],
     'ZCode':['zcode'],'CodeBuddy':['codebuddy'],'WorkBuddy':['workbuddy'],'Qwen':['qwen'],
     'Devin':['devin'],'OpenCode':['opencode'],'Kimi':['kimi'],'Pi':['pi']}

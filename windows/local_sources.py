@@ -3,7 +3,7 @@
 Only counters, model/session metadata and explicit titles leave this reader.
 Readers run for live, enabled clients, without launching a client or model turn.
 """
-import json,os,sqlite3,time
+import io,json,os,re,sqlite3,time
 from pathlib import Path
 from session_formats import Transcript,count,stamp,tencent_tokens,digest
 from providers import read_db,DATA,CODEX
@@ -23,12 +23,16 @@ def roots(vendor,home=None,env=None):
         'Hermes':[base('HERMES_HOME','.hermes')], 'ZCode':[home/'.zcode/cli/db'],
         'Grok':[base('GROK_HOME','.grok')/'sessions',base('GROK_HOME','.grok')/'logs'],
         'GitHub Copilot':[base('COPILOT_HOME','.copilot')/'session-state',base('COPILOT_HOME','.copilot')/'otel'],
-        'Antigravity':[base('GEMINI_CLI_HOME','.gemini')/'antigravity-cli/conversations',base('GEMINI_CLI_HOME','.gemini')/'antigravity/conversations'],
+        'Antigravity':[base('GEMINI_CLI_HOME','.gemini')/'antigravity-cli/conversations',base('GEMINI_CLI_HOME','.gemini')/'antigravity',base('GEMINI_CLI_HOME','.gemini')/'antigravity/conversations'],
         'Devin':[home/'.local/share/devin/cli'], 'DeepSeek':[base('DSH_HOME','.dsh')/'sessions'], 'GLM':[]}
-    return paths.get(vendor,[])
+    result=paths.get(vendor,[])
+    if vendor=='GitHub Copilot' and env.get('COPILOT_OTEL_FILE_EXPORTER_PATH'):
+        folder=Path(env['COPILOT_OTEL_FILE_EXPORTER_PATH']).expanduser().parent
+        if folder not in result:result.append(folder)
+    return result
 
 
-def accepts(vendor,path):
+def accepts(vendor,path,exporter=None):
     name=path.name
     if vendor=='OpenClaw':return (path.parent.name=='sessions' and (name.endswith('.jsonl') or '.jsonl.reset.' in name or '.jsonl.deleted.' in name)) and not name.endswith(('.zst','.tmp')) or name=='openclaw-agent.sqlite'
     if vendor=='OpenCode':return name=='opencode.db' or path.suffix=='.json' and 'message' in path.parts
@@ -36,14 +40,18 @@ def accepts(vendor,path):
     if vendor=='ZCode':return name=='db.sqlite'
     if vendor=='Devin':return name=='sessions.db'
     if vendor=='Antigravity':return path.suffix=='.db' and name!='conversation_summaries.db'
-    if vendor=='GitHub Copilot':return name=='events.jsonl' or path.suffix=='.jsonl' and 'otel' in path.parts
-    if vendor=='Grok':return name=='updates.jsonl' or path.suffix=='.jsonl'
+    if vendor=='GitHub Copilot':
+        log=name=='events.jsonl' and path.parent.parent.name=='session-state'
+        return log or path.suffix=='.jsonl' and 'session-state' not in path.parts and ('otel' in path.parts or exporter and path.absolute()==Path(exporter).expanduser().absolute())
+    if vendor=='Grok':return name in ('updates.jsonl','unified.jsonl')
+    if vendor=='DeepSeek':return re.fullmatch(r'session(?:\.v[1-9][0-9]*)?\.jsonl(?:\.zstd)?',name) is not None
     return path.suffix=='.jsonl' or vendor=='Kimi' and name.endswith('.json')
 
 
 class LocalSource:
     def __init__(self,vendor,home=None,env=None,ledger=None):
         self.vendor=vendor;self.paths=roots(vendor,home,env);self.files=[];self.cache={};self.last_scan=0.;self.ledger=ledger or UsageLedger(DATA/'usage-ledger.sqlite')
+        self.exporter=(os.environ if env is None else env).get('COPILOT_OTEL_FILE_EXPORTER_PATH')
         self.last_report=None;self.report_at=0.;self.errors=0
     def scan(self):
         found=[];cutoff=time.time()-8*86400
@@ -54,9 +62,16 @@ class LocalSource:
                 for name in files:
                     path=Path(base)/name
                     try:
-                        if accepts(self.vendor,path) and path.stat().st_mtime>=cutoff:found.append(path)
+                        if accepts(self.vendor,path,self.exporter) and path.stat().st_mtime>=cutoff:found.append(path)
                     except OSError:pass
                 if len(found)>20000:break
+        if self.vendor=='DeepSeek':
+            # The source keeps older format generations beside the current log.
+            selected={}
+            for path in found:
+                match=re.search(r'\.v(\d+)\.jsonl',path.name);rank=(int(match[1]) if match else 0,path.name.endswith('.zstd'))
+                if path.parent not in selected or rank>selected[path.parent][0]:selected[path.parent]=(rank,path)
+            found=[row[1] for row in selected.values()]
         self.files=sorted(set(found),key=lambda path:path.stat().st_mtime,reverse=True)[:20000];self.last_scan=time.monotonic()
     def sessions(self):
         if time.monotonic()-self.last_scan>30:self.scan()
@@ -75,8 +90,17 @@ class LocalSource:
                     if stat.st_size>16*1024*1024:raise ValueError('Oversize metadata document')
                     value=json.loads(path.read_bytes());parser=Transcript(self.vendor,str(value.get('sessionID') or value.get('sessionId') or path.stem));parser.feed(value,0)
                     changed.extend(parser.events.values());self.cache[str(path)]=dict(revision=revision,offset=stat.st_size,parsers=[parser]);continue
+                if path.suffix=='.zstd':
+                    from upstream_runtime import decompress
+                    parser=Transcript(self.vendor,path.parent.name)
+                    for index,raw in enumerate(decompress(path).splitlines()):
+                        try:parser.feed(json.loads(raw),index+1)
+                        except (ValueError,TypeError,KeyError,AttributeError):self.errors+=1
+                    changed.extend(parser.events.values());self.cache[str(path)]=dict(revision=revision,offset=stat.st_size,parsers=[parser]);continue
                 if not old or stat.st_size<old['offset']:
-                    parser=Transcript(self.vendor,path.stem);old=dict(offset=0,parsers=[parser],line=0)
+                    from four_formats import FileTranscript
+                    parser=FileTranscript(self.vendor,path.stem) if (self.vendor=='Grok' and path.name=='unified.jsonl' or self.vendor=='GitHub Copilot' and path.name!='events.jsonl') else Transcript(self.vendor,path.parent.name if self.vendor in ('DeepSeek','Grok','GitHub Copilot') else path.stem)
+                    old=dict(offset=0,parsers=[parser],line=0)
                 parser=old['parsers'][0];before=dict(parser.events)
                 with path.open('rb') as stream:
                     stream.seek(old['offset']);end=min(stat.st_size,old['offset']+4*1024*1024)
@@ -95,7 +119,12 @@ class LocalSource:
                 if old['offset']<stat.st_size:incomplete=True
             except (OSError,sqlite3.Error,ValueError):self.errors+=1;incomplete=True
         live={str(path) for path in self.files};self.cache={key:value for key,value in self.cache.items() if key in live}
-        sessions=[parser.summary() for item in self.cache.values() for parser in item['parsers']]
+        sessions=[summary for item in self.cache.values() for parser in item['parsers'] for summary in (parser.summaries() if hasattr(parser,'summaries') else [parser.summary()])]
+        unique={}
+        for row in sessions:
+            previous=unique.get(row['id'])
+            if previous is None or row.get('priority',0)>previous.get('priority',0):unique[row['id']]=row
+        sessions=list(unique.values())
         sessions.sort(key=lambda row:(row['state']!='running',-row['updated']))
         if changed:self.ledger.record(self.vendor,changed)
         if changed or self.last_report is None or time.time()-self.report_at>60:
@@ -107,6 +136,27 @@ class LocalSource:
         with read_db(path) as db:
             db.row_factory=sqlite3.Row;deadline=time.monotonic()+1.2;db.set_progress_handler(lambda:int(time.monotonic()>deadline),10000)
             tables={row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if self.vendor=='Antigravity':
+                from antigravity_proto import turn,step
+                parser=Transcript('Antigravity',path.stem);rows=[];steps=[]
+                for row in db.execute('SELECT idx,data FROM gen_metadata NOT INDEXED LIMIT 10000'):
+                    try:rows.append((row['idx'],turn(row['data'])))
+                    except (ValueError,UnicodeError,TypeError):self.errors+=1
+                if any(value['at'] is None for _,value in rows) and 'steps' in tables:
+                    for row in db.execute('SELECT metadata FROM steps NOT INDEXED LIMIT 10000'):
+                        try:steps.append(step(row['metadata']))
+                        except (ValueError,UnicodeError,TypeError):self.errors+=1
+                for index,value in rows:
+                    usage=value['usage'];at=value['at']
+                    if at is None:
+                        field='message' if value.get('message') else 'execution';identity=value.get(field)
+                        generations=[r for _,r in rows if identity and r.get(field)==identity]
+                        matches=[s for s in steps if identity and s.get(field)==identity and (not value.get('execution') or s.get('execution')==value['execution'])]
+                        if len(generations)==len(matches)==1:at=matches[0]['at']
+                    if at is None:self.errors+=1;continue
+                    inp=usage.get('input',0)+usage.get('cache_write',0);out=usage.get('output',0)
+                    parser.add(digest(path.stem,value.get('response') or 'row-'+str(index)),at,dict(input=inp,output=out,cache=usage.get('cache',0),cache_write=usage.get('cache_write',0),reasoning=min(out,usage.get('reasoning',0))),value.get('model') or value.get('label') or 'Antigravity model '+str(usage.get('model_id') or value.get('requested_model') or 'Unknown'))
+                return [parser]
             if self.vendor=='OpenCode':
                 table='session_message' if 'session_message' in tables else 'message'
                 parsers={}

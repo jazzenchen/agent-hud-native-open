@@ -52,6 +52,9 @@ class Transcript:
         if prior is None or sum(event[k] for k in ('input','output','cache'))>=sum(prior[k] for k in ('input','output','cache')):self.events[str(key)]=event
     def feed(self,row,line):
         if not isinstance(row,dict):raise ValueError('Invalid transcript object')
+        if self.vendor in ('DeepSeek','Grok','GitHub Copilot'):
+            from four_formats import feed
+            return feed(self,row,line)
         vendor=self.vendor;kind=row.get('type');message=row.get('message') or {};at=stamp(row.get('timestamp'))
         if not isinstance(message,dict):message={}
         if kind in ('custom-title','ai-title','topic','session_info'):
@@ -125,4 +128,4 @@ class Transcript:
     def summary(self):
         totals={key:sum(row.get(key,0) for row in self.events.values()) for key in ('input','output','cache','cache_write','reasoning')}
         return dict(id=self.sid,title=self.title,state=self.state,updated=self.updated,tokens=sum(totals[k] for k in ('input','output','cache')),
-                    model=self.model,breakdown=dict(input=max(0,totals['input']-totals['cache_write']),cache=totals['cache'],output=max(0,totals['output']-totals['reasoning']),reasoning=totals['reasoning']),**totals)
+                    model=self.model,priority=max((e.get('priority',0) for e in self.events.values()),default=0),breakdown=dict(input=max(0,totals['input']-totals['cache_write']),cache=totals['cache'],output=max(0,totals['output']-totals['reasoning']),reasoning=totals['reasoning']),**totals)

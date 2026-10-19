@@ -87,3 +87,46 @@ class SpringDriver(QObject):
         if _clock is not None and isValid(_clock):
             _clock.active.discard(self)
             if not _clock.active:_clock.timer.stop()
+
+
+def source_curve(fraction):
+    """IslandAnimation's cubic timing curve (0.2, 0.8, 0.2, 1)."""
+    fraction=max(0.,min(1.,fraction));lo=0.;hi=1.
+    for _ in range(32):
+        t=(lo+hi)/2;u=1-t
+        if 3*u*u*t*.2+3*u*t*t*.2+t*t*t<fraction:lo=t
+        else:hi=t
+    t=(lo+hi)/2;u=1-t
+    y=3*u*u*t*.8+3*u*t*t+t*t*t
+    dx=3*u*u*.2+6*u*t*(.2-.2)+3*t*t*(1-.2)
+    dy=3*u*u*.8+6*u*t*(1-.8)
+    return y,dy/dx
+
+
+class CurveState:
+    def __init__(self,value,duration):
+        self.position=self.target=self.start=value;self.velocity=0.;self.duration=duration;self.elapsed=duration;self.correction=0.
+    @property
+    def settled(self):return self.elapsed>=self.duration
+    def retarget(self,target):
+        interrupted=not self.settled;self.start=self.position;self.target=target;self.elapsed=0.
+        initial=(target-self.start)*4/self.duration
+        self.correction=(self.velocity-initial)*self.duration if interrupted else 0.
+    def advance(self,seconds):
+        self.elapsed=min(self.duration,self.elapsed+max(0,seconds));t=self.elapsed/self.duration
+        y,slope=source_curve(t);delta=self.target-self.start
+        self.position=self.start+delta*y+self.correction*t*(1-t)**2
+        self.velocity=(delta*slope+self.correction*(1-t)*(1-3*t))/self.duration
+        if self.settled:self.position=self.target;self.velocity=0.
+
+
+class SourceCurveDriver(SpringDriver):
+    """Source finite curve on the same sleeping clock; retain velocity on reversal."""
+    def __init__(self,parent=None,value=0.,duration=.4):
+        super().__init__(parent,value);self.state=CurveState(value,duration)
+    def retarget(self,target,immediate=False):
+        if immediate or not animations_enabled():self.jump(target);return
+        self.state.retarget(float(target));self.running=True;motion_clock().add(self)
+    def jump(self,value):
+        self.state.elapsed=self.state.duration
+        super().jump(value)

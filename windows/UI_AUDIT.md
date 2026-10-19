@@ -34,7 +34,7 @@ without satisfying the user's visual acceptance gate.
 
 ## Verification
 
-85 tests pass locally, including real control clicks through persistence and
+105 tests pass locally, including real control clicks through persistence and
 rendered-pixel checks for window/HUD/panel/peek light/dark changes. Regressions
 cover live menu dispatch, click versus drag, compact hover versus click-to-pin,
 rapid reversal, stable spring integration, reduced motion, and canceled/keyboard
@@ -89,9 +89,10 @@ OS rounding, an opaque Qt host, the legacy DWM blur region and removing the
 layered style did not fix it and were not adopted.
 
 Current PR gate: **FAIL / below verified acceptance**, with no invented numeric
-score. Blocking differences include the remaining dark hover corner residual, four
-providers without live Windows adapters, provider/window drag ordering, incomplete English, Apple
-material/transition differences and the previously recorded unported interfaces.
+score. Remaining differences include per-window drag ordering, complete English,
+full historical statistics layouts and other unported interfaces. The four CLI/data
+adapters and sampled corner residual described below were corrected in the latest
+iteration; see the final dated acceptance section.
 The Windows PR branch has not been pushed with these changes. Source-geometry
 checks passing, a successful capture, or large matching background areas cannot
 establish overall 90% similarity.
@@ -219,3 +220,48 @@ remove the residual; those ineffective app changes were not adopted. These
 results supersede earlier single-corner passes. No >=90% claim or PR update is
 made. macOS Liquid Glass, drag ordering, complete historical statistics and the
 remaining four providers continue to block overall acceptance.
+
+
+## Latest acceptance — 2026-10-19, focus/corners/source motion
+
+This section supersedes earlier corner failures and the four detection-only gaps.
+The user explicitly accepts source/fixture validation for additional agents; real
+sign-ins or launching those clients are not acceptance requirements for this run.
+
+- All 18 catalog groups now have registered readers and settings switches. The
+  four added ports cover DeepSeek Harness JSONL/zstd, Grok CLI legacy/unified,
+  Copilot shutdown/OTEL and Antigravity SQLite/protobuf. Routes include DeepSeek
+  balance, Grok credits, Copilot opt-in quota, Antigravity current/legacy service
+  metadata and already-running native agy print-usage. This is not a claim of
+  Grok Bot desktop-cache parity or every upstream runtime variant.
+- The original DeepSeek JavaScript helper is extracted from unchanged upstream
+  source, rather than rewriting its credential/YAML or multi-frame zstd logic.
+  Helpers are bounded in output, memory and time; custom DeepSeek hosts cannot
+  receive requests assumed to belong to the official service.
+- Fixtures exercise each local file/database reader through the persisted ledger,
+  refresh/restart deduplication, inherited DeepSeek seeds, downward stream
+  corrections, Copilot snapshot baselines/late trace joins, ambiguous counters,
+  protobuf singular timestamp merging and source-priority reconciliation.
+- Full details now request focus on click and dismiss on WindowDeactivate, clear
+  the click pin, stop pending hover timers and dismiss the peek. Moving focus
+  among child controls does not dismiss the window. Reopening remains possible.
+- Native Windows focus verification passes all five checks: opened, received
+  focus, other owned window received focus, details closed, pin cleared.
+  Reproduce via native_material_preview.py; no other user's apps are controlled.
+- Native region bounds no longer add an extra right/bottom pixel. Custom masking
+  owns the radius with DWM corner treatment disabled. Both themes pass four
+  outside-capsule samples at 100/125/150 percent (max RGB differences 9/7/6 in
+  those runs, threshold 16). These samples do not establish full silhouette parity.
+- Settings retain separate detail scrolling with a themed transparent viewport,
+  fixing a white rectangle in dark mode. Remove the invented Token section from
+  SourcesPane. Detected provider-group drag order persists and controls HUD order.
+  Per-window ordering, account-visibility grouping and statistics layout remain gaps.
+- HUD and peek use IslandAnimation's exact 0.4-second cubic curve (0.2,0.8,0.2,1),
+  with velocity-preserving interruption. Controls retain their restrained springs.
+  Native reversal settles; measured CPU paint/readback p95: panel 2.081 ms,
+  peek 0.496 ms. These are not GPU frame-rate or smoothness guarantees.
+
+105 tests pass. Native dark/light settings were captured and inspected. All Swift
+sources remain unchanged. PR visual gate is still **not met**: no numeric >=90%
+claim, upstream push/review request or release is made by this iteration. The local
+changes can be reviewed in Git without implying upstream endorsement.

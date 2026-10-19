@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt,QRectF,QPointF
 from PySide6.QtGui import QPainter,QPainterPath,QPen,QFontMetricsF,QRegion
 from PySide6.QtWidgets import QWidget
 from source_design import DESIGN
-from motion import SpringDriver
+from motion import SpringDriver,SourceCurveDriver
 from material import frosted_backdrop,rounded_native_window
 from theme import apply_widget_theme
 
@@ -14,7 +14,7 @@ class AgentPeekView(QWidget):
         self.meter=meter;self.progress=0.;self.native_glass=False;self.rows=[]
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground);self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setWindowTitle(DESIGN['app_name']);self.setMouseTracking(True)
-        self.animation=SpringDriver(self,frequency=5.2);self.animation.valueChanged.connect(self.animate)
+        self.animation=SourceCurveDriver(self,duration=DESIGN['animation_ms']/1000);self.animation.valueChanged.connect(self.animate)
         self.animation.finished.connect(lambda:self.hide() if self.progress<.001 else None)
         self.target_width=1;self.target_height=26;self.corner=13
 

@@ -99,6 +99,12 @@ def main():
     for style in ('blur','dots','ascii','blocks','braille','binary'):
         meter.settings['glow_style']=style;meter.glow.sync();app.processEvents();performance['glow'][style]=measure(meter.glow)
     (destination/'ui-performance.json').write_text(json.dumps(performance,indent=2),encoding='utf-8')
+    meter.panel.pinned=True;meter.open_panel();QTest.qWait(450)
+    focus=dict(opened=meter.panel.isVisible(),panel_received_focus=app.activeWindow() is meter.panel)
+    scene.raise_();scene.activateWindow();QTest.qWait(450)
+    focus.update(other_window_received_focus=app.activeWindow() is scene,
+                 closed_after_deactivation=not meter.panel.isVisible(),pin_cleared=not meter.panel.pinned)
+    (destination/'native-focus.json').write_text(json.dumps(focus,indent=2),encoding='utf-8')
     meter.hide_all();meter.peek.close();meter.glow.close();meter.panel.close();meter.close();scene.close()
 
 if __name__=='__main__':main()

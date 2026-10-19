@@ -66,6 +66,15 @@ class MotionAudit(unittest.TestCase):
         QTest.keyClick(switch,Qt.Key.Key_Space)
         self.assertTrue(switch.isChecked());self.assertEqual(spy.count(),1)
 
+    def test_source_curve_duration_and_interruption(self):
+        from motion import CurveState,source_curve
+        self.assertAlmostEqual(source_curve(.5)[0],.946079,places=4)
+        state=CurveState(0.,.4);state.retarget(1.);state.advance(.1)
+        before,velocity=state.position,state.velocity;state.retarget(0.)
+        self.assertEqual(state.position,before);self.assertEqual(state.velocity,velocity)
+        state.advance(.000001);self.assertAlmostEqual(state.velocity,velocity,places=2)
+        state.advance(.4);self.assertTrue(state.settled);self.assertEqual(state.position,0.)
+
     def test_reduced_motion_stops_continuous_glow(self):
         meter=SimpleMeterView('Codex',self.app.primaryScreen(),load(dict(mode='logos')),lambda _:None,preview=True)
         self.addCleanup(lambda:(meter.hide_all(),meter.glow.close(),meter.panel.close(),meter.close()))

@@ -16,6 +16,7 @@ parity with all providers, charts, approvals, MCP Host API and Mac settings.
 ## Install
 
 Python 3.10+ and an Internet connection for first installation are required.
+DeepSeek compressed logs and its original balance helper require Node.js 24+ with zstd support.
 Keep the full checkout (including `Sources/`) in place.
 
 ```powershell
@@ -32,8 +33,8 @@ appearance setting change is needed. Open **Settings** from the tray, HUD right
 click menu, or the panel's gear. Launching the Desktop shortcut again raises the
 settings window of the existing instance. Hover opens the selected agent's
 compact one-line quota peek in Simple mode (26pt at the default size), or a small
-bubble in Dynamic mode. Click opens/pins that agent's full 440pt panel. Leaving
-dismisses an unpinned peek. With Separate agents off, hover opens the shared
+bubble in Dynamic mode. Click opens that agent's full 440pt panel. It closes when another window
+takes focus, including settings. Leaving dismisses a hover peek. With Separate agents off, hover opens the shared
 panel instead. Separation scopes the hover; the agents retain one source-shaped
 strip rather than being split into separate capsules.
 
@@ -54,9 +55,10 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
   General controls appearance, language, launch at login and reversible Cursor
   observers. Agents lists all 18 upstream detection groups with original artwork,
   passive Windows install/process discovery and a detail column. Discovery does
-  not start clients or claim authentication. Fourteen groups now have data adapters and per-window visibility: thirteen
+  not start clients or claim authentication. All 18 groups have data adapters and display switches: 17
   have local or account Token records, while GLM represents its official plan
-  quotas. DeepSeek, Antigravity, Grok and GitHub Copilot remain detection-only.
+  quotas. DeepSeek, Antigravity, Grok and GitHub Copilot use source-format readers
+  and original metadata routes. Copilot quota retains the original explicit opt-in.
 - Display supports Simple, logo dock and a 200pt stand-in notch (plus original
   flares), separate/combined agents, four edges, normalized position, light/dark
   HUD, acrylic style/opacity, size, ring/number visibility, quota/token/session
@@ -77,9 +79,10 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
 - Native untinted blur and the themed dimming layer are separated, matching
   the original pre-Liquid-Glass fallback. Qt and HWND regions are rounded and
   DWM's extra border is suppressed. The large rectangular Acrylic tint is
-  removed. Four-corner native tests still find a 30-level RGB residual on the
-  dark 100% hover bottom-right corner (threshold 16). At 125% and 150% the four
-  samples pass; this is not proof of the full silhouette or overall similarity.
+  removed. The custom region now uses exclusive right/bottom bounds and owns
+  rounding without a second DWM radius. Four outside-capsule corner samples
+  pass in both themes at 100%, 125% and 150%; this is not full-shape or overall
+  similarity proof.
   See [UI_AUDIT.md](UI_AUDIT.md) for native evidence and remaining review gates.
 - Native Windows blur replaces Apple Liquid Glass; Segoe UI / Microsoft YaHei UI replace
   Apple fonts. The Windows notch uses the source's fallback dimensions instead
@@ -89,7 +92,7 @@ Remaining gaps are explicit in Experimental: animated Bot direction, the MCP
 draft/save host and approval bridge are not implemented. Historical statistics
 now use request-keyed SQLite events, model totals and 15-minute buckets;
 this still does not reproduce the full Mac statistics interface. English currently covers settings labels; notices and some
-panel text remain Chinese. The four detection-only providers above, WorkBuddy credits/context
+panel text remain Chinese. WorkBuddy credits/context
 meters, cross-client plan attribution and multi-home account discovery still
 need further source ports and signed-in acceptance.
 These are still draft-port limitations, not promises of full Mac feature parity.
@@ -104,7 +107,7 @@ These are still draft-port limitations, not promises of full Mac feature parity.
 | `Theme/Theme+Palettes.swift`, `Theme/StatusPalette.swift` | `source_design.py` reads source palette and 70% / 90% status colors |
 | `Components/AgentLogo.swift`, `Resources/{chatgpt,cursor}.png` | Original artwork; Codex's original #10a37f tint; Cursor's template tint |
 | `PanelLayout/PanelLayout.swift`, `Models/Settings/ScreenPlacement.swift` | Original 540pt/440pt widths, 22pt size and 1.5pt ring stroke |
-| `Notch/Island/IslandAnimation.swift` | Source transition timescale; the Windows shell uses a critically damped spring scaled to that duration for reversible morphs |
+| `Notch/Island/IslandAnimation.swift` | Original 0.4s cubic timing curve (0.2, 0.8, 0.2, 1); interrupted morphs preserve velocity |
 | `Notch/Panel/AgentPeekView.swift` | `peek_view.py`: one-line Simple peek, source 26pt/9pt baseline, scaled gaps/padding, Dynamic bubble; click opens full details |
 | `Theme/HUDSurface.swift`, `JoinedGlass.swift` | `material.py`: Windows acrylic backdrop instead of Apple's compositor; source black-dimming semantics, a stand-in if unavailable |
 | `Notch/NotchGeometry.swift`, `IslandShape.swift` | `placement.py`, `views.surface_path`: y-down edge/offset/grab conversion and fallback notch silhouette |
@@ -128,9 +131,8 @@ fail explicitly if the required constants change upstream. No Swift file changes
   login requires signing in again in Cursor; no login refresh is attempted.
 - Presence polls every 2 seconds. Closed clients' records are not read and their
   quota engines are not launched. Stale asynchronous results are discarded.
-- The token chart shows **each recent session's cumulative count**, not a fake
-  24-hour chart or a sum of potentially inherited parent/child counters. Missing
-  data stays unavailable. Last seen does not claim completion.
+- The token chart uses request-keyed, 15-minute ledger buckets for the last
+  24 hours. Missing data stays unavailable. Last seen does not claim completion.
 - Credentials remain in memory. No prompts, replies, commands or credentials are
   persisted. SQLite includes committed WAL records and stays read-only.
 - Activity/config/health metadata lives in `%LOCALAPPDATA%/AgentHUDOpen`.
@@ -183,7 +185,8 @@ Credential scopes stay separate unless a provider-owned identity confirms they
 share an account. Cached history is distinguished from current sign-in.
 
 Local Token readers cover Claude, Codex, CodeBuddy, WorkBuddy, OpenClaw, Pi,
-Qwen, Kimi, OpenCode, Hermes, ZCode and Devin. Counts are keyed by request identity
+Qwen, Kimi, OpenCode, Hermes, ZCode, Devin, DeepSeek, Antigravity, Grok and
+GitHub Copilot. Counts are keyed by request identity
 (or the source's usage row), preventing refresh/restart/stream duplicates;
 Codex forks consume inherited baselines without counting the parent's history.
 Input includes cache writes and output includes reasoning; display channels
@@ -194,4 +197,5 @@ disabled clients are never polled; no client is launched for detection.
 
 Windows paths and source-format fixtures have local regression coverage. Only
 Codex's current signed-in account and real Token indexing have been verified
-on this machine; other signed-in provider paths still require native acceptance.
+on this machine. At the user's direction, the other providers are accepted at
+code/fixture level: no login or real-client launch was performed for them.

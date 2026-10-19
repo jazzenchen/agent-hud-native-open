@@ -2,7 +2,7 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import unittest
 from unittest.mock import patch
-from PySide6.QtCore import Qt,QPoint
+from PySide6.QtCore import Qt,QPoint,QEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 from source_design import DESIGN
@@ -40,6 +40,19 @@ class PeekAudit(unittest.TestCase):
         with patch('motion.animations_enabled',return_value=False):
             meter.hover();meter.maybe_close()
         self.assertFalse(meter.peek.isVisible());self.assertFalse(meter.panel.isVisible())
+
+    def test_detail_closes_on_deactivation_and_can_reopen(self):
+        meter=self.meter()
+        with patch('motion.animations_enabled',return_value=False):
+            meter.panel.pinned=True;meter.open_panel()
+            self.assertTrue(meter.panel.isVisible())
+            self.app.sendEvent(meter.panel,QEvent(QEvent.Type.WindowDeactivate))
+            self.assertFalse(meter.panel.pinned);self.assertFalse(meter.panel.isVisible())
+            meter.panel.pinned=True;meter.open_panel()
+            self.assertTrue(meter.panel.isVisible());self.assertTrue(meter.panel.pinned)
+            # Moving focus among controls is not switching away from the window.
+            self.app.sendEvent(meter.panel,QEvent(QEvent.Type.FocusOut))
+            self.assertTrue(meter.panel.isVisible())
 
     def test_dynamic_mode_uses_the_source_compact_bubble(self):
         meter=self.meter();meter.settings['mode']='logos';meter.refresh_size()
