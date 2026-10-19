@@ -26,6 +26,7 @@ class AgentPeekView(QWidget):
         cfg=self.meter.settings
         scale=max(1,cfg['size' if self.line else 'logo_size']/DESIGN['peek_height'])
         self.font_size=round(DESIGN['peek_font']*scale) if self.line else round(12*scale)
+        self.row_height=round(18*scale);self.top_padding=round(10*scale);self.title_size=round(13*scale)
         self.spacing=round(12*scale);self.pair_gap=round(5*scale);self.padding=round(12*scale)
         self.rows=[]
         for row in self.meter.data.get('quota',{}).get('windows',[]):
@@ -44,8 +45,8 @@ class AgentPeekView(QWidget):
             width=cells+max(0,len(self.rows)-1)*self.spacing+2*self.padding+self.tuck
             self.target_height=round(DESIGN['peek_height']*scale);self.target_width=min(width,self.meter.screen.availableGeometry().width()-12)
         else:
-            self.target_width=round(196*scale);self.target_height=round(20*scale+18*scale*(1+len(self.rows)+(1 if running else 0)))
-        self.corner=self.target_height/2 if self.line else 12
+            self.target_width=round(196*scale);self.target_height=2*self.top_padding+self.row_height*(1+len(self.rows)+(1 if running else 0))
+        self.corner=self.target_height/2 if self.line else min(DESIGN['bubble_corner'],self.target_height/2)
         if self.isVisible():self.animate(self.progress)
 
     def open(self):
@@ -100,11 +101,11 @@ class AgentPeekView(QWidget):
                 width=math.ceil(fm.horizontalAdvance(label));text(p,QRectF(x,0,width,self.height()),label,self.font_size,'secondary');x+=width+self.pair_gap
                 width=math.ceil(bold.horizontalAdvance(value));text(p,QRectF(x,0,width,self.height()),value,self.font_size,level(used),True);x+=width+self.spacing
         else:
-            y=10;text(p,QRectF(x,y,self.width()-2*x,18),self.meter.client,13,'text',True);y+=18
+            y=self.top_padding;text(p,QRectF(x,y,self.width()-2*x,self.row_height),self.meter.client,self.title_size,'text',True);y+=self.row_height
             for label,value,used in self.rows:
-                text(p,QRectF(x,y,self.width()-2*x,18),label,self.font_size,'secondary')
-                text(p,QRectF(x,y,self.width()-2*x,18),value,self.font_size,level(used),True,Qt.AlignmentFlag.AlignRight);y+=18
-            if self.running:text(p,QRectF(x,y,self.width()-2*x,18),f'{self.running} 个运行中',self.font_size,'secondary')
+                text(p,QRectF(x,y,self.width()-2*x,self.row_height),label,self.font_size,'secondary')
+                text(p,QRectF(x,y,self.width()-2*x,self.row_height),value,self.font_size,level(used),True,Qt.AlignmentFlag.AlignRight);y+=self.row_height
+            if self.running:text(p,QRectF(x,y,self.width()-2*x,self.row_height),f'{self.running} 个运行中',self.font_size,'secondary')
         p.end()
 
     def enterEvent(self,event):self.meter.leave_timer.stop()

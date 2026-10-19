@@ -34,7 +34,7 @@ without satisfying the user's visual acceptance gate.
 
 ## Verification
 
-50 tests pass locally, including real control clicks through persistence and
+63 tests pass locally, including real control clicks through persistence and
 rendered-pixel checks for window/HUD/panel/peek light/dark changes. Regressions
 cover live menu dispatch, click versus drag, compact hover versus click-to-pin,
 rapid reversal, stable spring integration, reduced motion, and canceled/keyboard
@@ -42,6 +42,59 @@ switch activation. Existing data/presence/hook checks remain in the suite.
 Style reset also persists glass/glow defaults while preserving panel layout.
 A newly started spring no longer inherits time spent on an earlier animation
 while the UI was busy rebuilding; a regression covers that first-frame jump.
+
+## Further source comparison and acceptance status
+
+The unchanged upstream HUD reference build also completed successfully in
+[run 39193519954](https://github.com/nanhudev/agent-hud-open/actions/runs/39193519954).
+Its artifact includes the Simple size/ring/number/side-edge contact sheet and
+dark/light/glass dock and hover fixtures. These snapshots use the upstream glass
+stand-in; they are not captures of Apple's live Liquid Glass.
+
+Further corrections from this comparison:
+
+- Translate all SimpleMeterConfig insets, mark/ring visibility, numberless gaps,
+  vertical number columns and corner calculations. Ringless marks no longer
+  retain the full ring's size or its padding.
+- Separate agents scopes hover to the selected provider in a single strip,
+  rather than splitting that strip into unrelated capsules. With separation off,
+  hover opens the shared panel and shows all present providers. Pinned content
+  keeps its scope when the pointer crosses a different mark.
+- Cancel pending hover timers when hiding a client; dismiss incompatible popups
+  on mode changes. Scale Dynamic bubble rows/title as well as its window. Clamp
+  long session panels to the display and allow wheel scrolling.
+- Read full-card 22pt and bubble 14pt radii directly from ScreenHUD.swift. Read
+  light-HUD fill/text and glass text shades from StatusPalette.swift separately.
+- Restore all 18 source-detection groups from the upstream catalog, original
+  artwork and the SourcesPane list/detail layout. Passive Windows path/command/
+  process detection refreshes while settings is visible; it never starts clients.
+  Only Codex/Cursor currently have live data adapters; other groups say this
+  explicitly instead of presenting nonfunctional monitoring switches.
+- Restore persisted, bounded per-screen versions: style reset, layout reset and
+  use-shared can be reverted after restart. Glass and Solid retain separate
+  transparency values; old saved values migrate without being discarded.
+- Compact segment metrics, selected tint, numeric slider labels, disabled
+  buttons and settings section spacing now follow the source more closely.
+  Per-quota-window visibility leaves the original readings intact.
+
+Native 125% and 150% scale probes both captured dark/light scenes and successful
+Acrylic calls. These exposed an additional **unresolved blocker**: Acrylic's
+outer backdrop can remain a rectangle with the OS's small corners even though
+Qt paint and GetWindowRgn report the intended capsule. A new outside-capsule
+pixel check compares the surface against the same owned wallpaper before the
+overlay exists; on the light 100% sample its meter/peek deltas were 142/138 RGB
+levels (threshold 16), so both failed. Native region success alone is no longer
+accepted as proof that the visible material is clipped correctly. Tests with no
+OS rounding, an opaque Qt host, the legacy DWM blur region and removing the
+layered style did not fix it and were not adopted.
+
+Current PR gate: **FAIL / below verified acceptance**, with no invented numeric
+score. Blocking differences include the Acrylic silhouette, 16 providers without
+live Windows adapters, provider/window drag ordering, incomplete English, Apple
+material/transition differences and the previously recorded unported interfaces.
+The Windows PR branch has not been pushed with these changes. Source-geometry
+checks passing, a successful capture, or large matching background areas cannot
+establish overall 90% similarity.
 
 ## Additional bad cases collected and corrected
 
@@ -114,7 +167,8 @@ passing tests or matching background pixels is not proof of 90% fidelity.
 
 Apple Liquid Glass/Core Animation and Windows Acrylic/Qt differ. Native Windows
 evidence is a necessary separate check; offscreen PNGs alone cannot validate
-compositor corners/blur. Other DPI levels and GPU frame time remain unmeasured.
+compositor corners/blur. Native 125% and 150% probes were added; GPU frame time
+and other DPI levels remain unmeasured.
 
 MCP layout drafts, the approval bridge, animated Bot direction and the full
 historical statistics interface remain unported. English labels/notices are

@@ -77,12 +77,13 @@ class SettingsWindow(QDialog):
             item=QListWidgetItem(sidebar_icon(icon,tint),self.tr(name));item.setSizeHint(QSize(192,48));self.sidebar.addItem(item)
         for method in (self.general,self.sources,self.display,self.experimental):
             page=QWidget();page.setObjectName('settingsPage');outer=QVBoxLayout(page);outer.setContentsMargins(0,0,0,0);outer.setSpacing(0)
-            header=QWidget();header.setObjectName('pageHeader');self._header_layout=QVBoxLayout(header);self._header_layout.setContentsMargins(20,24,20,20);self._header_layout.setSpacing(7)
+            header=QWidget();header.setObjectName('pageHeader');self._header_layout=QVBoxLayout(header);self._header_layout.setContentsMargins(20,24,20,16);self._header_layout.setSpacing(7)
             outer.addWidget(header)
-            content=QWidget();content.setObjectName('settingsContent');content.setMaximumWidth(640)
+            content=QWidget();content.setObjectName('settingsContent');content.setMaximumWidth(16777215 if method==self.sources else 640)
             layout=QVBoxLayout(content);layout.setContentsMargins(0,0,0,0);layout.setSpacing(28)
-            method(layout);layout.addStretch()
-            viewport=QWidget();viewport.setObjectName('pageViewport');center=QHBoxLayout(viewport);center.setContentsMargins(28,2,28,32);center.addWidget(content,1)
+            method(layout)
+            if method!=self.sources:layout.addStretch()
+            viewport=QWidget();viewport.setObjectName('pageViewport');center=QHBoxLayout(viewport);center.setContentsMargins(20,2,20,20) if method==self.sources else center.setContentsMargins(28,2,28,32);center.addWidget(content,1)
             scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(viewport);scroll.setFrameShape(QScrollArea.Shape.NoFrame)
             outer.addWidget(scroll,1);self.stack.addWidget(page)
         self.sidebar.blockSignals(False);self.sidebar.setCurrentRow(previous);self.stack.setCurrentIndex(previous)
@@ -98,19 +99,22 @@ class SettingsWindow(QDialog):
         self.setStyleSheet(f'QWidget{{color:{ink};font-family:"Microsoft YaHei UI";font-size:13px}} '
             f'QDialog,#settingsPage,#pageViewport,#settingsContent,QScrollArea{{background:{bg}}} '
             f'#sidebarShell,QListWidget{{background:{sidebar};border:0}} #sidebarShell{{border-right:1px solid {border}}} '
+            f'#providerList{{background:{card};border:1px solid {border};border-radius:10px;padding:4px}} '
             'QListWidget{outline:0} QListWidget::item{padding-left:8px;border-radius:9px} QListWidget::item:selected{background:#0a84ff;color:white} '
             f'QListWidget::item:hover:!selected{{background:{border}}} QLabel#brand{{font-size:12px;font-weight:600}} '
             f'#settingsCard{{background:{card};border:1px solid {border};border-radius:10px}} #rowDivider{{background:{border};border:0}} '
             'QLabel{background:transparent} QLabel[sectionTitle="true"]{font-size:15px;font-weight:600} '
             f'QLabel[subtitle="true"]{{color:{muted};font-size:11px}} '
             f'QComboBox,QDoubleSpinBox{{background:{sidebar};border:1px solid {border};border-radius:6px;padding:5px 9px;selection-background-color:#0a84ff}} '
-            f'QComboBox{{min-width:132px;padding-right:24px}} QComboBox::drop-down{{border:0;width:24px}} QComboBox QAbstractItemView{{background:{card};selection-background-color:#0a84ff;outline:0;padding:4px}} '
+            f'QComboBox{{font-size:11px;padding:1px 6px;padding-right:20px}} QComboBox::drop-down{{border:0;width:20px}} QComboBox QAbstractItemView{{background:{card};selection-background-color:#0a84ff;outline:0;padding:4px}} '
             f'QDoubleSpinBox::up-button,QDoubleSpinBox::down-button{{border:0;width:16px}} '
+            f'QDoubleSpinBox[compactValue="true"]{{background:transparent;border:0;padding:0;color:{muted}}} '
             f'QPushButton{{background:{sidebar};border:1px solid {border};border-radius:6px;padding:6px 12px}} QPushButton:hover{{border-color:{muted}}} QPushButton:pressed{{background:{border}}} '
-            f'#segmented{{background:{sidebar};border:1px solid {border};border-radius:8px}} QPushButton#segment{{background:transparent;border:0;padding:2px 8px;min-height:22px;border-radius:5px}} '
-            f'QPushButton#segment:checked{{background:transparent;font-weight:600}} QPushButton#segment:hover:!checked{{background:{border}}} '
+            f'QPushButton:disabled{{color:{t["tertiary"]};background:{bg};border-color:{border}}} QPushButton[smallAction="true"]{{font-size:11px;padding:2px 6px;border-radius:4px}} '
+            f'QPushButton#segment{{background:transparent;border:0;padding:0;font-size:12px;min-height:0;border-radius:5px}} '
+            f'QPushButton#segment:checked{{background:transparent;font-weight:400}} QPushButton#segment:hover:!checked{{background:{border}}} '
             f'QSlider::groove:horizontal{{height:4px;border-radius:2px;background:{border}}} QSlider::sub-page:horizontal{{background:#0a84ff;border-radius:2px}} '
-            f'QSlider::handle:horizontal{{background:{card};border:1px solid {muted};width:13px;height:13px;margin:-5px 0;border-radius:7px}} '
+            f'QSlider::handle:horizontal{{background:#ffffff;border:1px solid {border};width:7px;height:14px;margin:-6px 0;border-radius:3px}} '
             f'QScrollBar:vertical{{background:transparent;width:8px;margin:3px}} QScrollBar::handle:vertical{{background:{border};border-radius:3px;min-height:36px}} '
             'QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0} QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent}')
 
@@ -125,14 +129,15 @@ class SettingsWindow(QDialog):
 
     def group(self,layout,title,subtitle=None):
         section=QWidget();column=QVBoxLayout(section);column.setContentsMargins(0,0,0,0);column.setSpacing(12)
-        heading=QLabel(self.tr(title));heading.setProperty('sectionTitle',True);column.addWidget(heading)
+        heading_block=QWidget();heading_layout=QVBoxLayout(heading_block);heading_layout.setContentsMargins(0,0,0,0);heading_layout.setSpacing(5)
+        heading=QLabel(self.tr(title));heading.setProperty('sectionTitle',True);heading_layout.addWidget(heading);column.addWidget(heading_block)
         if subtitle:
-            note=QLabel(subtitle);note.setProperty('subtitle',True);note.setWordWrap(True);column.addWidget(note)
+            note=QLabel(subtitle);note.setProperty('subtitle',True);note.setWordWrap(True);heading_layout.addWidget(note)
         card=CardSurface();column.addWidget(card)
         form=SettingRows(card,{'登录时启动':'登录后，自动开始监测用量。','按 agent 分开':'悬停某个标志只展开该 agent 的面板，不再展开全部 agent 的面板。','按 Alt 才展开':'指针经过时不展开，悬停后按 Alt 打开。',
             '跟随所在屏幕':'每个窗口和菜单栏采用所在屏幕的 HUD 外观，移到另一块屏幕时跟着变。HUD 外观在「显示」中单独设置，与这里的窗口外观独立。',
             '客户端回调':'显示会话的开始与完成状态，用量和额度读取不受影响。',
-            '位置':'回到这块屏幕的顶部安全位置。','HUD 样式':'形态、位置、大小、外观和光晕一起回到默认。'})
+            '位置':'回到这块屏幕的顶部安全位置。','HUD 样式':'形态、位置、大小、外观和光晕一起回到默认；「恢复上一版」可以撤销。'})
         if title=='屏幕':form.subtitles['HUD 形态']={'simple':'贴着屏幕边缘的悬浮面板，没有背景光晕。','logos':'贴着屏幕边缘停靠，向屏幕内展开。','notch':'固定在屏幕顶部的刘海面板。'}[self.value('mode',True)]
         layout.addWidget(section);return form
 
@@ -157,7 +162,7 @@ class SettingsWindow(QDialog):
         if key in ('appearance','mode','edge','hud_appearance'):
             widget=Segmented([(value,self.tr(title)) for value,title in options])
         else:
-            widget=QComboBox()
+            widget=QComboBox();widget.setFixedWidth(135)
             for value,title in options:widget.addItem(self.tr(title),value)
         widget.setCurrentIndex(max(0,widget.findData(self.value(key,screen))))
         widget.currentIndexChanged.connect(lambda _:self.write(key,widget.currentData(),screen,rebuild))
@@ -182,21 +187,9 @@ class SettingsWindow(QDialog):
         wait=QComboBox();wait.addItem('10 分钟');wait.setEnabled(False);wait.setToolTip('权限审批暂未开放，由客户端自行询问。');form.addRow('等待回答',wait)
 
     def sources(self,layout):
-        self.title(layout,'智能体','管理实时状态和显示窗口。未运行的客户端始终隐藏。')
-        form=self.group(layout,'智能体')
-        for client in ('Codex','Cursor'):
-            check=Switch();check.setAccessibleName(client);check.setChecked(client in self.manager.settings['enabled_clients'])
-            def changed(on,client=client):
-                values=set(self.manager.settings['enabled_clients'])
-                values.add(client) if on else values.discard(client)
-                self.write('enabled_clients',list(values))
-            check.toggled.connect(changed)
-            status='已停用' if client not in self.manager.settings['enabled_clients'] else '运行中' if client in self.manager.data else '未运行'
-            identity=QWidget();column=QVBoxLayout(identity);column.setContentsMargins(0,0,0,0);column.setSpacing(3)
-            name=QLabel(client);name.setStyleSheet('font-weight:600');column.addWidget(name)
-            label=QLabel(status);label.setProperty('subtitle',True);column.addWidget(label)
-            self.status_labels[client]=label;form.addRow(identity,check)
-        button=QPushButton('立即刷新运行状态');button.clicked.connect(lambda:self.manager.refresh_now());form.addRow(button)
+        self.title(layout,'智能体','管理实时状态、套餐与显示窗口。')
+        from agents_page import AgentsPage
+        self.agent_page=AgentsPage(self);layout.addWidget(self.agent_page,1)
 
     def display(self,layout):
         self.title(layout,'显示','自定义灵动岛光晕与面板内容，更改自动生效。')
@@ -215,11 +208,16 @@ class SettingsWindow(QDialog):
         surface.setCurrentIndex(surface.findData(selected));surface.currentIndexChanged.connect(lambda _:self.set_surface(surface.currentData()))
         surface.setObjectName('surface');form.addRow('材质',surface)
         self.number(form,'透明度','transparency',0,100,1,suffix=' %')
-        button=QPushButton(self.tr('重置位置'));button.clicked.connect(self.reset_position);form.addRow('位置',button)
-        button=QPushButton('恢复默认');button.clicked.connect(self.reset_style);form.addRow('HUD 样式',button)
+        button=QPushButton(self.tr('重置位置'));button.setProperty('smallAction',True);button.clicked.connect(self.reset_position);form.addRow('位置',button)
+        button=QPushButton('恢复默认');button.setProperty('smallAction',True);button.setObjectName('reset_style');button.clicked.connect(self.reset_style);form.addRow('HUD 样式',button)
         own=any(key in self.manager.settings['placements'].get(self.selected_screen,{}) for key in ('panel_quota','panel_tokens','panel_sessions','panel_width','session_limit','reset_countdown'))
-        button=QPushButton('使用共用布局' if own else '恢复上一版');button.setEnabled(own);button.clicked.connect(self.shared_layout)
-        label=QLabel('面板布局\n'+('这块屏幕的布局' if own else '使用共用布局'));form.addRow(label,button)
+        actions=QWidget();actions.setProperty('wideActions',True);row=QHBoxLayout(actions);row.setContentsMargins(0,0,0,0);row.setSpacing(8)
+        def action(text,name,callback,enabled=True):
+            button=QPushButton(text);button.setProperty('smallAction',True);button.setObjectName(name);button.setEnabled(enabled);button.clicked.connect(callback);row.addWidget(button)
+        if own:action('使用共用布局','shared_layout',self.shared_layout)
+        action('恢复上一版','revert_layout',lambda:self.layout_action('revert'),bool(self.manager.settings.get('screen_versions',{}).get(self.selected_screen)))
+        if own:action('恢复默认','reset_layout',lambda:self.layout_action('reset'))
+        label=QLabel('面板布局\n'+('这块屏幕的布局' if own else '使用共用布局'));form.addRow(label,actions)
         if self.value('mode',True)!='notch':self.check(form,'按 agent 分开','separates_agents',True)
         if self.value('mode',True)=='simple':
             self.hud_preview=HudSample(self.manager,self.selected_screen);form.addRow(self.hud_preview)
@@ -271,10 +269,11 @@ class SettingsWindow(QDialog):
         values=dict(glass=value!='solid')
         if value!='solid':values['glass_style']=value
         self.write_screen_values(values)
+        QTimer.singleShot(0,self.rebuild)
 
-    def write_screen_values(self,values):
+    def write_screen_values(self,values,remember=False):
         try:
-            if hasattr(self.manager,'apply_screen_settings'):self.manager.apply_screen_settings(values,self.selected_screen)
+            if hasattr(self.manager,'apply_screen_settings'):self.manager.apply_screen_settings(values,self.selected_screen,remember=remember)
             else:
                 for key,value in values.items():self.write(key,value,True)
             if self.hud_preview is not None:self.hud_preview.refresh()
@@ -282,14 +281,17 @@ class SettingsWindow(QDialog):
             QMessageBox.warning(self,DESIGN['app_name'],str(error));QTimer.singleShot(0,self.rebuild)
 
     def reset_style(self):
-        keys=('mode','edge','offset','size','ring_width','show_rings','show_numbers','show_logos','logo_size','logo_gap','edge_distance','gap','hud_appearance','glass','glass_style','transparency','separates_agents')
+        keys=('mode','edge','offset','size','ring_width','show_rings','show_numbers','show_logos','logo_size','logo_gap','edge_distance','gap','hud_appearance','glass','glass_style','transparency','glass_transparency','solid_transparency','separates_agents')
         keys+=tuple(key for key in DEFAULTS if key.startswith(('glow_','grid_')))
         values={key:DEFAULTS[key] for key in keys}
-        self.write_screen_values(values)
+        self.write_screen_values(values,remember=True)
         self.rebuild()
 
     def shared_layout(self):
-        fields=self.manager.settings['placements'].get(self.selected_screen,{})
-        for key in ('panel_quota','panel_tokens','panel_sessions','panel_width','session_limit','reset_countdown'):fields.pop(key,None)
-        if hasattr(self.manager,'save'):self.manager.save();self.manager.update(self.manager.data)
+        self.layout_action('shared')
+
+    def layout_action(self,action):
+        if hasattr(self.manager,'change_screen_layout'):
+            try:self.manager.change_screen_layout(self.selected_screen,action)
+            except RuntimeError as error:QMessageBox.warning(self,DESIGN['app_name'],str(error))
         self.rebuild()

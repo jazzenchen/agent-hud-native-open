@@ -33,7 +33,9 @@ click menu, or the panel's gear. Launching the Desktop shortcut again raises the
 settings window of the existing instance. Hover opens the selected agent's
 compact one-line quota peek in Simple mode (26pt at the default size), or a small
 bubble in Dynamic mode. Click opens/pins that agent's full 440pt panel. Leaving
-dismisses an unpinned peek. The full panel no longer opens merely from a hover.
+dismisses an unpinned peek. With Separate agents off, hover opens the shared
+panel instead. Separation scopes the hover; the agents retain one source-shaped
+strip rather than being split into separate capsules.
 
 ## Windows platform boundary
 
@@ -50,7 +52,10 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
   upstream does. Click and drag use different paths, so dropping does not pin a panel.
 - Settings follow the original General / Agents / Display / Experimental layout.
   General controls appearance, language, launch at login and reversible Cursor
-  observers. Agents enable/disable reads and display for Codex/Cursor.
+  observers. Agents lists all 18 upstream detection groups with original artwork,
+  passive Windows install/process discovery and a detail column. Discovery does
+  not start clients or claim authentication. Codex/Cursor have live adapters and
+  per-window visibility; other groups explicitly report the unported data paths.
 - Display supports Simple, logo dock and a 200pt stand-in notch (plus original
   flares), separate/combined agents, four edges, normalized position, light/dark
   HUD, acrylic style/opacity, size, ring/number visibility, quota/token/session
@@ -69,8 +74,11 @@ independently of views. Qt hosts the windows and paints the SwiftUI counterparts
   Decorative pointer lighting keeps controls/text stationary. Windows' client-area
   animation preference suppresses springs and continuous glow when disabled.
 - The Acrylic adapter uses the explicit ABGR theme tint for every glass style;
-  the legacy untinted Clear blur path was removed. Rounded native regions clip
-  the compositor, and DWM's extra border is suppressed separately from Qt painting.
+  the legacy untinted Clear blur path was removed. Qt and HWND regions are round,
+  and DWM's extra border is suppressed. Native capture revealed Acrylic can still
+  paint outside the requested capsule despite a successful rounded region; this
+  remains a blocking visual difference. The native probe now tests a corner pixel
+  against its owned wallpaper, independently of API success.
   See [UI_AUDIT.md](UI_AUDIT.md) for native evidence and remaining review gates.
 - Acrylic replaces Apple Liquid Glass; Segoe UI / Microsoft YaHei UI replace
   Apple fonts. The Windows notch uses the source's fallback dimensions instead

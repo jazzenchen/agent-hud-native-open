@@ -25,6 +25,8 @@ def load_design():
     light_colors={key:'#'+value for key,value in re.findall(r'(\w+): Color\(hex: 0x([0-9a-fA-F]{6})\)',light_palette)}
     colors = {key: '#' + value for key, value in re.findall(r'(\w+): Color\(hex: 0x([0-9a-fA-F]{6})\)', palette)}
     levels = (DESKTOP / 'Theme/StatusPalette.swift').read_text(encoding='utf-8')
+    status_colors={key:'#'+value for key,value in re.findall(r'static let (\w+) = RGBA\(hex: 0x([0-9a-fA-F]{6})\)',levels)}
+    glass_text={key+('Light' if light=='true' else 'Dark'):'#'+value for key,light,value in re.findall(r'case \(\.(\w+), (true|false)\): return RGBA\(hex: 0x([0-9a-fA-F]{6})\)',levels)}
     colors.update({key: '#' + value for key, value in re.findall(r'static let (ok|warning|critical|idle) = RGBA\(hex: 0x([0-9a-fA-F]{6})\)', levels)})
     style = (CORE / 'PanelLayout/PanelLayout.swift').read_text(encoding='utf-8')
     placement = (CORE / 'Models/Settings/ScreenPlacement.swift').read_text(encoding='utf-8')
@@ -34,7 +36,9 @@ def load_design():
     geometry=(DESKTOP/'Notch/NotchGeometry.swift').read_text(encoding='utf-8')
     island=(DESKTOP/'Notch/Island/IslandRootView.swift').read_text(encoding='utf-8')
     build=(ROOT/'scripts/build-app.sh').read_text(encoding='utf-8')
-    return dict(colors=colors,light_colors=light_colors,
+    shell=(DESKTOP/'Notch/ScreenHUD.swift').read_text(encoding='utf-8')
+    return dict(colors=colors,light_colors=light_colors,status_colors=status_colors,glass_text=glass_text,
+                full_corner=number(shell,r'full \? (\d+)'),bubble_corner=number(shell,r'bubble \? (\d+)'),
                 app_name=re.search(r'APP_NAME="([^"]+)"',build)[1],
                 app_version=re.search(r'CFBundleShortVersionString</key><string>([^<]+)',build)[1],
                 app_icon=ROOT/'assets/AppIcon.icns',width=number(style, r'defaultWidth = (\d+)'),

@@ -40,15 +40,15 @@ class Segmented(QWidget):
         super().__init__(parent);self.setObjectName('segmented');self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground);self.items=items;self.index=0
         self._selection=0.
         self.animation=SpringDriver(self,frequency=5.5);self.animation.valueChanged.connect(self.set_selection)
-        self.layout=QHBoxLayout(self);self.layout.setContentsMargins(3,3,3,3);self.layout.setSpacing(1)
+        self.layout=QHBoxLayout(self);self.layout.setContentsMargins(2,2,2,2);self.layout.setSpacing(0)
         self.group=QButtonGroup(self);self.group.setExclusive(True);self.buttons=[]
-        face=QFont('Microsoft YaHei UI');face.setPixelSize(13);metrics=QFontMetrics(face)
-        widths=[max(40,metrics.horizontalAdvance(label)+20) for _,label in items]
+        face=QFont('Microsoft YaHei UI');face.setPixelSize(12);metrics=QFontMetrics(face)
+        widths=[max(40,metrics.horizontalAdvance(label)+24) for _,label in items]
         for index,(value,label) in enumerate(items):
             button=QPushButton(label);button.setObjectName('segment');button.setCheckable(True);button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setFixedWidth(widths[index]);self.layout.addWidget(button);self.group.addButton(button,index);self.buttons.append(button)
         self.group.idClicked.connect(self.setCurrentIndex);self.buttons[0].setChecked(True)
-        self.setFixedHeight(28);self.setFixedWidth(sum(widths)+len(items)-1+6)
+        self.setFixedHeight(26);self.setFixedWidth(sum(widths)+4)
     def currentData(self):return self.items[self.index][0]
     def findData(self,value):return next((i for i,(v,_) in enumerate(self.items) if v==value),-1)
     def setCurrentIndex(self,index):
@@ -64,13 +64,13 @@ class Segmented(QWidget):
     def paintEvent(self,event):
         painter=QPainter(self);painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         from theme import tokens
-        t=tokens(is_light(self));painter.setPen(QPen(QColor(t['border']),1));painter.setBrush(QColor(t['sidebar']))
+        t=tokens(is_light(self));painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(QColor('#ebebed' if is_light(self) else '#434343'))
         painter.drawRoundedRect(QRectF(self.rect()).adjusted(.5,.5,-.5,-.5),7,7)
         if not self.buttons:return
         position=max(0,min(len(self.buttons)-1,self._selection));left=int(position);right=min(left+1,len(self.buttons)-1);fraction=position-left
         a,b=QRectF(self.buttons[left].geometry()),QRectF(self.buttons[right].geometry())
         pill=QRectF(a.x()+(b.x()-a.x())*fraction,a.y(),a.width()+(b.width()-a.width())*fraction,a.height())
-        painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(QColor('#ffffff' if is_light(self) else '#57575b'))
+        painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(QColor('#ffffff' if is_light(self) else '#707070'))
         if not self.isEnabled():painter.setOpacity(.45)
         painter.drawRoundedRect(pill,5,5);painter.end()
     def hideEvent(self,event):
@@ -85,8 +85,9 @@ class SliderValue(QWidget):
         layout=QHBoxLayout(self);layout.setContentsMargins(0,0,0,0);layout.setSpacing(14)
         self.slider=QSlider(Qt.Orientation.Horizontal);self.slider.setRange(0,round((high-low)/step))
         self.spin=QDoubleSpinBox();self.spin.setRange(low,high);self.spin.setSingleStep(step)
+        self.spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons);self.spin.setAlignment(Qt.AlignmentFlag.AlignRight);self.spin.setProperty('compactValue',True)
         self.spin.setDecimals(0 if isinstance(step,int) else 2);self.spin.setSuffix(suffix)
-        self.spin.setFixedWidth(92);self.spin.setKeyboardTracking(False);self.slider.setMinimumWidth(120)
+        self.spin.setFixedWidth(64);self.spin.setKeyboardTracking(False);self.slider.setMinimumWidth(120)
         self.slider.setValue(round((value-low)/step));self.spin.setValue(value)
         layout.addWidget(self.slider,1);layout.addWidget(self.spin)
         self.slider.valueChanged.connect(self.from_slider);self.slider.sliderReleased.connect(lambda:self.valueChanged.emit(self.spin.value()))
@@ -179,7 +180,7 @@ class SettingRows(QVBoxLayout):
             if isinstance(control,SliderValue):
                 control.setMaximumWidth(450);control.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed);layout.addWidget(control,3)
             else:
-                if not isinstance(control,Segmented):control.setMaximumWidth(220)
+                if not isinstance(control,Segmented) and not control.property('wideActions'):control.setMaximumWidth(220)
                 layout.addWidget(control,0,Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
         row.setMinimumHeight(52);self.addWidget(row)
 

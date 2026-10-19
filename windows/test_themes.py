@@ -106,6 +106,14 @@ class ThemeAudit(unittest.TestCase):
         self.assertEqual(reset_label(10000+7200+180,now=10000),'2时 3分')
         self.assertEqual(reset_label(9999,now=10000),'重置中')
 
+    def test_window_visibility_hides_a_quota_without_destroying_the_reading(self):
+        manager,meter=self.manager()
+        manager.apply_setting('hidden_windows',{'Codex':['Weekly']})
+        self.assertEqual(meter.data['quota']['windows'],[]);self.assertTrue(meter.data['quota']['hidden'])
+        self.assertEqual(manager.data['Codex']['quota']['windows'][0]['used'],37)
+        manager.apply_setting('hidden_windows',{})
+        self.assertEqual(meter.data['quota']['windows'][0]['used'],37)
+
     def test_live_menu_updates_provider_rows_and_dispatches_the_correct_client(self):
         manager,_=self.manager();menu=manager.tray_menu
         manager.data={};manager.populate_menu(menu)

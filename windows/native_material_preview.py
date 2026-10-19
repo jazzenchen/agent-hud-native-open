@@ -26,7 +26,8 @@ class Scene(QWidget):
 def main():
     app=QApplication([]);app.setStyle('Fusion');app.setQuitOnLastWindowClosed(False)
     destination=Path(sys.argv[1]);destination.mkdir(parents=True,exist_ok=True)
-    scene=Scene();scene.show();scene.raise_();app.processEvents()
+    scene=Scene();scene.show();scene.raise_();app.processEvents();QTest.qWait(100)
+    baseline=scene.screen().grabWindow(0,scene.x(),scene.y(),scene.width(),scene.height()).toImage()
     meter=SimpleMeterView('Codex',app.primaryScreen(),load(dict(size=28,glass=True)),lambda _:None)
     meter.set_data(dict(quota=dict(windows=[dict(label='5-hour',used=17),dict(label='Weekly',used=42)]),local=dict(sessions=[])))
     meter.place(410,180);meter.show();meter.apply_material();app.processEvents()
@@ -59,6 +60,15 @@ def main():
             region=gdi.CreateRectRgn(0,0,0,0);kind=user.GetWindowRgn(int(widget.winId()),region)
             result[scheme][name+'_clip']=dict(type=kind,radius=widget.corner,top=[bool(gdi.PtInRegion(region,x,0)) for x in range(widget.width())])
             gdi.DeleteObject(region)
+            # API success and a rounded HWND region do not prove that Acrylic
+            # obeyed that region. Compare a point outside the intended capsule
+            # against the same owned backdrop before the overlay existed.
+            if capture_valid and not baseline.isNull():
+                scale=image.width()/scene.width();px=round((widget.x()-scene.x()+widget.corner*.5)*scale);py=round((widget.y()-scene.y()+1)*scale)
+                actual=image.pixelColor(px,py);expected=baseline.pixelColor(px,py)
+                delta=max(abs(a-b) for a,b in zip(actual.getRgb()[:3],expected.getRgb()[:3]))
+                result[scheme][name+'_corner_pixel']=dict(max_rgb_delta=delta,wallpaper_preserved=delta<=16,
+                    scope='Single outside-capsule sample; a failed sample blocks fidelity acceptance, a pass is not full-shape proof')
     (destination/'native-material.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     # Measure the actual Windows Qt paint path separately from screenshot/file IO.
     # These are CPU/readback costs and timer intervals, not GPU frame-rate claims.

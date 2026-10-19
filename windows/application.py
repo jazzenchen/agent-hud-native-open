@@ -201,7 +201,10 @@ class Application:
                     startup.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,startup)
                 elif startup.exists():startup.unlink()
             self.settings[key]=value
-        else:self.settings['placements'].setdefault(screen,{})[key]=value
+        else:
+            if key in ('glass','transparency'):
+                self.apply_screen_settings({key:value},screen);return
+            self.settings['placements'].setdefault(screen,{})[key]=value
         self.monitor.enabled=set(self.settings['enabled_clients'])
         self.tray.setVisible(self.settings['show_tray'])
         self.commit_settings(previous);self.update(self.data)
@@ -211,10 +214,34 @@ class Application:
     def screen_settings(self,name):
         return {**self.settings,**self.settings.get('placements',{}).get(name,{})}
 
-    def apply_screen_settings(self,values,screen):
+    def apply_screen_settings(self,values,screen,remember=False):
         validated={key:validate(key,value) for key,value in values.items()}
         previous=deepcopy(self.settings)
-        self.settings['placements'].setdefault(screen,{}).update(validated)
+        fields=self.settings['placements'].setdefault(screen,{})
+        if remember:self.remember_screen(screen)
+        cfg=self.screen_settings(screen)
+        if 'glass' in validated and 'transparency' not in validated:
+            validated['transparency']=cfg['glass_transparency' if validated['glass'] else 'solid_transparency']
+        if 'transparency' in validated:
+            validated['glass_transparency' if validated.get('glass',cfg['glass']) else 'solid_transparency']=validated['transparency']
+        fields.update(validated)
+        self.commit_settings(previous);self.update(self.data);self.refresh_themes()
+
+    def remember_screen(self,screen):
+        versions=self.settings.setdefault('screen_versions',{}).setdefault(screen,[])
+        versions.append(deepcopy(self.settings['placements'].get(screen,{})));del versions[:-8]
+
+    def change_screen_layout(self,screen,action):
+        previous=deepcopy(self.settings)
+        if action=='revert':
+            versions=self.settings.setdefault('screen_versions',{}).get(screen,[])
+            if not versions:return
+            self.settings['placements'][screen]=versions.pop()
+        else:
+            self.remember_screen(screen);fields=self.settings['placements'].setdefault(screen,{})
+            for key in ('panel_quota','panel_tokens','panel_sessions','panel_width','session_limit','reset_countdown'):
+                if action=='shared':fields.pop(key,None)
+                elif action=='reset':fields[key]=DEFAULTS[key]
         self.commit_settings(previous);self.update(self.data);self.refresh_themes()
 
     def dragged(self,meter,point):
@@ -245,7 +272,7 @@ class Application:
         groups={}
         for screen in self.app.screens():
             cfg=self.screen_settings(screen.name())
-            groups[screen.name()]=[[c] for c in snapshot] if cfg['separates_agents'] and cfg['mode']!='notch' else [list(snapshot)] if snapshot else []
+            groups[screen.name()]=[list(snapshot)] if snapshot else []
         wanted={(screen,clients[0] if len(clients)==1 else 'group') for screen,sets in groups.items() for clients in sets}
         for key in list(self.windows):
             if key not in wanted:
@@ -263,7 +290,10 @@ class Application:
                     self.windows[key]=meter
                 meter=self.windows[key]
                 meter.settings=self.screen_settings(screen.name())
-                meter.set_group_data({c:snapshot[c] for c in clients});meters.append(meter)
+                visible={c:{**snapshot[c],'quota':{**snapshot[c].get('quota',{}),'windows':[row for row in snapshot[c].get('quota',{}).get('windows',[]) if row['label'] not in self.settings.get('hidden_windows',{}).get(c,[])]}} for c in clients}
+                for client,data in visible.items():
+                    if snapshot[client].get('quota',{}).get('windows') and not data['quota']['windows']:data['quota']['hidden']=True
+                meter.set_group_data(visible);meters.append(meter)
             cfg=self.screen_settings(screen.name())
             edge=cfg['edge'] if cfg['mode']!='notch' else 'top';horizontal=edge in ('top','bottom')
             gap=round(cfg['size']*cfg['gap']) if cfg['mode']=='simple' else round(cfg['logo_size']*cfg['logo_gap'])
@@ -326,7 +356,10 @@ def preview(app,directory):
             meter.grab().save(str(directory/(client.lower()+'-'+mode+'.png')))
         meter.hide_all();meter.glow.close();meter.panel.close();meter.close()
     class PreviewManager:
-        def __init__(self):self.app=app;self.settings=load({});self.data={}
+        preview=True
+        def __init__(self):
+            self.app=app;self.settings=load({})
+            self.data={'Codex':dict(quota=dict(windows=[dict(label='Weekly',used=49)]),local=dict(sessions=[]))}
         def screen_settings(self,name):return {**self.settings,**self.settings['placements'].get(name,{})}
         def apply_setting(self,key,value,screen=None):
             target=self.settings if screen is None else self.settings['placements'].setdefault(screen,{})
