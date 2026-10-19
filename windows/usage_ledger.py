@@ -38,10 +38,12 @@ class UsageLedger:
             totals=db.execute('SELECT COALESCE(SUM(input),0),COALESCE(SUM(output),0),COALESCE(SUM(cache),0),COALESCE(SUM(cache_write),0),COALESCE(SUM(reasoning),0),COUNT(*) FROM events WHERE '+where,params).fetchone()
             buckets=db.execute('SELECT CAST(at/900 AS INTEGER)*900,SUM(input),SUM(output),SUM(cache),SUM(cache_write),SUM(reasoning) FROM events WHERE '+where+' GROUP BY 1 ORDER BY 1',params).fetchall()
             models=db.execute('SELECT model,SUM(input),SUM(output),SUM(cache),SUM(cache_write),SUM(reasoning) FROM events WHERE '+where+' GROUP BY model ORDER BY SUM(input+output+cache) DESC',params).fetchall()
+            model_buckets=db.execute('SELECT CAST(at/900 AS INTEGER)*900,model,SUM(input),SUM(output),SUM(cache),SUM(cache_write),SUM(reasoning) FROM events WHERE '+where+' GROUP BY 1,2 ORDER BY 1,2',params).fetchall()
             accounts=db.execute('SELECT identity,label,evidence,observed FROM accounts WHERE source=? ORDER BY observed DESC',(source,)).fetchall()
             return dict(totals=self.counts(totals[:5]),event_count=totals[5],hours=hours,scope='account' if account else 'local',
                 buckets=[dict(at=row[0],**self.counts(row[1:])) for row in buckets],
                 models=[dict(model=row[0],**self.counts(row[1:])) for row in models],
+                model_buckets=[dict(at=row[0],model=row[1],**self.counts(row[2:])) for row in model_buckets],
                 accounts=[dict(id=r[0],label=r[1],evidence=r[2],observed=r[3]) for r in accounts])
         finally:db.close()
     @staticmethod

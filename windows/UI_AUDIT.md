@@ -310,3 +310,23 @@ variants, sprite-specific Clawd and seamless stochastic looping. Remaining relea
 checks include statistics/source comparison, clean installation, attribution and
 third-party binary packaging, and the overall acceptance matrix. Do not treat the
 new test count or the source-pixel samples as an overall 90% similarity score.
+
+
+### Visibility regression after a test launch
+
+A resident launch inherited QT_QPA_PLATFORM=offscreen from the test command.
+Health reported visible widgets, but they were not on a native display. Correct
+normal hud.py launches to select the Windows platform before importing the UI;
+explicit previews/probes retain their requested test environment. Settings now
+restore from minimization and clamp an off-display saved position to a current
+screen. Health records the actual Qt platform so headless visibility cannot be
+confused with native visibility again. Native verification found the restored
+settings on screen at [462,116,1438,875], not minimized, and the HUD at
+[852,0,1068,24] on P25F200, with qt_platform=windows. All positions are diagnostic
+samples from this machine, not hardcoded placements.
+
+A separately created clean Python environment installed only requirements.txt;
+all 116 checks at that checkpoint and the passive presence probe passed. Current
+statistics changes also add model-bucket queries/model filters using the original
+agent palette; per-kind filters retain at least one selection. Model menu actions
+are kept alive while toggled rather than rebuilding/deleting the active action.

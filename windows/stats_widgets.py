@@ -4,6 +4,7 @@ Geometry/hierarchy and kind colors follow the original Stats and Theme sources.
 Only indexed ledger records are drawn; missing prices and history stay unknown.
 """
 import math,re,time
+from functools import lru_cache
 from datetime import datetime,timedelta
 from PySide6.QtCore import Qt,QRectF,QPointF
 from PySide6.QtGui import QPainter,QColor,QPen,QFont,QPainterPath
@@ -17,6 +18,7 @@ from views import compact,font
 LABELS=dict(fresh_input='输入',cache='缓存读取',cache_write='缓存写入',visible_output='输出',reasoning='推理')
 
 
+@lru_cache(maxsize=2)
 def kind_colors(light):
     source=(DESKTOP/'Theme/Theme.swift').read_text(encoding='utf-8')
     names=dict(fresh_input='input',cache='cacheRead',cache_write='cacheWrite',visible_output='output',reasoning='reasoning')
@@ -26,6 +28,25 @@ def kind_colors(light):
         if not match:raise ValueError('Original token color changed: '+name)
         result[key]='#'+match[1 if light else 2]
     return result
+
+
+@lru_cache(maxsize=2)
+def model_colors(light):
+    source=(DESKTOP/'Theme/AgentPalette.swift').read_text(encoding='utf-8')
+    name='lightColors' if light else 'colors';match=re.search(r'public static let '+name+r':.*?=\s*\[(.*?)\]',source,re.S)
+    if not match:raise ValueError('Original model palette changed')
+    part=match[1]
+    return ['#'+value for value in re.findall(r'RGBA\(hex: 0x([0-9a-f]+)\)',part)]
+
+
+def selected_models(stats,selected):
+    if selected is None or 'model_buckets' not in stats:return stats
+    rows=[row for row in stats['model_buckets'] if row['model'] in selected];buckets={}
+    for row in rows:
+        bucket=buckets.setdefault(row['at'],dict(at=row['at'],**{key:0 for key in CHANNELS},total=0))
+        for key in CHANNELS:bucket[key]+=row.get(key,0)
+        bucket['total']+=row.get('total',0)
+    return {**stats,'model_buckets':rows,'buckets':list(buckets.values())}
 
 
 def columns(stats,hours,channels=CHANNELS,now=None,bucket_seconds=None):
@@ -67,12 +88,17 @@ class StatsCanvas(QWidget):
     def chart(self,p,colors):
         rows=columns(self.stats,self.hours,self.channels,bucket_seconds=self.bucket_seconds);total=sum(row['total'] for row in rows)
         self.label(p,QRectF(16,10,180,24),'Token 消耗',13,True);self.label(p,QRectF(self.width()-160,8,144,30),compact(total),20,True,align=Qt.AlignmentFlag.AlignRight)
-        plot=QRectF(16,52,self.width()-32,136);peak=max((row['total'] for row in rows),default=0);width=plot.width()/max(1,len(rows));p.setPen(QPen(QColor(tokens(self.light())['divider']),1));p.drawLine(plot.bottomLeft(),plot.bottomRight())
+        plot=QRectF(16,64,self.width()-32,124);peak=max((row['total'] for row in rows),default=0);width=plot.width()/max(1,len(rows));p.setPen(QPen(QColor(tokens(self.light())['divider']),1));p.drawLine(plot.bottomLeft(),plot.bottomRight())
+        models=sorted({row['model'] for row in self.stats.get('model_buckets',[])})
+        by_model={model:columns(dict(buckets=[row for row in self.stats['model_buckets'] if row['model']==model]),self.hours,self.channels,bucket_seconds=self.bucket_seconds) for model in models}
+        palette=model_colors(self.light());segments={}
+        for index,model in enumerate(models):
+            for row in by_model[model]:segments.setdefault(row['at'],[]).append((palette[index%len(palette)],row['total']))
         for i,row in enumerate(rows):
             x=plot.left()+i*width;gap=min(2,width*.2);height=row['total']/max(1,peak)*plot.height();bottom=plot.bottom()
             path=QPainterPath();path.addRoundedRect(QRectF(x+gap/2,bottom-height,width-gap,height),2,2);p.save();p.setClipPath(path);p.setPen(Qt.PenStyle.NoPen)
-            for key in self.channels:
-                part=row[key]/max(1,peak)*plot.height();bottom-=part;p.fillRect(QRectF(x+gap/2,bottom,width-gap,part),QColor(colors[key]))
+            for ink,value in segments.get(row['at'],[(colors[key],row[key]) for key in self.channels]):
+                part=value/max(1,peak)*plot.height();bottom-=part;p.fillRect(QRectF(x+gap/2,bottom,width-gap,part),QColor(ink))
             p.restore()
             if self.hovered==i:
                 p.fillRect(QRectF(x,plot.top(),width,plot.height()),QColor('#180a84ff'))
@@ -119,7 +145,7 @@ class StatsCanvas(QWidget):
 
 class TokenDashboard(QWidget):
     def __init__(self,client,parent=None):
-        super().__init__(parent);self.client=client;self.stats={};self.channels=[key for key in CHANNELS if key!='cache'];self.hours=24
+        super().__init__(parent);self.client=client;self.stats={};self.channels=[key for key in CHANNELS if key!='cache'];self.hours=24;self.model_selection=None;self.model_signature=None
         root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0);root.setSpacing(12);controls=QHBoxLayout();controls.setSpacing(10)
         self.kinds_button=QToolButton();self.kinds_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup);self.kinds_button.setObjectName('statsKinds')
         self.kinds_menu=QMenu(self.kinds_button);self.kind_actions={}
@@ -134,11 +160,27 @@ class TokenDashboard(QWidget):
         self.cards=[]
         for kind in ('chart','agent','periods','heatmap'):
             card=StatsCanvas(kind);self.cards.append(card);root.addWidget(card)
+        self.models_button=QToolButton(self.cards[0]);self.models_button.setGeometry(16,34,220,24);self.models_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.models_menu=QMenu(self.models_button);self.models_button.setMenu(self.models_menu)
     def set_data(self,stats):
         self.stats=stats
         label='不含缓存读取' if set(self.channels)==set(CHANNELS)-{'cache'} else '全部 Token' if len(self.channels)==5 else '、'.join(LABELS[key] for key in self.channels)
         self.kinds_button.setText('Token · '+label)
         for card in self.cards:card.bucket_seconds=86400 if self.hours==720 else self.bucket.currentData();card.set_data(stats,self.client,self.hours,self.channels)
+        self.cards[0].set_data(selected_models(stats,self.model_selection),self.client,self.hours,self.channels)
+        names=sorted({row['model'] for row in stats.get('model_buckets',[])} or {row['model'] for row in stats.get('models',[])})
+        self.models_button.setText('› 模型 · '+('全部' if self.model_selection is None else str(len(self.model_selection))+' 个'))
+        signature=tuple(names)
+        # Never delete an action while its own toggled signal/menu is active.
+        if signature!=self.model_signature and not self.models_menu.isVisible():
+            self.model_signature=signature;self.models_menu.clear();self.models_menu.addAction('全部模型',lambda:self.pick_models(None))
+            for name in names:
+                action=self.models_menu.addAction(name);action.setData(name);action.setCheckable(True);action.setChecked(self.model_selection is None or name in self.model_selection)
+                action.toggled.connect(lambda on,name=name,names=names:self.pick_models((set(names) if self.model_selection is None else set(self.model_selection))|{name} if on else (set(names) if self.model_selection is None else set(self.model_selection))-{name}))
+        for action in self.models_menu.actions():
+            if action.isCheckable():
+                action.blockSignals(True);action.setChecked(self.model_selection is None or action.data() in self.model_selection);action.blockSignals(False)
+    def pick_models(self,selected):self.model_selection=selected;self.set_data(self.stats)
     def set_kinds(self,keys):
         self.channels=list(keys)
         for key,action in self.kind_actions.items():action.blockSignals(True);action.setChecked(key in self.channels);action.blockSignals(False)

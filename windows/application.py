@@ -71,7 +71,8 @@ class UsageWindow(QDialog):
 
     def sync(self,data):
         local=data.get('local',{});stats=local.get('stats',{});sessions=local.get('sessions',[])
-        signature=repr((stats,[(r.get('id'),r.get('tokens'),r.get('state'),r.get('title')) for r in sessions],local.get('notice'),data.get('quota',{}).get('account')))
+        history=local.get('history_stats') or stats
+        signature=repr((stats,history.get('event_count'),history.get('totals'),[(r.get('id'),r.get('tokens'),r.get('state'),r.get('title')) for r in sessions],local.get('notice'),data.get('quota',{}).get('account')))
         if signature==self.usage_signature:return
         self.usage_signature=signature
         from usage_display import account_label
@@ -221,7 +222,11 @@ class Application:
 
     def show_settings(self):
         if self.settings_window is None:self.settings_window=SettingsWindow(self)
-        self.settings_window.show();self.settings_window.raise_();self.settings_window.activateWindow()
+        self.settings_window.showNormal()
+        frame=self.settings_window.frameGeometry()
+        if not any(frame.intersects(screen.availableGeometry()) for screen in self.app.screens()):
+            available=self.app.primaryScreen().availableGeometry();frame.moveCenter(available.center());self.settings_window.move(frame.topLeft())
+        self.settings_window.raise_();self.settings_window.activateWindow()
 
     def refresh_now(self):
         with self.monitor.lock:self.monitor.last_query.clear()
@@ -365,7 +370,7 @@ class Application:
         if signature!=getattr(self,'_theme_signature',None):
             self._theme_signature=signature;self.refresh_themes()
         # Health metadata only; useful for checking hidden/background operation.
-        status=dict(running=sorted(snapshot),mode=self.settings['mode'],separates_agents=self.settings['separates_agents'],
+        status=dict(qt_platform=self.app.platformName(),running=sorted(snapshot),mode=self.settings['mode'],separates_agents=self.settings['separates_agents'],
                     quota={client:dict(state='stale' if data.get('quota',{}).get('stale') else 'available' if data.get('quota',{}).get('windows') else 'unavailable' if data.get('quota',{}).get('error_code') else 'no_percentage' if data.get('quota',{}).get('at') else 'loading',
                         error_code=data.get('quota',{}).get('error_code'),last_success_at=data.get('quota',{}).get('at'),
                         retry_seconds=data.get('quota',{}).get('retry_seconds')) for client,data in snapshot.items()},

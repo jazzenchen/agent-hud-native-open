@@ -14,6 +14,16 @@ class StatsWidgets(unittest.TestCase):
         self.assertEqual(sum(row['total'] for row in columns(stats,24,now=now,bucket_seconds=3600)),79)
         self.assertEqual(sum(row['total'] for row in columns(stats,24,channels=('fresh_input',),now=now)),50)
         self.assertEqual(kind_colors(False)['cache'],'#31c3b5');self.assertEqual(kind_colors(True)['fresh_input'],'#398ad6')
+    def test_model_filter_keeps_actions_alive_and_preserves_other_cards(self):
+        from stats_widgets import selected_models,model_colors
+        now=time.time();data=dict(model_buckets=[dict(at=now-30,model='a',fresh_input=10,total=10),dict(at=now-30,model='b',fresh_input=20,total=20)],buckets=[dict(at=now-30,fresh_input=30,total=30)])
+        widget=TokenDashboard('Codex');self.addCleanup(widget.close);widget.set_data(data)
+        action=next(action for action in widget.models_menu.actions() if action.data()=='a');action.setChecked(False)
+        self.assertEqual(action.text(),'a');self.assertEqual(widget.model_selection,{'b'})
+        self.assertEqual(widget.cards[0].stats['buckets'][0]['fresh_input'],20)
+        self.assertEqual(widget.cards[1].stats['buckets'][0]['fresh_input'],30)
+        widget.pick_models(None);self.assertTrue(action.isChecked());self.assertEqual(len(model_colors(False)),6)
+
     def test_recent_periods_start_today_at_local_midnight(self):
         now=time.time();today=datetime.fromtimestamp(now).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()
         stats=dict(buckets=[dict(at=today+1,fresh_input=10),dict(at=today-1,fresh_input=20),dict(at=now-8*86400,fresh_input=30)])
