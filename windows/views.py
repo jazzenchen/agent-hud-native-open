@@ -525,6 +525,7 @@ class HoverPanelView(QWidget):
         self.frost=PanelFrost()
         self.hits = []
         self.scroll_offset=0.
+        self.metric_selection={}
         self.animation = SourceCurveDriver(self,duration=DESIGN['animation_ms']/1000)
         self.animation.valueChanged.connect(self.animate)
         self.animation.finished.connect(self.finished)
@@ -696,7 +697,10 @@ class HoverPanelView(QWidget):
         y=0
         if self.meter.settings.get('panel_quota',True):
             for client,data in self.providers():
+                first_hit=len(self.hits)
                 p.save();p.translate(0,y);height=self.provider_block(p,w,client,data);p.restore()
+                for index in range(first_hit,len(self.hits)):
+                    rect,action=self.hits[index];self.hits[index]=(rect.translated(0,y),action)
                 y+=height;divider(p,y+8,w);y+=18
         for key,block in [('panel_tokens',lambda:self.token_block(p,y,w)),('panel_sessions',lambda:self.sessions_block(p,y,w))]:
             if self.meter.settings.get(key,True):
@@ -712,8 +716,9 @@ class HoverPanelView(QWidget):
     def provider_block(self,p,w,client=None,data=None):
         client=client or self.meter.client;data=self.data if data is None else data
         artwork().draw(p,client,QRectF(6,2,14,14))
-        text(p,QRectF(26,0,w-100,20),client,13,'text',True)
-        text(p,QRectF(w-64,0,64,20),'%',10,'secondary',align=Qt.AlignmentFlag.AlignRight)
+        text(p,QRectF(26,0,w-140,20),client,13,'text',True)
+        from quota_metric_views import picker,presentation
+        picker(self,p,w,client)
         from usage_display import account_label
         quota=data.get('quota',{});label=account_label(quota)
         text(p,QRectF(6,23,w*.66,15),QFontMetricsF(font(10)).elidedText(label,Qt.TextElideMode.ElideRight,w*.66),10,'secondary')
@@ -735,19 +740,46 @@ class HoverPanelView(QWidget):
         for row in rows:
             from quota_insights import number
             used=number(row.get('used'));ink=level(used)
-            p.setPen(Qt.PenStyle.NoPen);p.setBrush(color(ink,painter=p))
+            metric=self.metric_selection.get(client,'quota')
+            import time
+            at=number(quota.get('at'));fresh=not quota.get('stale') and not quota.get('error_code') and at is not None and 0<=time.time()-at<=1800
+            shown=presentation(row,metric,fresh)
+            value_ink=ink if metric=='quota' else 'warning' if shown['warning'] else 'ok'
+            marker_ink='tertiary' if shown['value']=='—' else value_ink
+            p.setPen(Qt.PenStyle.NoPen);p.setBrush(color(marker_ink,painter=p))
             p.drawEllipse(QPointF(10,y+14),4,4)
             label={'Weekly':'每周限额','5-hour':'5 小时限额','Included':'包含用量'}.get(row['label'],row['label'])
-            text(p,QRectF(26,y,DESIGN['label_width'],28),label,13,'text',True)
-            start=26+DESIGN['label_width']+12;bar_w=w-start-130
+            value_width=max(DESIGN['metric_value_width'],math.ceil(QFontMetricsF(font(13,True)).horizontalAdvance(shown['value'])))
+            detail_width=DESIGN['metric_detail_width']
+            label_width=max(70,min(DESIGN['label_width'],w-value_width-detail_width-65))
+            text(p,QRectF(26,y,label_width,28),QFontMetricsF(font(13,True)).elidedText(label,Qt.TextElideMode.ElideRight,label_width),13,'text',True)
+            start=26+label_width+12;bar_w=max(0,w-start-value_width-detail_width-15)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(color('track',painter=p))
             p.drawRoundedRect(QRectF(start,y+12,bar_w,4),2,2)
             if used is not None:
+                fraction=max(0,min(1,used/100))
+                if metric=='burn' and shown['fraction']>fraction:
+                    projected=color('warning' if shown['warning'] else 'secondary',painter=p);projected.setAlphaF(projected.alphaF()*.38)
+                    p.setBrush(projected);p.drawRoundedRect(QRectF(start,y+12,bar_w*max(0,min(1,shown['fraction'])),4),2,2)
                 p.setBrush(color(ink,painter=p))
-                p.drawRoundedRect(QRectF(start,y+12,bar_w*max(0,min(1,used/100)),4),2,2)
-            text(p,QRectF(start+bar_w+8,y,45,28),'—' if used is None else f'{used:.0f}%',12,ink,True,Qt.AlignmentFlag.AlignRight)
-            if self.meter.settings.get('reset_countdown',True):text(p,QRectF(w-76,y,70,28),reset_label(row.get('reset')),10,'secondary',align=Qt.AlignmentFlag.AlignRight)
+                p.drawRoundedRect(QRectF(start,y+12,bar_w*fraction,4),2,2)
+            text(p,QRectF(start+bar_w+8,y,value_width,28),shown['value'],13,'secondary' if shown['value']=='—' else value_ink,True,Qt.AlignmentFlag.AlignRight)
+            if metric!='quota' or self.meter.settings.get('reset_countdown',True):text(p,QRectF(w-detail_width-6,y,detail_width,28),shown['detail'],12,'warning' if metric=='burn' and shown['warning'] else 'secondary',align=Qt.AlignmentFlag.AlignRight)
+            if metric!='quota':
+                local=(row.get('metrics') or {}).get('scope')=='local'
+                hint='本机已观测记录；未推断账户归属。' if local else '已核对的用量记录。'
+                if shown['value']=='—':hint='暂无此指标可核对的记录。'
+                if metric=='cost':
+                    from catalog_pricing import catalog
+                    hint+=' 按价目估算，并非实付账单；价目核对：'+catalog().get('checkedOn','—')+'。'
+                if metric=='burn':
+                    hint='根据最近有效额度读数计算；'+shown['detail']+'。'
+                    insight=row.get('insights') or {}
+                    if shown['detail'] in ('采样中','重新采样'):
+                        observed='不足1分' if (insight.get('elapsed') or 0)<60 else str(int(insight['elapsed']//60))+'分'
+                        hint=('额度已重置，正在重新采样' if insight.get('after_reset') else '首次采样，正在积累预测数据')+'\n已采样 '+observed+'，预测至少需要'+str(int(insight['required']//60))+'分的有效记录'
+                self.hits.append((QRectF(0,y,w,28),('metric_hint',hint)))
             y+=28
         return y
 
@@ -818,7 +850,7 @@ class HoverPanelView(QWidget):
         point=event.position()-QPointF(18,14-self.scroll_offset)
         for rect,action in reversed(self.hits):
             if rect.contains(point):
-                if isinstance(action,tuple) and action[0]=='attention':
+                if isinstance(action,tuple) and action[0] in ('attention','metric'):
                     self._attention_press=(QRectF(rect),action)
                     return
                 elif action=='settings':
@@ -846,5 +878,14 @@ class HoverPanelView(QWidget):
         point=event.position()-QPointF(18,14-self.scroll_offset)
         rect,action=pressed
         if rect.contains(point) and any(r.contains(point) and a==action for r,a in self.hits):
-            from attention_views import dispatch
-            dispatch(self.meter,action[1],action[2])
+            if action[0]=='metric':self.metric_selection[action[1]]=action[2];self.update()
+            else:
+                from attention_views import dispatch
+                dispatch(self.meter,action[1],action[2])
+
+    def mouseMoveEvent(self,event):
+        from quota_metrics import MEASURES
+        point=event.position()-QPointF(18,14-self.scroll_offset)
+        action=next((action for rect,action in reversed(self.hits) if rect.contains(point) and isinstance(action,tuple) and action[0] in ('metric','metric_hint')),None)
+        self.setToolTip(action[1] if action and action[0]=='metric_hint' else dict(MEASURES).get(action[2],'') if action else '')
+        super().mouseMoveEvent(event)

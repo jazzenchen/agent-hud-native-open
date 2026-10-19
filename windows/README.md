@@ -277,6 +277,26 @@ Clicking details does not make them permanent: leaving HUD/peek/details starts
 the configured collapse delay; entering details cancels it. Window deactivation
 also dismisses details. Account visibility and per-window drag order persist,
 change only quota/wallet presentation, and never erase recorded usage.
+## Quota measures
+
+Each provider heading has the original five measure choices: quota, burn rate,
+reply rate, consumed amount and estimated list cost. Choices survive reading
+refreshes independently per provider. Derived statistics run on the monitor
+worker with bounded read-only ledger queries; a failure leaves live quota intact.
+Reply rate uses same-session call gaps up to 120 seconds, the latest hour first
+and the previous week when the hour has no usable pair. Consumed/cost figures
+use only the observed part of a known cycle. Native local logs remain local
+estimates, with a tooltip; no anonymous event acquires an account identity.
+Known foreign-account records do not join the current account's readings.
+
+`assets/upstream-pricing-contract.json` exports the unchanged original catalog,
+including exact aliases and service routes, checked by upstream on 2026-09-25.
+Summed usage uses its base prices, exclusive token kinds and applicable currency
+and peak-hour rules; it never treats a bucket as one long prompt or converts
+currencies. Unknown models/routes have no invented price. Estimates are not bills.
+External plan-pool consumer links and the original widget/layout variants remain
+incomplete; see the release gate in `PARITY_AUDIT.md`.
+
 ## Promo samples
 
 `promo_fixtures.build_demo(now, elapsed)` is an explicit offline recording input

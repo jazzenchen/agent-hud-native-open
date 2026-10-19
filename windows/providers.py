@@ -259,9 +259,11 @@ def parse_cursor_quota(data):
     individual=data.get('individualUsage') or {};team=data.get('teamUsage') or {}
     pools=[('Included',used if plan.get('enabled') is not False else None),('First-party',plan.get('autoPercentUsed')),('Third-party',plan.get('apiPercentUsed')),
            ('Spend limit',ratio(individual.get('overall') or {})),('Pooled',ratio(team.get('pooled') or {})),('On-demand',ratio(individual.get('onDemand') or {}))]
+    start=stamp(data.get('billingCycleStart'));end=stamp(data.get('billingCycleEnd'))
+    duration=end-start if start is not None and end is not None and end>start else None
     for label,value in pools:
         if isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and value>=0:
-            rows.append(dict(label=label,used=value,reset=stamp(data.get('billingCycleEnd'))))
+            rows.append(dict(label=label,used=value,reset=end,duration=duration))
     return dict(windows=rows, plan=data.get('membershipType'), at=time.time(),
                 notice='Live account limits' if rows else 'Plan reports no quota percentage')
 

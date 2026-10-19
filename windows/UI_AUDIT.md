@@ -511,3 +511,53 @@ is covered for null, non-finite and boolean readings. All 177 regression tests
 passed, including complete supplementary pack coverage.
 Special tiny-mark sign sampling, pointer gaze, richer settings/statistics, MCP,
 remaining callback channels, performance and the full promo/release gates remain.
+
+### Five quota measures and source pricing contract
+
+The actual provider header now switches quota/burn/reply/consumed/cost on release,
+retaining a separate selection per provider through reading refreshes. A
+multi-provider hit-test bug discovered during implementation was fixed: each
+header's targets now carry that provider block's vertical translation. Press,
+cancel, release, independent selections and refresh persistence are tested.
+Source numeric/detail column constants are read from `ModelUsageRow.swift`;
+the value can borrow bar width, while a narrow panel shortens the name column.
+Burn keeps actual usage in the solid track and draws only the projection behind
+it at the source 0.38 opacity. Unknown values stay unknown.
+
+Original `ModelCatalog` was compiled, not scraped into a second handwritten price
+list: QA commit `5402792752996e0ad6837072a2dd89339fa6e162`, successful Actions run
+`39234954706`. Export has 130 aliases, 35 service mappings and checkedOn 2026-09-25.
+SHA-256 `a9102a563bc2c6b6fe45995a71b4c597657eeaf02222df472c31610b50cd856d`.
+Sum pricing follows original bucket/base-rate behavior, currency separation and
+DeepSeek peak-hour rules; input/cache-write and output/reasoning are not counted
+twice. A small positive amount below a rounded cent reads `<$0.01`, not zero.
+Unknown/gateway routes are not assigned a guessed price.
+
+Re-reading `CombinedUsageProvider.replyRates` corrected an initially narrower
+cycle-only interpretation: reply rate prefers the last hour, falling back to
+seven days, and is available even without a quota cycle. Gaps are per session
+and account, capped at 120s; intervening models keep their place. Native client
+consumer links include anonymous local logs as the source does, explicitly
+labelled local estimates. They are never written back as account-attributed
+history. Explicit other-account records remain separate. WorkBuddy uses the
+official credit-pool used/capacity counter for consumption. External plan pools
+still require exact route/credential consumer links; those are not claimed done.
+
+The worker's ledger query is read-only, deadline/row bounded, deduplicates by
+origin priority, excludes future events and caches within 15s. A real Codex
+metadata reading plus existing local ledger produced all three derived values
+(consumed/reply/cost) with `scope=local`; no prompts/credentials were exported.
+The five real painter states were captured in both themes at 100% and 150%;
+burn/reply/cost/consumed views were inspected. Evidence:
+`E:/AI-Data/agent-hud-promo-20261019/quota-metrics-native-v2` and
+`quota-metrics-native-150`. The normal-panel 24-case native surface matrix also
+passed at 100%, 125%, 150% within the existing clip/trail tolerance, under
+`metrics-surfaces-{100,125,150}`. This does not prove 90% overall parity.
+
+Nine targeted tests cover math, source price examples, account/priority scope,
+local anonymous history, stale/unknown readings, reply horizons and actual picker
+actions. All 186 regression tests passed. The cache test additionally verifies
+that advancing time within a 15s interval does not issue another database query
+or repeat the derived calculation; changing native/foreign scope cannot reuse a
+local estimate under the other scope. Health metadata reports only availability
+booleans for the three new derived measures, never account or token contents.

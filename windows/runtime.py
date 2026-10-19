@@ -80,13 +80,18 @@ def running_clients():
 
 class Monitor:
     """Never reads an inactive client's records or launches its quota engine."""
-    def __init__(self, emit, presence=running_clients, local=None, quota=None,copilot_consent=lambda:False):
+    def __init__(self, emit, presence=running_clients, local=None, quota=None,copilot_consent=lambda:False,metrics=None):
         self.emit, self.presence = emit, presence
         if local is None:
             from provider_registry import defaults
             local,default_quota=defaults(copilot_consent)
+            if metrics is None:
+                from quota_metrics import WindowMetrics
+                from providers import DATA
+                metrics=WindowMetrics(DATA/'usage-ledger.sqlite')
         else:default_quota={}
         self.readers = local
+        self.metric_reader=metrics
         self.quota_readers = quota if quota is not None else default_quota
         self.stop = threading.Event()
         self.lock = threading.Lock()
@@ -122,6 +127,9 @@ class Monitor:
                 if needs:
                     self.busy.add(key)
                     self.last_query[client] = time.monotonic()
+            if self.metric_reader is not None:
+                try:reading=self.metric_reader(client,reading,local)
+                except Exception:pass  # Derived metrics never erase a provider reading.
             snapshot[client] = dict(local=local, quota=reading)
             if needs:
                 threading.Thread(target=self.query, args=(client, epoch), daemon=True).start()

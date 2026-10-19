@@ -33,6 +33,7 @@ def load_design():
     simple = (DESKTOP / 'Notch/Simple/SimpleMeter.swift').read_text(encoding='utf-8')
     animation = (DESKTOP / 'Notch/Island/IslandAnimation.swift').read_text(encoding='utf-8')
     row = (DESKTOP / 'Notch/Panel/ProviderQuotaBlock.swift').read_text(encoding='utf-8')
+    metric_row=(DESKTOP/'Notch/Panel/ModelUsageRow.swift').read_text(encoding='utf-8')
     geometry=(DESKTOP/'Notch/NotchGeometry.swift').read_text(encoding='utf-8')
     island=(DESKTOP/'Notch/Island/IslandRootView.swift').read_text(encoding='utf-8')
     build=(ROOT/'scripts/build-app.sh').read_text(encoding='utf-8')
@@ -54,6 +55,8 @@ def load_design():
                 edge_margin=number(simple, r'edgeMargin: CGFloat = ([\d.]+)'),
                 animation_ms=1000 * number(animation, r'duration: TimeInterval = ([\d.]+)'),
                 label_width=number(row, r'nameWidth: CGFloat = ([\d.]+)'),
+                metric_value_width=number(metric_row,r'frame\(minWidth: (\d+), alignment: \.trailing\)'),
+                metric_detail_width=number(metric_row,r'frame\(width: (\d+), alignment: \.trailing\)'),
                 notch_width=number(geometry,r'fallbackWidth: CGFloat = ([\d.]+)'),
                 flare=number(geometry,r'collapsedTopRadius: CGFloat = ([\d.]+)'),
                 notch_radius=number(geometry,r'fallbackCornerRadius: CGFloat = ([\d.]+)'),
