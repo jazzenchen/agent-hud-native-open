@@ -106,3 +106,10 @@ The current local suite has 208 passing tests; native check scope is recorded
 in `assets/layout-native-checkpoint.json`, including the timing of the relative
 ink correction. The resident Windows instance was restarted and reports active
 layout documents with only the currently running Codex visible.
+
+Layout planning checkpoint: the Windows planner matches all 144 plans exported
+by the original compiled Swift core, plus 30 grid width/fitting cases. These
+cover half-block fallback, spacing, widget/measure constraints, filters and
+columns. Export provenance is in `assets/upstream-plan-provenance.json`.
+This planner is not yet connected to ring/number/chart rendering; those remain
+open work, and these contract checks do not establish visual similarity.
