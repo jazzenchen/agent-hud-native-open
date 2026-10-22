@@ -162,8 +162,9 @@ struct QuotaRowMetrics {
         case .burnRate:
             insights?.burnRatePctPerHour.map { String(format: "%.1f%%/h", $0) }
         case .tokens:
-            replyRate.map { $0.tokensPerSecond < 10 ? String(format: "%.1f/s", $0.tokensPerSecond)
-                                                    : "\(Int($0.tokensPerSecond))/s" }
+            replyRate.map { "\($0.lowerBound ? "≥" : "")" + ($0.tokensPerSecond < 10
+                ? String(format: "%.1f/s", $0.tokensPerSecond)
+                : "\(Int($0.tokensPerSecond))/s") }
         case .consumed:
             consumed.map { TokenFormat.short(Int($0.used)) }
         case .cost:

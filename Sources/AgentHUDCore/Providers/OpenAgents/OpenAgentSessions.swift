@@ -176,6 +176,9 @@ enum OpenAgentParser {
         var session = OpenAgentSession(id: "kimi:\(folder.lastPathComponent):\(agent)", client: .kimi, title: title ?? "Kimi",
                                        titleSource: title == nil ? .placeholder : .log, path: path)
         var requestModel: String?, keyed: [String: Int] = [:]
+        // A turn's steps each report their own first-token wait and stream time; the turn-level usage record ahead
+        // of them times itself by their sum, request to completion like the other readers.
+        var stepSpanMs = 0, stepFirstTokenMs: Int?
         func concrete(_ name: String?) -> String? {
             guard let name, !name.isEmpty, !name.hasPrefix("__") else { return nil }; return name
         }
@@ -184,6 +187,11 @@ enum OpenAgentParser {
             if modern {
                 if agent == "main", type == "context.append_loop_event",
                    let turnID = line["event"]["turnId"].stringValue, let at = ProviderDate.milliseconds(line["time"]) {
+                    if line["event"]["type"].stringValue == "step.end" {
+                        stepSpanMs += (line["event"]["llmFirstTokenLatencyMs"].countValue ?? 0)
+                            + (line["event"]["llmStreamDurationMs"].countValue ?? 0)
+                        if stepFirstTokenMs == nil { stepFirstTokenMs = line["event"]["llmServerFirstTokenMs"].countValue }
+                    }
                     if let position = session.turns.firstIndex(where: { $0.turnID == turnID }) {
                         let previous = session.turns[position]
                         if previous.state == .running, RecordCoding.milliseconds(at) > previous.observedAtMs {
@@ -225,7 +233,9 @@ enum OpenAgentParser {
                 let input = try usage["inputOther"].optionalCounter(), read = try usage["inputCacheRead"].optionalCounter()
                 let write = try usage["inputCacheCreation"].optionalCounter(), output = try usage["output"].optionalCounter()
                 try session.add(id: "\(session.id):usage:\(index)", model: concrete(line["model"].stringValue) ?? requestModel ?? "Unknown",
-                    provider: "kimi-code", at: at, input: try TokenCount.sum(input, write), output: output, cacheRead: read, cacheWrite: write)
+                    provider: "kimi-code", at: at, input: try TokenCount.sum(input, write), output: output, cacheRead: read, cacheWrite: write,
+                    durationMs: stepSpanMs > 0 ? stepSpanMs : nil, ttftMs: stepFirstTokenMs)
+                stepSpanMs = 0; stepFirstTokenMs = nil
             } else {
                 let message = line["message"], payload = message["payload"]
                 guard message["type"].stringValue == "StatusUpdate", payload["token_usage"].objectValue != nil else { return }
@@ -268,10 +278,14 @@ enum OpenAgentParser {
         var session = OpenAgentSession(id: "opencode:\(sessionID)", client: .opencode,
             title: named ?? workspace.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "OpenCode",
             titleSource: named == nil ? .placeholder : .log, workspace: workspace, path: path)
+        // `time.created → time.completed` is the reply's own span: queue and generation, with the person's time
+        // between replies outside it.
+        let completed = ProviderDate.milliseconds(value["time"]["completed"])
         try session.add(id: "opencode:\(id)", model: model, provider: provider, at: at,
                     input: try TokenCount.sum(input, write), output: try TokenCount.sum(output, tokens["reasoning"].optionalCounter()), cacheRead: read,
-                    cacheWrite: write, reasoning: try tokens["reasoning"].optionalCounter())
-        session.end = ProviderDate.milliseconds(value["time"]["completed"]) ?? at
+                    cacheWrite: write, reasoning: try tokens["reasoning"].optionalCounter(),
+                    durationMs: completed.map { Int((($0.timeIntervalSince(at)) * 1000).rounded()) }.flatMap { $0 > 0 ? $0 : nil })
+        session.end = completed ?? at
         return session
     }
 

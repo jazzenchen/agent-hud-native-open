@@ -117,7 +117,7 @@ public enum QuotaMath {
         for event in events {
             byLog[event.contribution, default: []].append(event)
         }
-        var out = 0, span = 0.0, calls = 0
+        var out = 0, span = 0.0, calls = 0, lowerBound = false
         for events in byLog.values {
             let sorted = events.sorted { $0.atMs < $1.atMs }
             for (index, after) in sorted.enumerated() {
@@ -133,10 +133,11 @@ public enum QuotaMath {
                 out += after.out
                 span += seconds
                 calls += 1
+                lowerBound = lowerBound || after.durationMs == nil
             }
         }
         guard span > 0 else { return nil }
-        return QuotaReplyRate(tokensPerSecond: Double(out) / span, calls: calls, tokensOut: out)
+        return QuotaReplyRate(tokensPerSecond: Double(out) / span, calls: calls, tokensOut: out, lowerBound: lowerBound)
     }
 
     /// What the tokens the window's consumers spent over the observed part of its current cycle would cost at list
@@ -177,11 +178,23 @@ public struct QuotaReplyRate: Hashable, Codable, Sendable {
     public let calls: Int
     /// The output tokens those calls produced.
     public let tokensOut: Int
+    /// Whether any sample was timed by the gap between calls, which overestimates its span, so the rate runs low
+    /// and reads as a floor.
+    public let lowerBound: Bool
 
-    public init(tokensPerSecond: Double, calls: Int, tokensOut: Int) {
+    public init(tokensPerSecond: Double, calls: Int, tokensOut: Int, lowerBound: Bool = false) {
         self.tokensPerSecond = tokensPerSecond
         self.calls = calls
         self.tokensOut = tokensOut
+        self.lowerBound = lowerBound
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        tokensPerSecond = try c.decode(Double.self, forKey: .tokensPerSecond)
+        calls = try c.decode(Int.self, forKey: .calls)
+        tokensOut = try c.decode(Int.self, forKey: .tokensOut)
+        lowerBound = try c.decodeIfPresent(Bool.self, forKey: .lowerBound) ?? false
     }
 }
 

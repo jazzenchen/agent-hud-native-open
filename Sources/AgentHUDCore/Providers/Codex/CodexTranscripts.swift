@@ -17,10 +17,12 @@ public struct CodexTranscript: Codable, Sendable {
         public var contextWindow: Int? = nil
         /// Where the line that reported it begins in the rollout, when it was read from a known place.
         public var offset: Int? = nil
+        /// This call's own span: the request-side boundary before it to its `token_count`.
+        public var durationMs: Int? = nil
 
         public var event: UsageEvent {
             .init(timestamp: timestamp, agentId: "codex-model:\(model)", tokensIn: input, tokensOut: output, cacheReadTokens: cachedInput,
-                  cacheWriteTokens: cacheWrite, reasoningTokens: reasoning)
+                  cacheWriteTokens: cacheWrite, reasoningTokens: reasoning, durationMs: durationMs)
         }
     }
 
@@ -76,6 +78,8 @@ public struct CodexTranscript: Codable, Sendable {
     private var hasTotals = false
     /// Newer forks restamp copied history and mark its last ordinal in their first metadata.
     private var inheritedThroughOrdinal: Int?
+    /// The request side's latest line — a turn's start, a user message, a completed tool — which times the call after it.
+    private var requestBoundary: Date?
     /// Turn starts and compactions read since the store last took them.
     private var marks: [UsageLedger.Mark] = []
     /// What the running turn is busy with: the calls still waiting for their output and the kind of work they do.
@@ -181,6 +185,10 @@ public struct CodexTranscript: Codable, Sendable {
             sample.reasoning = max(0, reasoningDelta)
             sample.contextWindow = info["model_context_window"] as? Int
             sample.offset = offset
+            sample.durationMs = requestBoundary.map { Int((timestamp.timeIntervalSince($0) * 1000).rounded()) }.flatMap { $0 > 0 ? $0 : nil }
+            // A token_count is a running snapshot taken mid-call, so it also bounds the one after it: each sample's
+            // span is the stretch since the last request-side line or the last snapshot.
+            requestBoundary = timestamp
             usage.append(sample)
             inputTokens += sample.input
             outputTokens += sample.output
@@ -191,6 +199,7 @@ public struct CodexTranscript: Codable, Sendable {
             switch kind {
             case "task_started":
                 lastActivityAt = max(lastActivityAt ?? timestamp, timestamp)
+                requestBoundary = timestamp
                 marks.append(.init(.prompt, at: timestamp))
                 let turnID = payload["turn_id"] as? String
                 if !(turns ?? []).contains(where: { $0.id == turnID && (turnID != nil || ($0.state == .running && $0.startedAt == timestamp)) }),
@@ -227,6 +236,7 @@ public struct CodexTranscript: Codable, Sendable {
                 _ = finishTurn(payload["turn_id"] as? String, state: .ended,
                                outcome: payload["reason"] as? String == "interrupted" ? .interrupted : nil, at: timestamp)
             case "user_message":
+                requestBoundary = timestamp
                 if task == nil, let text = payload["message"] as? String {
                     task = SessionTitle.from(text)
                 }
@@ -242,7 +252,13 @@ public struct CodexTranscript: Codable, Sendable {
                 }
             case "item_completed":
                 // Current rollouts record a prompt only as a completed UserMessage item of text and image parts.
-                guard let item = payload["item"] as? [String: Any], let content = item["content"] as? [[String: Any]] else { break }
+                guard let item = payload["item"] as? [String: Any] else { break }
+                // A finished request-side item — a user message, a tool run — bounds the call that follows it; the
+                // model's own completed items (AgentMessage, Reasoning) are part of the call being timed.
+                if let itemType = item["type"] as? String, itemType != "AgentMessage", itemType != "Reasoning" {
+                    requestBoundary = timestamp
+                }
+                guard let content = item["content"] as? [[String: Any]] else { break }
                 if task == nil, item["type"] as? String == "UserMessage" {
                     task = content.lazy.filter { $0["type"] as? String == "text" }.compactMap { ($0["text"] as? String).flatMap(SessionTitle.from) }.first
                 } else if item["type"] as? String == "AgentMessage", item["phase"] as? String == "final_answer" {
@@ -270,7 +286,8 @@ public struct CodexTranscript: Codable, Sendable {
             UsageLedger.Event(key: sample.offset.map { "o\($0)" } ?? "u\(recordedUsage + index)", timestamp: sample.timestamp,
                               agentId: "codex-model:\(sample.model)",
                               tokensIn: sample.input, tokensOut: sample.output, cacheReadTokens: sample.cachedInput,
-                              cacheWriteTokens: sample.cacheWrite, reasoningTokens: sample.reasoning, contextWindow: sample.contextWindow)
+                              cacheWriteTokens: sample.cacheWrite, reasoningTokens: sample.reasoning, contextWindow: sample.contextWindow,
+                              durationMs: sample.durationMs.map(Int64.init))
         }
     }
 
