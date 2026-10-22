@@ -159,10 +159,14 @@ struct ProviderEvent: Hashable, Sendable {
     var cacheWrite: Int = 0
     var reasoning: Int = 0
     var origin: UsageEvent.Origin? = nil
+    /// The call's own time (queue + first token + decode) and its pre-first-token part, where the log records them.
+    var durationMs: Int? = nil
+    var ttftMs: Int? = nil
 
     func usage(source: AdditionalSource) -> UsageEvent {
         .init(timestamp: timestamp, agentId: "\(source.rawValue)-model:\(model)", tokensIn: input, tokensOut: output, cacheReadTokens: cacheRead,
-              cacheWriteTokens: cacheWrite, reasoningTokens: reasoning, eventID: "\(source.rawValue):\(id)", origin: origin)
+              cacheWriteTokens: cacheWrite, reasoningTokens: reasoning, eventID: "\(source.rawValue):\(id)", origin: origin,
+              durationMs: durationMs, ttftMs: ttftMs)
     }
 }
 

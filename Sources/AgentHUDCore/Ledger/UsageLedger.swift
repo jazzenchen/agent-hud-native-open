@@ -35,8 +35,12 @@ public actor UsageLedger {
         public let agent: String
         public let atMs: Int64
         public let out: Int
-        public init(contribution: Int64, agent: String, atMs: Int64, out: Int) {
+        /// The call's own time (queue + first token + decode) and its pre-first-token part, where the log records them.
+        public let durationMs: Int64?
+        public let ttftMs: Int64?
+        public init(contribution: Int64, agent: String, atMs: Int64, out: Int, durationMs: Int64? = nil, ttftMs: Int64? = nil) {
             self.contribution = contribution; self.agent = agent; self.atMs = atMs; self.out = out
+            self.durationMs = durationMs; self.ttftMs = ttftMs
         }
     }
 
@@ -57,15 +61,20 @@ public actor UsageLedger {
         /// Estimated price by currency; nil for events that belong to no priced account.
         public let costs: [String: Decimal]?
         public let billingID: String?
+        /// The call's own time and its pre-first-token part, where the client recorded them.
+        public let durationMs: Int64?
+        public let ttftMs: Int64?
 
         public init(key: String, timestamp: Date, agentId: String, tokensIn: Int, tokensOut: Int, cacheReadTokens: Int = 0,
                     cacheWriteTokens: Int = 0, reasoningTokens: Int = 0, contextWindow: Int? = nil,
-                    billingID: String? = nil, costs: [String: Decimal]? = nil) {
+                    billingID: String? = nil, costs: [String: Decimal]? = nil, durationMs: Int64? = nil, ttftMs: Int64? = nil) {
             self.key = key; self.timestamp = timestamp; self.agentId = agentId
             self.tokensIn = tokensIn; self.tokensOut = tokensOut; self.cacheReadTokens = cacheReadTokens
             self.cacheWriteTokens = min(max(0, cacheWriteTokens), tokensIn); self.reasoningTokens = min(max(0, reasoningTokens), tokensOut)
             self.contextWindow = contextWindow.flatMap { $0 > 0 ? $0 : nil }
             self.billingID = billingID; self.costs = costs
+            self.durationMs = durationMs.flatMap { $0 > 0 ? $0 : nil }
+            self.ttftMs = ttftMs.flatMap { $0 >= 0 ? $0 : nil }
         }
     }
 
@@ -468,7 +477,7 @@ public actor UsageLedger {
         let names = "[" + agents.sorted().map { "\"" + $0.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"") + "\"" }.joined(separator: ",") + "]"
         try storage.connection.query("""
-            SELECT e.contribution_id, a.name, e.timestamp_ms, e.tokens_out FROM usage_event e
+            SELECT e.contribution_id, a.name, e.timestamp_ms, e.tokens_out, e.duration_ms, e.ttft_ms FROM usage_event e
             JOIN agent a ON a.id = e.agent
             WHERE e.timestamp_ms >= ? AND e.contribution_id IN (
                 SELECT selected.contribution_id FROM usage_event selected
@@ -476,7 +485,8 @@ public actor UsageLedger {
                 WHERE selected.timestamp_ms >= ? AND selected_agent.name IN (SELECT value FROM json_each(?)))
             ORDER BY e.contribution_id, e.timestamp_ms
             """, [.integer(sinceMs), .integer(sinceMs), .text(names)]) { row in
-            found.append(ReplyEvent(contribution: row.int(0), agent: row.text(1) ?? "", atMs: row.int(2), out: Int(row.int(3))))
+            found.append(ReplyEvent(contribution: row.int(0), agent: row.text(1) ?? "", atMs: row.int(2), out: Int(row.int(3)),
+                                    durationMs: row.isNull(4) ? nil : row.int(4), ttftMs: row.isNull(5) ? nil : row.int(5)))
         }
         return found
     }

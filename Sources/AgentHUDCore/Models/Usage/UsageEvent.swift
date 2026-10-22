@@ -21,9 +21,14 @@ public struct UsageEvent: Hashable, Codable, Sendable {
     }
     public let origin: Origin?
     public let attribution: UsageAttribution?
+    /// How long this call took: queue + first token + decode, where the client recorded it.
+    public let durationMs: Int?
+    /// Of `durationMs`, the part before the first token, where the client recorded it.
+    public let ttftMs: Int?
 
     public init(timestamp: Date, agentId: String, tokensIn: Int, tokensOut: Int, cacheReadTokens: Int = 0, cacheWriteTokens: Int = 0,
-                reasoningTokens: Int = 0, eventID: String? = nil, origin: Origin? = nil, attribution: UsageAttribution? = nil) {
+                reasoningTokens: Int = 0, eventID: String? = nil, origin: Origin? = nil, attribution: UsageAttribution? = nil,
+                durationMs: Int? = nil, ttftMs: Int? = nil) {
         self.timestamp = timestamp
         self.agentId = agentId
         self.tokensIn = tokensIn
@@ -34,10 +39,12 @@ public struct UsageEvent: Hashable, Codable, Sendable {
         self.eventID = eventID
         self.origin = origin
         self.attribution = attribution
+        self.durationMs = durationMs.flatMap { $0 > 0 ? $0 : nil }
+        self.ttftMs = ttftMs.flatMap { $0 >= 0 ? $0 : nil }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case timestamp, agentId, tokensIn, tokensOut, cacheReadTokens, cacheWriteTokens, reasoningTokens, eventID, origin, attribution
+        case timestamp, agentId, tokensIn, tokensOut, cacheReadTokens, cacheWriteTokens, reasoningTokens, eventID, origin, attribution, durationMs, ttftMs
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -51,6 +58,8 @@ public struct UsageEvent: Hashable, Codable, Sendable {
         eventID = try c.decodeIfPresent(String.self, forKey: .eventID)
         origin = try c.decodeIfPresent(Origin.self, forKey: .origin)
         attribution = try c.decodeIfPresent(UsageAttribution.self, forKey: .attribution)
+        durationMs = try c.decodeIfPresent(Int.self, forKey: .durationMs).flatMap { $0 > 0 ? $0 : nil }
+        ttftMs = try c.decodeIfPresent(Int.self, forKey: .ttftMs).flatMap { $0 >= 0 ? $0 : nil }
     }
 
     public var total: Int { tokensIn + tokensOut }

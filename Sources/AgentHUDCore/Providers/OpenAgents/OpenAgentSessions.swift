@@ -76,13 +76,14 @@ struct OpenAgentSession: Sendable {
 
     /// - input, output: including `cacheWrite` and `reasoning`.
     mutating func add(id eventID: String, model: String, provider: String, at: Date, input: Int, output: Int,
-                      cacheRead: Int, cacheWrite: Int = 0, reasoning: Int = 0) throws {
+                      cacheRead: Int, cacheWrite: Int = 0, reasoning: Int = 0, durationMs: Int? = nil,
+                      ttftMs: Int? = nil) throws {
         _ = try TokenCount.sum(input, output, cacheRead)
         setModel(model, provider: provider)
         let consumer = currentModel!.id
         events.append(.init(timestamp: at, agentId: consumer, tokensIn: input, tokensOut: output,
             cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite, reasoningTokens: reasoning, eventID: eventID,
-            attribution: .init(client: client.name, providerID: provider)))
+            attribution: .init(client: client.name, providerID: provider), durationMs: durationMs, ttftMs: ttftMs))
         start = min(start ?? at, at); end = max(end ?? at, at)
     }
 }

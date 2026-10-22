@@ -106,11 +106,12 @@ public enum QuotaMath {
     /// the span belongs to the person or a tool run the log cannot time, not to the model replying.
     public static let replyGapCap: TimeInterval = 120
 
-    /// Output tokens per second of active replying, from call events timestamped when they complete: each call's span
-    /// is the gap since the previous call in its own log, capped at `replyGapCap`; longer gaps are idle and drop both
-    /// the span and the call that followed them. Calls are grouped by contribution so two sessions' timelines never
-    /// borrow each other's gaps. Other models' calls keep their place in the log; only a selected consumer's later
-    /// call adds its output and span. Nil when no call pair qualifies.
+    /// Output tokens per second of replying. A call whose log recorded its own time (queue + first token + decode)
+    /// times itself; one without falls back to the gap since the previous call in its own log, capped at
+    /// `replyGapCap`, with longer gaps idle. Calls are grouped by contribution so two sessions' timelines never
+    /// borrow each other's spans. Per-sample guards drop bursts (span < 100ms, rate > 10000/s, output < 10 tokens)
+    /// and stalls (span > 10min). Other models' calls keep their place in the log; only a selected consumer's call
+    /// adds its output and span. Nil when no call qualifies.
     public static func replyRate(events: [UsageLedger.ReplyEvent], consumers: Set<String>) -> QuotaReplyRate? {
         var byLog: [Int64: [UsageLedger.ReplyEvent]] = [:]
         for event in events {
@@ -119,11 +120,18 @@ public enum QuotaMath {
         var out = 0, span = 0.0, calls = 0
         for events in byLog.values {
             let sorted = events.sorted { $0.atMs < $1.atMs }
-            for (before, after) in zip(sorted, sorted.dropFirst()) {
-                let gap = Double(after.atMs - before.atMs) / 1000
-                guard consumers.contains(after.agent), gap > 0, gap <= replyGapCap else { continue }
+            for (index, after) in sorted.enumerated() {
+                guard consumers.contains(after.agent), after.out >= 10 else { continue }
+                // A recorded duration is the call's own time and may run minutes; a gap since the previous call is
+                // the nearest measure where none was recorded, so it keeps the idle cap, and a log's first call has
+                // no measure at all.
+                let seconds = after.durationMs.map { Double($0) / 1000 }
+                    ?? (index > 0 ? Double(after.atMs - sorted[index - 1].atMs) / 1000 : 0)
+                let cap = after.durationMs != nil ? 600.0 : replyGapCap
+                guard seconds >= 0.1, seconds <= cap else { continue }
+                guard Double(after.out) / seconds <= 10_000 else { continue }
                 out += after.out
-                span += gap
+                span += seconds
                 calls += 1
             }
         }

@@ -269,6 +269,7 @@ public struct LedgerWriter {
 
     private struct StoredEvent: Equatable {
         let timestamp: Int64, agent: Int64, tokens: StoredTokens, window: Int64
+        var duration: Int64? = nil, ttft: Int64? = nil
     }
 
     private func write(_ event: UsageLedger.Event, contribution: ContributionID, billed: Bool) throws {
@@ -276,15 +277,17 @@ public struct LedgerWriter {
         let agent = try storage.agentID(event.agentId)
         var old: StoredEvent?
         try storage.connection.query("""
-            SELECT timestamp_ms, agent, tokens_in, tokens_out, cache_read, cache_write, reasoning, context_window
+            SELECT timestamp_ms, agent, tokens_in, tokens_out, cache_read, cache_write, reasoning, context_window, duration_ms, ttft_ms
             FROM usage_event WHERE contribution_id = ? AND event = ?
             """, [.integer(contribution.id), .integer(key)]) { row in
             old = StoredEvent(timestamp: row.int(0), agent: row.int(1), tokens: StoredTokens(tokensIn: row.int(2), tokensOut: row.int(3),
-                              cacheRead: row.int(4), cacheWrite: row.int(5), reasoning: row.int(6)), window: row.int(7))
+                              cacheRead: row.int(4), cacheWrite: row.int(5), reasoning: row.int(6)), window: row.int(7),
+                              duration: row.isNull(8) ? nil : row.int(8), ttft: row.isNull(9) ? nil : row.int(9))
         }
         let values = StoredEvent(timestamp: timestamp, agent: agent, tokens: StoredTokens(tokensIn: Int64(event.tokensIn),
             tokensOut: Int64(event.tokensOut), cacheRead: Int64(event.cacheReadTokens), cacheWrite: Int64(event.cacheWriteTokens),
-            reasoning: Int64(event.reasoningTokens)), window: Int64(event.contextWindow ?? 0))
+            reasoning: Int64(event.reasoningTokens)), window: Int64(event.contextWindow ?? 0),
+            duration: event.durationMs, ttft: event.ttftMs)
         if let old, old == values {
             // Usage is unchanged; costs may still be new for an event first seen without a price.
         } else {
@@ -294,11 +297,12 @@ public struct LedgerWriter {
             }
             try storage.connection.run("""
                 INSERT OR REPLACE INTO usage_event (contribution_id, event, timestamp_ms, agent, tokens_in, tokens_out, cache_read,
-                    cache_write, reasoning, context_window)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cache_write, reasoning, context_window, duration_ms, ttft_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, [.integer(contribution.id), .integer(key), .integer(timestamp), .integer(agent),
                       .integer(values.tokens.tokensIn), .integer(values.tokens.tokensOut), .integer(values.tokens.cacheRead),
-                      .integer(values.tokens.cacheWrite), .integer(values.tokens.reasoning), .integer(values.window)])
+                      .integer(values.tokens.cacheWrite), .integer(values.tokens.reasoning), .integer(values.window),
+                      .nullable(values.duration), .nullable(values.ttft)])
             if contribution.counted {
                 try addUsage(start: Self.bucket(timestamp), source: contribution.source, account: contribution.account, agent: agent,
                              tokens: values.tokens)
