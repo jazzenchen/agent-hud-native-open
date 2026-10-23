@@ -17,7 +17,8 @@ public struct DeepSeekTranscript: Codable, Sendable {
 
         public var event: UsageEvent {
             .init(timestamp: timestamp, agentId: "deepseek-model:\(model)", tokensIn: input, tokensOut: output, cacheReadTokens: cachedInput,
-                  cacheWriteTokens: cacheWrite, reasoningTokens: reasoning)
+                  cacheWriteTokens: cacheWrite, reasoningTokens: reasoning,
+                  durationMs: timestamp > requestedAt ? Int((timestamp.timeIntervalSince(requestedAt) * 1000).rounded()) : nil)
         }
     }
 
@@ -227,7 +228,9 @@ public struct DeepSeekTranscript: Codable, Sendable {
             return UsageLedger.Event(key: key, timestamp: sample.timestamp, agentId: "deepseek-model:\(sample.model)",
                                      tokensIn: sample.input, tokensOut: sample.output, cacheReadTokens: sample.cachedInput,
                                      cacheWriteTokens: sample.cacheWrite, reasoningTokens: sample.reasoning,
-                                     billingID: "DeepSeek", costs: costs)
+                                     billingID: "DeepSeek", costs: costs,
+                                     durationMs: sample.timestamp > sample.requestedAt
+                                         ? Int64((sample.timestamp.timeIntervalSince(sample.requestedAt) * 1000).rounded()) : nil)
         }
     }
 

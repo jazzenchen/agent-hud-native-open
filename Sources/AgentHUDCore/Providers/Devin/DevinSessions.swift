@@ -103,9 +103,13 @@ enum DevinSessions: LocalSessionLayout {
         let key = fields[1].stringValue.flatMap { $0.isEmpty ? nil : $0 }
             ?? fields[0].stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? "row-\(sqlite3_column_int64(row, 0))"
         guard seen.insert(key).inserted else { return }
-        session.events.append(ProviderEvent(id: key, model: fields[2].stringValue ?? model ?? "Unknown", timestamp: date,
+        var event = ProviderEvent(id: key, model: fields[2].stringValue ?? model ?? "Unknown", timestamp: date,
             input: try TokenCount.sum(counted.input, counted.cacheWrite), output: counted.output,
-            cacheRead: counted.cacheRead, cacheWrite: counted.cacheWrite))
+            cacheRead: counted.cacheRead, cacheWrite: counted.cacheWrite)
+        // `metrics.total_time_ms` is the call's own span (ttft + tpot × output), `ttft_ms` its wait for the first token.
+        event.durationMs = fields[4]["total_time_ms"].countValue
+        event.ttftMs = fields[4]["ttft_ms"].countValue
+        session.events.append(event)
     }
 
     /// `metadata.metrics` names the call's counts: `input_tokens` sits beside both cache kinds, which are read apart,
