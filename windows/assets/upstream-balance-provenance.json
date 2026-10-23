@@ -1,0 +1,9 @@
+{
+  "upstreamRevision": "bf19ac98da11fe0f5967f5a124d42f0da4bf2cf9",
+  "qaRevision": "5afeac9b4caa9187b9cf4d7b4673f0a6acd51752",
+  "run": "https://github.com/nanhudev/agent-hud-open/actions/runs/39254186531",
+  "artifact": "original-balance-contract",
+  "sha256": "cc014525892c38d06bd3142e9e7a8b9362e7593fa24afec1e7ad18afe36f4de8",
+  "cases": 72,
+  "scope": "Original compiled APIBilling.spend, BalanceSpend.perDay and runsOutAt across currencies, empty/missing prices, duplicate buckets, edge overlap and partial periods. Sources unchanged; no visual or whole-product similarity score."
+}

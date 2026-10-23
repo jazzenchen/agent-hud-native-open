@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-19",
+  "platform": "windows",
+  "fixtureOnly": true,
+  "sourceBalanceCases": 72,
+  "captureMatrix": {
+    "runner": "native_layout_widgets.py --accounts",
+    "backdrop": "Full-screen owned Scene; overrides the base preview's fixed size before capture.",
+    "scales": [1, 1.5],
+    "themes": ["light", "dark"],
+    "variants": ["accounts-ring", "accounts-number", "accounts-chart", "api-number", "api-chart", "api-failed", "api-unpriced", "paired-api"],
+    "captures": 32,
+    "reviewedFinalExamples": ["100/light-paired-api", "100/dark-api-failed"]
+  },
+  "surfaceMatrices": {
+    "runner": "native_surface_audit.py --draft, and --draft --api",
+    "scale": 1.5,
+    "casesPerMatrix": 24,
+    "failures": [],
+    "scope": "Outside-mask corners, travel-corridor samples, mid-morph frames, former-panel centre after close, timed reversal and hide. Quota matrix predates the new Simple/peek money wiring; API matrix includes it."
+  },
+  "warmRepaint": {
+    "samplesPerVariant": 30,
+    "maximumVariantP95MsAt100Percent": 9.7408,
+    "maximumVariantP95MsAt150Percent": 10.8515,
+    "scope": "Warm synchronous QWidget repaint only. Excludes cold opening, complete animations, worker polling, resident frame pacing and input-to-display latency. Captures precede the final Simple/peek-only money wiring; panel rendering is unchanged."
+  },
+  "limits": "No pixel-perfect compositor or whole-product similarity claim. Older partial-backdrop widget captures are superseded. Complete live account/pool binding, accessibility and native chart transitions remain open."
+}

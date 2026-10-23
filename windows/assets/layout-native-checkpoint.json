@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-19",
+  "checks": [
+    {
+      "name": "draft-surfaces-100",
+      "dpi": 1.0,
+      "cases": 24,
+      "failures": [],
+      "scope": "Outside-mask corners and a 17pt travel-corridor grid (2pt fractional-DPI antialias guard), mid-morph frames, former-panel centre after close, reversal and hide. Not complete visual similarity proof."
+    },
+    {
+      "name": "draft-surfaces-125",
+      "dpi": 1.25,
+      "cases": 24,
+      "failures": [],
+      "scope": "Outside-mask corners and a 17pt travel-corridor grid (2pt fractional-DPI antialias guard), mid-morph frames, former-panel centre after close, reversal and hide. Not complete visual similarity proof."
+    },
+    {
+      "name": "draft-surfaces-150",
+      "dpi": 1.5,
+      "cases": 24,
+      "failures": [],
+      "scope": "Outside-mask corners and a 17pt travel-corridor grid (2pt fractional-DPI antialias guard), mid-morph frames, former-panel centre after close, reversal and hide. Not complete visual similarity proof."
+    },
+    {
+      "name": "draft-tints-100",
+      "dpi": 1.0,
+      "cases": 2,
+      "failures": [],
+      "scope": "Outside-mask corners and a 17pt travel-corridor grid (2pt fractional-DPI antialias guard), mid-morph frames, former-panel centre after close, reversal and hide. Not complete visual similarity proof."
+    },
+    {
+      "name": "draft-tints-125",
+      "dpi": 1.25,
+      "cases": 2,
+      "failures": [],
+      "scope": "Outside-mask corners and a 17pt travel-corridor grid (2pt fractional-DPI antialias guard), mid-morph frames, former-panel centre after close, reversal and hide. Not complete visual similarity proof."
+    }
+  ],
+  "native_settings_review": [
+    "dark",
+    "light"
+  ],
+  "note": "First 100/125 percent matrices preceded relative-ink correction; subsequent 150 percent matrix and selected native 100/125 percent cases covered corrected ink. Final draft glyph checked at 100 percent. Settings reviewed on the Windows platform. These checks do not establish a similarity score or complete live-client/MCP parity."
+}
