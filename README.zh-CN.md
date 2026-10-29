@@ -1,5 +1,11 @@
 <h1 align="center">agent-hud-native-open</h1>
 
+> **Windows 社区移植开发预览：**本分支在原项目基础上增加 Windows 源码移植。
+> [Windows 安装与功能范围](windows/README.md) ·
+> [Windows 宣传片](docs/videos/windows-preview.mp4) ·
+> [差异审计与待办](windows/PARITY_AUDIT.md)。
+> 下方保留原版 Mac 应用的介绍。本分支并非原作者官方 Windows 发行版，也不宣称全部功能已经对齐。
+
 <p align="center">
   <strong>Agent HUD 已迁到 <a href="https://github.com/jazzenchen/agent-hud-open">jazzenchen/agent-hud-open</a>。</strong><br>
   本仓库是它早先的 macOS Swift 版，只做有限维护，偶尔加入实验性功能。

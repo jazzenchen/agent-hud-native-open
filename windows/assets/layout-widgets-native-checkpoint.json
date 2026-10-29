@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-19",
+  "platform": "windows",
+  "fixtureOnly": true,
+  "runner": "native_layout_widgets.py",
+  "captureMatrix": {
+    "scales": [1, 1.5],
+    "themes": ["light", "dark"],
+    "variants": ["ring-small", "ring-medium", "ring-large", "number", "chart", "paired"],
+    "captures": 24
+  },
+  "reviewedExamples": ["100/light-paired", "100/dark-ring-medium", "100/light-number", "100/dark-chart", "150/light-paired", "150/dark-number"],
+  "warmRepaint": {
+    "samplesPerVariant": 30,
+    "maximumVariantP95MsAt100Percent": 9.1484,
+    "maximumVariantP95MsAt150Percent": 9.2685,
+    "scope": "Warm synchronous QWidget repaint only. Not cold-open, full animation, polling, resident frame pacing or input-to-display measurements."
+  },
+  "limits": "Historical representative visual review only. The old layout-capture helper did not override its backdrop's fixed size; these captures could contain uncontrolled background windows and do not prove frosted-background fidelity. Superseded by account-billing-native-checkpoint.json and its corrected full-screen backdrop captures. Not pixel comparison, whole-product similarity or all live-provider account mapping proof. Qt accessibility for painted metric cells remains incomplete."
+}

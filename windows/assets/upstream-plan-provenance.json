@@ -1,0 +1,10 @@
+{
+  "upstreamRevision": "bf19ac98da11fe0f5967f5a124d42f0da4bf2cf9",
+  "qaRevision": "ce6910f214978aab658ba7b41a939c261c04218e",
+  "run": "https://github.com/nanhudev/agent-hud-open/actions/runs/39248457010",
+  "artifact": "original-plan-contract",
+  "sha256": "a3f5290db1e7838f2e208851fc858dc33972696c8d354aaa9c62e65207413743",
+  "planCases": 144,
+  "gridCases": 30,
+  "scope": "Compiled original Swift layout planning and grid widths; no upstream Sources changes. This validates planning, not Windows widget rendering or overall visual similarity."
+}

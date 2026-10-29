@@ -1,5 +1,12 @@
 <h1 align="center">agent-hud-native-open</h1>
 
+> **Windows community development preview:** this branch adds a Windows source
+> port of the original project. [Windows setup and scope](windows/README.md) ·
+> [Windows preview video](docs/videos/windows-preview.mp4) ·
+> [Parity audit and remaining work](windows/PARITY_AUDIT.md).
+> The original Mac app and its documentation continue below. This is not an
+> official upstream Windows release or a claim of full feature parity.
+
 <p align="center">
   <strong>Agent HUD has moved to <a href="https://github.com/jazzenchen/agent-hud-open">jazzenchen/agent-hud-open</a>.</strong><br>
   This repository holds its earlier Swift app for macOS. It gets limited maintenance and sometimes experimental features.

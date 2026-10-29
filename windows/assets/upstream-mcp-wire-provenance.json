@@ -1,0 +1,9 @@
+{
+  "upstreamRevision": "bf19ac98da11fe0f5967f5a124d42f0da4bf2cf9",
+  "qaRevision": "e09a2dd03d42dda385fce36913a02041a8458c64",
+  "run": "https://github.com/nanhudev/agent-hud-open/actions/runs/39259128769",
+  "artifact": "original-mcp-wire-contract",
+  "sha256": "102c1ccc40d4e64f6f493823548509e4e018e2ae1fca0b4276ba5110b9cc81dd",
+  "cases": 63,
+  "scope": "Compiled original MCPServer responses and forwarded-call counts for handshake/stateless revisions, IDs, batching, notifications, schemas, subscriptions and app answer states. Platform instructions adapt Mac notch to Windows HUD; schemas unchanged. No GUI tools or installed-client integration claim."
+}

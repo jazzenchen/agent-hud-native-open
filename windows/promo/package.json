@@ -1,0 +1,1 @@
+{"name":"agent-hud-windows-film","version":"1.0.0","private":true,"description":"Actual Windows HUD footage, demo data, original music","dependencies":{"@remotion/cli":"^4.0.536","react":"^19.2.0","react-dom":"^19.2.0","remotion":"^4.0.536"}}
