@@ -1,14 +1,8 @@
-<h1 align="center">Agent HUD</h1>
+<h1 align="center">agent-hud-native-open</h1>
 
 <p align="center">
-  <strong>你的 Agent，抬眼可见。</strong><br>
-  Claude Code、Codex 以及另外 16 款 agent 的用量、Token 与会话，就在 Mac 灵动岛或任意屏幕边缘。
-</p>
-
-<p align="center">
-  <a href="https://agenthud.app/mac"><img src="docs/buttons/mac.zh-CN.svg" alt="下载 Mac 版 Agent HUD" width="180" height="36"></a>
-  <a href="https://apps.apple.com/cn/app/agent-hud/id6812113619?uo=4"><img src="docs/buttons/app-store.svg" alt="从 App Store 获取 iPhone 与 Apple Watch App" width="138" height="36"></a>
-  <a href="#从源码构建"><img src="docs/buttons/source.zh-CN.svg" alt="从源码构建 Agent HUD" width="181" height="36"></a>
+  <strong>Agent HUD 已迁到 <a href="https://github.com/jazzenchen/agent-hud-open">jazzenchen/agent-hud-open</a>。</strong><br>
+  本仓库是它早先的 macOS Swift 版，只做有限维护，偶尔加入实验性功能。
 </p>
 
 <p align="center">
@@ -20,20 +14,6 @@
 <p align="center">
   <a href="README.md">English</a> · <strong>简体中文</strong> · <a href="https://agenthud.app">官网</a> · <a href="#支持的-agent">支持的 agent</a> · <a href="#文档">文档</a>
 </p>
-
-> [!NOTE]
-> 本仓库是 Agent HUD 的原生 Swift 版，原名 agent-hud-open，现为 **agent-hud-native-open**。Agent HUD 的跨平台版在 [jazzenchen/agent-hud-open](https://github.com/jazzenchen/agent-hud-open) 继续开发。本仓库只做有限维护，也会加入一些实验性功能。
-
-<p align="center">
-  <img src="docs/videos/agent-hud-loop.zh-CN.webp" alt="灵动岛上的 Agent HUD 演示。光晕呼吸着红、黄、绿的额度色段；悬停后面板展开，显示 Claude 与 Codex 的额度、DeepSeek 的余额、过去 24 小时的 Token 与会话，点击后 Claude 的额度切换为消耗速率。随后 Claude 请求运行测试，用「批准一次」回应；它的回复以「有新回复」提醒出现，卡片上有「回到会话」" width="800">
-</p>
-
-Agent HUD 让你在使用其他应用时，也能看到各个编程 agent 的状态。
-
-- **额度还剩多少？** 光晕随额度用量变为绿、黄、红。悬停即可看到具体数字。
-- **哪个 agent 在等你？** 批准请求、提问与回复集中在一处，点一下就回到会话。
-- **Token 花在了哪里？** 按时间、agent、模型、会话与轮次统计，并按 API 价折合费用。
-- **离开 Mac 之后呢？** 同样的数字，在 iPhone 与 Apple Watch 上也能看到。
 
 ## 看一眼，或悬停一下
 

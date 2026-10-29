@@ -1,14 +1,8 @@
-<h1 align="center">Agent HUD</h1>
+<h1 align="center">agent-hud-native-open</h1>
 
 <p align="center">
-  <strong>Your agents, at a glance.</strong><br>
-  Usage, tokens and sessions for Claude Code, Codex and 16 more agents, at your Mac's notch or any screen edge.
-</p>
-
-<p align="center">
-  <a href="https://agenthud.app/mac"><img src="docs/buttons/mac.svg" alt="Download Agent HUD for Mac" width="180" height="36"></a>
-  <a href="https://apps.apple.com/app/id6812113619"><img src="docs/buttons/app-store.svg" alt="App Store: iPhone and Apple Watch" width="138" height="36"></a>
-  <a href="#build-from-source"><img src="docs/buttons/source.svg" alt="Build Agent HUD from source" width="181" height="36"></a>
+  <strong>Agent HUD has moved to <a href="https://github.com/jazzenchen/agent-hud-open">jazzenchen/agent-hud-open</a>.</strong><br>
+  This repository holds its earlier Swift app for macOS. It gets limited maintenance and sometimes experimental features.
 </p>
 
 <p align="center">
@@ -20,20 +14,6 @@
 <p align="center">
   <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a> · <a href="https://agenthud.app">Website</a> · <a href="#supported-agents">Supported agents</a> · <a href="#documentation">Documentation</a>
 </p>
-
-> [!NOTE]
-> This repository is Agent HUD's native Swift app. It was called agent-hud-open and is now **agent-hud-native-open**. Agent HUD continues as a cross-platform app at [jazzenchen/agent-hud-open](https://github.com/jazzenchen/agent-hud-open). This repository receives limited maintenance and may also get experimental features.
-
-<p align="center">
-  <img src="docs/videos/agent-hud-loop.webp" alt="A tour of Agent HUD at a MacBook's notch. The glow breathes in red, yellow and green quota segments. A hover opens the panel on Claude's and Codex's quotas, a DeepSeek balance, the last 24 hours of tokens and the sessions, and a click turns Claude's quotas into burn rates. Claude then asks to run the test suite and is answered with Allow once, and its reply arrives as a New reply reminder whose card offers Return to session" width="800">
-</p>
-
-Agent HUD keeps your coding agents in view while you work in another app.
-
-- **How much quota is left?** The glow turns green, yellow or red as a quota fills. Hover for the numbers.
-- **Which agent is waiting for you?** Approvals, questions and replies in one place, and a click takes you back.
-- **Where did the tokens go?** Statistics by time, agent, model, session and turn, with the cost at API prices.
-- **Away from your Mac?** The same numbers on your iPhone and Apple Watch.
 
 ## At a glance, or a hover
 
