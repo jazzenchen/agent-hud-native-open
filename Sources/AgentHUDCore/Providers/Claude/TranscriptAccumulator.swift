@@ -41,6 +41,8 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
     private var completions: [SessionCompletion]?
     /// Prompts and compactions read since the store last took them.
     private var marks: [UsageLedger.Mark] = []
+    /// The request side's latest line in this log — a prompt or a tool result — which times the reply that follows.
+    private var requestAt: Date?
 
     /// A response that neither requests a tool nor was cut off ends the turn and returns control to the user.
     /// Interruptions leave no such line; API errors are synthetic messages without one.
@@ -87,6 +89,8 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
             if task == nil, event.role == .user, let text = event.text {
                 task = SessionTitle.from(text)
             }
+            // A reply's own span pairs it with the request side's latest line: a prompt or a tool result.
+            if event.role == .user { requestAt = event.timestamp }
             // A sub-agent's own log follows its turn too, so its session can tell that the agent is still at work; only
             // a main log records prompts, compactions, completions and the answer.
             if isSubagent || !event.isSidechain {
@@ -182,7 +186,9 @@ public struct TranscriptAccumulator: Hashable, Sendable, Codable {
             }
             added.append(UsageLedger.Event(key: key, timestamp: event.timestamp, agentId: mapped, tokensIn: event.tokensIn,
                                            tokensOut: event.outputTokens, cacheReadTokens: event.cacheReadTokens,
-                                           cacheWriteTokens: event.cacheCreationTokens, reasoningTokens: event.thinkingTokens))
+                                           cacheWriteTokens: event.cacheCreationTokens, reasoningTokens: event.thinkingTokens,
+                                           durationMs: requestAt.map { Int64(((event.timestamp.timeIntervalSince($0)) * 1000).rounded()) }
+                                               .flatMap { $0 > 0 ? $0 : nil }))
         }
         activity?.settle()
         return added

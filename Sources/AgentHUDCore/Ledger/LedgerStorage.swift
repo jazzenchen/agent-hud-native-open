@@ -92,6 +92,16 @@ final class LedgerStorage {
                     """)
             }
         }
+        if version < 5 {
+            // A call's own time (queue + first token + decode) where the log records it; nil where it does not.
+            try connection.transaction {
+                try connection.execute("""
+                    ALTER TABLE usage_event ADD COLUMN duration_ms INTEGER;
+                    ALTER TABLE usage_event ADD COLUMN ttft_ms INTEGER;
+                    PRAGMA user_version = 5;
+                    """)
+            }
+        }
         try connection.query("SELECT id, name FROM agent") { row in
             let id = row.int(0), name = row.text(1) ?? ""
             agents[name] = id

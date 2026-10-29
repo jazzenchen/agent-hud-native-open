@@ -231,7 +231,8 @@ final class SessionLedger {
                 var row = rows[id] ?? RunningTotal(first: counts, firstAt: event.timestamp, total: counts, changedAt: now)
                 if rows[id] == nil, event.timestamp < window {
                     firstRead[session.id, default: []].append(UsageLedger.Event(key: id, timestamp: event.timestamp, agentId: event.agentId,
-                        tokensIn: counts[0], tokensOut: counts[1], cacheReadTokens: counts[2], cacheWriteTokens: counts[3], reasoningTokens: counts[4]))
+                        tokensIn: counts[0], tokensOut: counts[1], cacheReadTokens: counts[2], cacheWriteTokens: counts[3], reasoningTokens: counts[4],
+                        durationMs: event.durationMs.map(Int64.init), ttftMs: event.ttftMs.map(Int64.init)))
                 }
                 let gained = zip(counts, row.total).map { max(0, $0 - $1) }
                 if gained.contains(where: { $0 > 0 }) {

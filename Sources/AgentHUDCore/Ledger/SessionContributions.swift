@@ -29,7 +29,8 @@ enum SessionContributions {
                 }
                 return UsageLedger.Event(key: key, timestamp: event.timestamp, agentId: event.agentId, tokensIn: event.tokensIn,
                                          tokensOut: event.tokensOut, cacheReadTokens: event.cacheReadTokens,
-                                         cacheWriteTokens: event.cacheWriteTokens, reasoningTokens: event.reasoningTokens)
+                                         cacheWriteTokens: event.cacheWriteTokens, reasoningTokens: event.reasoningTokens,
+                                         durationMs: event.durationMs.map(Int64.init), ttftMs: event.ttftMs.map(Int64.init))
             }
         }
         return result

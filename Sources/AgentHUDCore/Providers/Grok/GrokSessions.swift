@@ -113,8 +113,10 @@ enum GrokSessions: LocalSessionLayout {
             if let input = usage["inputTokens"].countValue, let output = usage["outputTokens"].countValue {
                 let cache = try (usage["cachedReadTokens"] == .null ? usage["cacheReadTokens"] : usage["cachedReadTokens"]).optionalCounter()
                 guard cache <= input else { throw ProviderFailure.format }
+                // The usage covers a whole turn, so the turn's own start to its completion is the honest span.
                 session.events.append(.init(id: "\(id):\(eventID)", model: model, timestamp: date, input: input - cache, output: output, cacheRead: cache,
-                    origin: .init(group: id, priority: 1)))
+                    origin: .init(group: id, priority: 1),
+                    durationMs: turnStart.map { Int((date.timeIntervalSince($0) * 1000).rounded()) }.flatMap { $0 > 0 ? $0 : nil }))
             } else { incomplete = true }
             let completedID = update["prompt_id"].stringValue ?? turnID ?? eventID
             if let turnID { session.turns.removeAll { $0.turnID == turnID } }
