@@ -137,7 +137,8 @@ final class QuotaOutlookTests: XCTestCase {
         try withStore([grid[9]]) { store in
             let old = try metrics("exhaustsBeforeReset", in: store)
             let priced = QuotaRowMetrics(row: old.row, insights: old.insights, outlook: old.outlook, now: now,
-                                         tokensPerHour: old.tokensPerHour, cost: QuotaListCost(amounts: ["USD": 40], hours: 1))
+                                         tokensPerHour: old.tokensPerHour, cost: QuotaListCost(amounts: ["USD": 40], hours: 1),
+                                         capacityEstimate: QuotaCapacityEstimate(tokens: 3333, amounts: ["USD": Decimal(400) / 9]))
             let hint = try XCTUnwrap(priced.hoverHint(.cost, fallback: "old duration"))
             XCTAssertEqual(hint.components(separatedBy: "\n").count, 2)
             XCTAssertTrue(hint.contains("Estimated total capacity: $44.44"))
@@ -154,7 +155,8 @@ final class QuotaOutlookTests: XCTestCase {
         try withStore([grid[9]]) { store in
             let old = try metrics("exhaustsBeforeReset", in: store)
             let priced = QuotaRowMetrics(row: old.row, insights: old.insights, outlook: old.outlook, now: now,
-                                         tokensPerHour: nil, cost: QuotaListCost(amounts: ["USD": 40], hours: 1, hasUnpricedUsage: true))
+                                         tokensPerHour: nil, cost: QuotaListCost(amounts: ["USD": 40], hours: 1, hasUnpricedUsage: true),
+                                         capacityEstimate: QuotaCapacityEstimate(tokens: 3333, amounts: nil, hasUnpricedUsage: true))
             let hint = try XCTUnwrap(priced.hoverHint(.cost, fallback: nil))
             XCTAssertTrue(hint.contains("Missing model prices"))
             XCTAssertEqual(hint.components(separatedBy: "\n").count, 2)
@@ -284,7 +286,7 @@ final class QuotaOutlookTests: XCTestCase {
 
     /// A store showing `windows` at `now`, each counting the tokens of one model spent before, around and after now.
     @MainActor
-    private func withStore(_ windows: [Window], quotaNotices: [String: String] = [:], _ body: (UsageStore) throws -> Void) throws {
+    private func withStore(_ windows: [Window], quotaNotices: [String: String] = [:], indexing: IndexProgress? = nil, _ body: (UsageStore) throws -> Void) throws {
         let suite = "QuotaOutlookTests.\(UUID().uuidString)", defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let agents = windows.map { AgentDescriptor(id: $0.name, vendor: "Codex", model: $0.name, source: "", enabled: true) }
@@ -298,11 +300,13 @@ final class QuotaOutlookTests: XCTestCase {
                 UsageSnapshot(agentId: $0.name, remainingPct: $0.remaining, resetAt: $0.resetIn.map(now.addingTimeInterval),
                               windowDuration: $0.duration, updatedAt: now, used: $0.used, capacity: $0.capacity)
             },
-            sessions: [], discoveredAgents: agents, usage: usage,
+            sessions: [], discoveredAgents: agents, usage: usage, indexing: indexing,
             insightsByAgent: Dictionary(uniqueKeysWithValues: windows.compactMap { window in
                 window.insights.map {
                     (window.name, UsageInsights(burnRatePctPerHour: $0.burn, timeToExhaust: $0.exhaust, weeklyCapHits: 0, weeklyWaitTotal: 0,
-                                                weeklyWaitLongest: 0, weeklyWaitLongestAt: nil, sampling: window.sampling))
+                                                weeklyWaitLongest: 0, weeklyWaitLongestAt: nil, sampling: window.sampling,
+                                                capacityObservation: QuotaObservation(start: now.addingTimeInterval(-3 * hour), end: now,
+                                                    remainingAtStart: 100, remainingAtEnd: window.remaining)))
                 }
             }),
             sourceNotices: quotaNotices, quotaNotices: quotaNotices,
@@ -318,6 +322,18 @@ final class QuotaOutlookTests: XCTestCase {
         QuotaRowMetrics(row: try XCTUnwrap(store.row(for: id)), insights: store.report?.insightsByAgent[id],
                         outlook: store.view.outlook(for: id), now: store.now, tokensPerHour: store.quotaTokensPerHour(for: id),
                         replyRate: store.view.replyRate(for: id), consumed: store.view.consumed(for: id),
-                        cost: store.view.listCost(for: id))
+                        cost: store.view.listCost(for: id), capacityEstimate: store.view.capacityEstimate(for: id))
+    }
+
+    @MainActor
+    func testIndexingKeepsRecordedValuesButWithholdsTotalPredictions() throws {
+        try withStore([grid[9]], indexing: IndexProgress(done: 1, total: 2)) { store in
+            let row = try metrics("exhaustsBeforeReset", in: store)
+            XCTAssertEqual(row.consumed?.used, 3000)
+            XCTAssertNotNil(row.value(.consumed))
+            XCTAssertNil(store.view.capacityEstimate(for: "exhaustsBeforeReset"))
+            XCTAssertTrue(try XCTUnwrap(row.hoverHint(.consumed, fallback: nil)).hasPrefix("Estimated total tokens: —\n"))
+            XCTAssertTrue(try XCTUnwrap(row.hoverHint(.consumed, fallback: nil)).contains("Estimated exhaustion: "))
+        }
     }
 }

@@ -8,6 +8,7 @@ public struct UsageInsights: Hashable, Codable, Sendable {
     /// How far the readings have come while they are too few for a burn rate; nil once there is one. Optional so
     /// reports written before sampling details were introduced still decode.
     public let sampling: QuotaSampling?
+    public let capacityObservation: QuotaObservation?
     public let weeklyCapHits: Int
     public let weeklyWaitTotal: TimeInterval
     public let weeklyWaitLongest: TimeInterval
@@ -20,11 +21,13 @@ public struct UsageInsights: Hashable, Codable, Sendable {
         weeklyWaitTotal: TimeInterval,
         weeklyWaitLongest: TimeInterval,
         weeklyWaitLongestAt: Date?,
-        sampling: QuotaSampling? = nil
+        sampling: QuotaSampling? = nil,
+        capacityObservation: QuotaObservation? = nil
     ) {
         self.burnRatePctPerHour = burnRatePctPerHour
         self.timeToExhaust = timeToExhaust
         self.sampling = sampling
+        self.capacityObservation = capacityObservation
         self.weeklyCapHits = weeklyCapHits
         self.weeklyWaitTotal = weeklyWaitTotal
         self.weeklyWaitLongest = weeklyWaitLongest

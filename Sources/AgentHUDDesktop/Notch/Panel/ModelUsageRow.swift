@@ -15,6 +15,7 @@ struct ModelUsageRow: View {
     var forecastHint: String?
     var consumed: QuotaConsumption?
     var cost: QuotaListCost?
+    var capacityEstimate: QuotaCapacityEstimate?
     var isLoading = false
     @State private var isHovered = false
     @Environment(\.panelSpacing) private var spacing
@@ -95,7 +96,7 @@ struct ModelUsageRow: View {
 
     private var metrics: QuotaRowMetrics {
         QuotaRowMetrics(row: row, insights: insights, outlook: outlook, now: now, tokensPerHour: tokensPerHour,
-                        replyRate: replyRate, consumed: consumed, cost: cost)
+                        replyRate: replyRate, consumed: consumed, cost: cost, capacityEstimate: capacityEstimate)
     }
 
     private var metricValue: String? { metrics.value(metric) }
@@ -139,9 +140,11 @@ struct QuotaRowMetrics {
     let replyRate: QuotaReplyRate?
     let consumed: QuotaConsumption?
     let cost: QuotaListCost?
+    let capacityEstimate: QuotaCapacityEstimate?
 
     init(row: AgentRow, insights: UsageInsights?, outlook: QuotaOutlook?, now: Date, tokensPerHour: Double?,
-         replyRate: QuotaReplyRate? = nil, consumed: QuotaConsumption? = nil, cost: QuotaListCost? = nil) {
+         replyRate: QuotaReplyRate? = nil, consumed: QuotaConsumption? = nil, cost: QuotaListCost? = nil,
+         capacityEstimate: QuotaCapacityEstimate? = nil) {
         self.row = row
         self.insights = row.assessment.showsLevel ? insights : nil
         self.outlook = row.assessment.showsLevel ? outlook : nil
@@ -150,6 +153,7 @@ struct QuotaRowMetrics {
         self.replyRate = row.assessment.showsLevel ? replyRate : nil
         self.consumed = row.assessment.showsLevel ? consumed : nil
         self.cost = row.assessment.showsLevel ? cost : nil
+        self.capacityEstimate = row.assessment.showsLevel ? capacityEstimate : nil
     }
 
     func value(_ metric: PanelMeasure) -> String? {
@@ -244,24 +248,17 @@ struct QuotaRowMetrics {
         let figure: String
         switch metric {
         case .consumed:
-            let tokens = estimatedTokens.map { TokenFormat.short($0) } ?? "—"
+            let tokens = capacityEstimate.map { TokenFormat.short($0.tokens) } ?? "—"
             figure = L10n.text("预计总 Token：", "Estimated total tokens: ") + tokens
         case .cost:
-            let estimate = row.usedPct.flatMap { cost?.estimatedCapacity(usedPercent: $0) }
+            let estimate = capacityEstimate?.amounts
             figure = L10n.text("预计总额度：", "Estimated total capacity: ") +
-                (estimate.map { amounts($0) } ?? (cost?.hasUnpricedUsage == true
+                (estimate.map { amounts($0) } ?? (capacityEstimate?.hasUnpricedUsage == true
                     ? L10n.text("部分模型缺价", "Missing model prices") : "—"))
         case .quota, .burnRate, .tokens:
             return timing
         }
         return figure + "\n" + compactExhaustion
-    }
-
-    private var estimatedTokens: Int? {
-        guard let tokens = consumed?.tokens, tokens > 0, let used = row.usedPct, used.isFinite, (5...100).contains(used) else { return nil }
-        let estimate = (Double(tokens) * 100 / used).rounded()
-        guard estimate.isFinite, estimate > 0, estimate < Double(Int.max) else { return nil }
-        return Int(estimate)
     }
 
     private var compactExhaustion: String {

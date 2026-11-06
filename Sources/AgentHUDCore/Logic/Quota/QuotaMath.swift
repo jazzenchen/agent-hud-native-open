@@ -48,7 +48,8 @@ public enum QuotaMath {
                              timeToExhaust: snapshot.flatMap(\.remainingPct).flatMap { burn?.timeToExhaust(remainingPct: $0) },
                              weeklyCapHits: caps.hits, weeklyWaitTotal: caps.totalWait,
                              weeklyWaitLongest: caps.longestWait, weeklyWaitLongestAt: caps.longestAt,
-                             sampling: pace.sampling)
+                             sampling: pace.sampling,
+                             capacityObservation: UsageAnalytics.capacityObservation(samples: samples, cycle: snapshot?.cycle, now: now))
     }
 
     /// The window's outlook at `now`.
@@ -158,13 +159,10 @@ public enum QuotaMath {
 public struct QuotaConsumption: Hashable, Sendable {
     public let used: Int64
     public let capacity: Int64?
-    /// Local model tokens, separately from provider-native credits, requests or minutes.
-    public let tokens: Int?
 
-    public init(used: Int64, capacity: Int64? = nil, tokens: Int? = nil) {
+    public init(used: Int64, capacity: Int64? = nil) {
         self.used = used
         self.capacity = capacity
-        self.tokens = tokens
     }
 }
 
@@ -201,8 +199,8 @@ public struct QuotaListCost: Hashable, Sendable {
         self.hasUnpricedUsage = hasUnpricedUsage
     }
 
-    /// Approximate full-cycle API equivalent at the observed used share. This is not an official subscription limit;
-    /// local logs may omit other devices. Small percentages amplify rounding and therefore give no estimate.
+    /// Approximate full-cycle API equivalent. The consumed share must cover the same interval as amounts;
+    /// never divide a partial local tally by the whole cycle's cumulative used share.
     public func estimatedCapacity(usedPercent: Double) -> [String: Decimal]? {
         guard usedPercent.isFinite, usedPercent >= 5, usedPercent <= 100, !hasUnpricedUsage,
               !amounts.isEmpty, amounts.values.allSatisfy({ !$0.isNaN && $0 > 0 }) else { return nil }

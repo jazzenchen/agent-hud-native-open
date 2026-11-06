@@ -259,12 +259,11 @@ public struct ReportView: Sendable {
     /// the local ledger begins is not guessed at.
     public func consumed(for agentId: String) -> QuotaConsumption? {
         guard counts(agentId), let report, let snapshot = report.snapshot(for: agentId) else { return nil }
-        let tokens = report.consumerIdsByQuota[agentId].flatMap {
-            QuotaMath.tokensTotal(snapshot: snapshot, consumers: $0, usage: report.usage, now: now)
-        }
-        if let used = snapshot.used { return QuotaConsumption(used: used, capacity: snapshot.capacity, tokens: tokens) }
-        guard let tokens else { return nil }
-        return QuotaConsumption(used: Int64(tokens), capacity: nil, tokens: tokens)
+        if let used = snapshot.used { return QuotaConsumption(used: used, capacity: snapshot.capacity) }
+        guard let consumers = report.consumerIdsByQuota[agentId],
+              let tokens = QuotaMath.tokensTotal(snapshot: snapshot, consumers: consumers, usage: report.usage, now: now)
+        else { return nil }
+        return QuotaConsumption(used: Int64(tokens), capacity: nil)
     }
 
     /// The recent reply speed of the models this window's consumers use: output tokens over the spans calls were
@@ -273,6 +272,13 @@ public struct ReportView: Sendable {
     public func replyRate(for agentId: String) -> QuotaReplyRate? {
         guard counts(agentId), let report else { return nil }
         return report.replyRates?[agentId]
+    }
+
+    public func capacityEstimate(for agentId: String) -> QuotaCapacityEstimate? {
+        guard counts(agentId), let report, report.indexing == nil, let snapshot = report.snapshot(for: agentId),
+              let consumers = report.consumerIdsByQuota[agentId] else { return nil }
+        return QuotaMath.capacityEstimate(snapshot: snapshot, observation: report.insightsByAgent[agentId]?.capacityObservation,
+            consumers: consumers, usage: report.usage, regions: PriceRegions(report: report), now: now)
     }
 
     /// What the window's reading and recent pace say about the rest of its cycle.
