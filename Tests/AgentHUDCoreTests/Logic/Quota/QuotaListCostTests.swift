@@ -40,15 +40,14 @@ final class QuotaListCostTests: XCTestCase {
         XCTAssertEqual(cost.hours, 1, accuracy: 0.0001, "history that begins inside the cycle is all the cycle that was seen")
     }
 
-    func testThereIsNoCostWithoutACycleAConsumerOrAPrice() {
+    func testMissingPricesCountAsZeroButACycleAndCallsAreStillRequired() {
         let usage = [bucket(-hour, priced, 1_000_000)]
         XCTAssertNil(QuotaMath.listCost(snapshot: window, consumers: [], usage: usage, regions: regions, now: now))
         XCTAssertNil(QuotaMath.listCost(snapshot: window, consumers: [priced], usage: [], regions: regions, now: now))
         let untimed = UsageSnapshot(agentId: "w", remainingPct: 50, updatedAt: now)
         XCTAssertNil(QuotaMath.listCost(snapshot: untimed, consumers: [priced], usage: usage, regions: regions, now: now))
-        XCTAssertNil(QuotaMath.listCost(snapshot: window, consumers: ["claude-model:no-such-model"],
-                                        usage: [bucket(-hour, "claude-model:no-such-model", 1_000_000)], regions: regions, now: now),
-                     "tokens of a model without a list price cost nothing that can be said")
+        XCTAssertEqual(QuotaMath.listCost(snapshot: window, consumers: ["claude-model:no-such-model"],
+                                        usage: [bucket(-hour, "claude-model:no-such-model", 1_000_000)], regions: regions, now: now)?.amounts, ["USD": 0])
     }
 
     func testAShortAmountDropsItsDecimalsFromAHundredUp() {

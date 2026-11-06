@@ -9,12 +9,14 @@ final class QuotaCostEstimateTests: XCTestCase {
         XCTAssertEqual(cost.perHour("USD"), 20, "pace remains separate from capacity")
     }
 
-    func testSmallInvalidAndUnpricedSamplesDoNotEstimate() {
+    func testInvalidEvidenceStillStopsEstimatesWhileUnknownPricesCountAsZero() {
         let cost = QuotaListCost(amounts: ["USD": 40], hours: 2)
         for share in [0.0, 4.99, -1, 101, .infinity, .nan] {
             XCTAssertNil(cost.estimatedCapacity(usedPercent: share))
         }
-        XCTAssertNil(QuotaListCost(amounts: ["USD": 40], hours: 2, hasUnpricedUsage: true).estimatedCapacity(usedPercent: 20))
+        XCTAssertEqual(QuotaListCost(amounts: ["USD": 40], hours: 2, hasUnpricedUsage: true).estimatedCapacity(usedPercent: 20), ["USD": 200])
+        XCTAssertEqual(QuotaListCost(amounts: [:], hours: 2, hasUnpricedUsage: true).estimatedCapacity(usedPercent: 20), ["USD": 0])
+        XCTAssertEqual(QuotaListCost(amounts: ["USD": 0], hours: 2).estimatedCapacity(usedPercent: 20), ["USD": 0])
         XCTAssertNil(QuotaListCost(amounts: [:], hours: 2).estimatedCapacity(usedPercent: 20))
         XCTAssertNil(QuotaListCost(amounts: ["USD": -1], hours: 2).estimatedCapacity(usedPercent: 20))
     }
@@ -24,7 +26,7 @@ final class QuotaCostEstimateTests: XCTestCase {
         XCTAssertEqual(cost.estimatedCapacity(usedPercent: 25), ["USD": 40, "CNY": 80])
     }
 
-    func testMissingModelPriceWithholdsCapacityWhileKeepingKnownSpend() throws {
+    func testMissingModelPriceKeepsKnownSpendAndProjectsIt() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let snapshot = UsageSnapshot(agentId: "q", remainingPct: 80, resetAt: now.addingTimeInterval(3600),
                                      windowDuration: 7200, updatedAt: now)
@@ -35,7 +37,7 @@ final class QuotaCostEstimateTests: XCTestCase {
                                                  regions: PriceRegions(report: nil), now: now))
         XCTAssertTrue(cost.hasUnpricedUsage)
         XCTAssertGreaterThan(cost.amounts["USD"] ?? 0, 0)
-        XCTAssertNil(cost.estimatedCapacity(usedPercent: 20))
+        XCTAssertEqual(cost.estimatedCapacity(usedPercent: 20)?["USD"], (cost.amounts["USD"] ?? 0) * 5)
     }
 
     func testNearAndFarExhaustionAlwaysUseColonSeparatedClock() throws {

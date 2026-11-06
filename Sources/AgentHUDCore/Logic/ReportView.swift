@@ -277,6 +277,9 @@ public struct ReportView: Sendable {
     public func capacityEstimate(for agentId: String) -> QuotaCapacityEstimate? {
         guard counts(agentId), let report, report.indexing == nil, let snapshot = report.snapshot(for: agentId),
               let consumers = report.consumerIdsByQuota[agentId] else { return nil }
+        if let exact = report.insightsByAgent[agentId]?.exactCapacityEstimate,
+           QuotaMath.capacityConsumed(snapshot: snapshot, observation: report.insightsByAgent[agentId]?.capacityObservation,
+                                      consumers: consumers, now: now) != nil { return exact }
         return QuotaMath.capacityEstimate(snapshot: snapshot, observation: report.insightsByAgent[agentId]?.capacityObservation,
             consumers: consumers, usage: report.usage, regions: PriceRegions(report: report), now: now)
     }

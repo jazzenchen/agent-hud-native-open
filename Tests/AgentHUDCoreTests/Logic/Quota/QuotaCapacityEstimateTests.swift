@@ -35,8 +35,8 @@ final class QuotaCapacityEstimateTests: XCTestCase {
         let other = UsageBucket(start: observation.end.addingTimeInterval(-60), agentId: "other", tokensIn: 1, tokensOut: 0)
         XCTAssertNotNil(estimate(usage + [other]), "another client's edge bucket is outside this window")
     }
-    func testMissingCoverageStaleObservationAndTinyDeltasDoNotProject() {
-        XCTAssertNil(estimate(Array(usage.dropFirst(2))))
+    func testPartialCoverageProjectsButStaleObservationAndTinyDeltasDoNot() {
+        XCTAssertEqual(estimate(Array(usage.dropFirst(2)))?.tokens, 20_000)
         let stale = QuotaObservation(start: observation.start, end: now, remainingAtStart: 70, remainingAtEnd: 59)
         XCTAssertNil(estimate(usage, observation: stale))
         let tiny = QuotaObservation(start: observation.start, end: now, remainingAtStart: 64, remainingAtEnd: 60)
@@ -49,10 +49,10 @@ final class QuotaCapacityEstimateTests: XCTestCase {
         let value = try XCTUnwrap(QuotaMath.capacityEstimate(snapshot: snapshot, observation: observation, consumers: ["unknown"],
             usage: unknown, regions: PriceRegions(report: nil), now: now))
         XCTAssertEqual(value.tokens, 30_000)
-        XCTAssertNil(value.amounts)
+        XCTAssertEqual(value.amounts, ["USD": 0])
         XCTAssertTrue(value.hasUnpricedUsage)
     }
-    func testEarlyResetRestartsObservationAndRisesOrGapsDoNotBridge() throws {
+    func testEarlyResetAndRisesBreakTheIntervalButSamplingGapsAreTolerated() throws {
         func sample(_ seconds: Double, _ remaining: Double) -> QuotaSample {
             QuotaSample(agentId: "q", timestamp: now.addingTimeInterval(seconds), remainingPct: remaining)
         }
@@ -63,7 +63,7 @@ final class QuotaCapacityEstimateTests: XCTestCase {
         XCTAssertNil(UsageAnalytics.capacityObservation(samples: [sample(-3600, 70), sample(-1800, 71), sample(0, 60)],
                                                        cycle: snapshot.cycle, now: now))
         let weekly = QuotaCycle(resetAt: now.addingTimeInterval(86400), duration: 7 * 86400)
-        XCTAssertNil(UsageAnalytics.capacityObservation(samples: [sample(-36000, 70), sample(0, 60)], cycle: weekly, now: now))
+        XCTAssertNotNil(UsageAnalytics.capacityObservation(samples: [sample(-36000, 70), sample(0, 60)], cycle: weekly, now: now))
     }
     func testOlderInsightsReportsDecodeWithNoProjectionEvidence() throws {
         let insights = UsageInsights(burnRatePctPerHour: 10, timeToExhaust: 3600, weeklyCapHits: 0,

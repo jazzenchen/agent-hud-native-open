@@ -161,7 +161,20 @@ public struct CombinedUsageProvider: UsageProvider {
             $0.merge($1.consumerIdsByQuota, uniquingKeysWith: { $0.union($1) })
         }
         let replyRates = await replyRates(of: consumerIdsByQuota, reports: reports, now: now)
-        return UsageReport(generatedAt: now, snapshots: Dictionary(grouping: reports.flatMap(\.snapshots), by: \.agentId).values.compactMap { $0.max { $0.updatedAt < $1.updatedAt } }.sorted { $0.agentId < $1.agentId },
+        let snapshots = Dictionary(grouping: reports.flatMap(\.snapshots), by: \.agentId).values.compactMap { $0.max { $0.updatedAt < $1.updatedAt } }.sorted { $0.agentId < $1.agentId }
+        let billing = Self.mergeBilling(reports.flatMap(\.billing))
+        let services = AgentService.merge(reports.map { $0.services ?? [] })
+        let regions = PriceRegions(services: services, billing: billing)
+        var insights = reports.reduce(into: [String: UsageInsights]()) { $0.merge($1.insightsByAgent, uniquingKeysWith: { _, new in new }) }
+        if progress.isEmpty {
+            for snapshot in snapshots {
+                guard let observation = insights[snapshot.agentId]?.capacityObservation,
+                      let consumers = consumerIdsByQuota[snapshot.agentId] else { continue }
+                insights[snapshot.agentId]?.exactCapacityEstimate = try? await ledger.quotaCapacityEstimate(
+                    snapshot: snapshot, observation: observation, consumers: consumers, regions: regions, now: now)
+            }
+        }
+        return UsageReport(generatedAt: now, snapshots: snapshots,
                            sessions: sessions.sorted { a, b in
                                if a.isLive != b.isLive { return a.isLive }
                                return (a.endedAt ?? a.startedAt) > (b.endedAt ?? b.startedAt)
@@ -170,14 +183,14 @@ public struct CombinedUsageProvider: UsageProvider {
                            discoveredAgents: UsageAggregation.consumersUnion(reports.map(\.discoveredAgents)), consumers: UsageAggregation.consumersUnion(reports.map(\.consumers)),
                            usage: usage.sorted { ($0.start, $0.account ?? "", $0.agentId) < ($1.start, $1.account ?? "", $1.agentId) },
                            indexing: progress.isEmpty ? nil : IndexProgress(done: progress.reduce(0) { $0 + $1.done }, total: progress.reduce(0) { $0 + $1.total }),
-                           insightsByAgent: reports.reduce(into: [:]) { $0.merge($1.insightsByAgent, uniquingKeysWith: { _, new in new }) },
+                           insightsByAgent: insights,
                            subscriptions: reports.reduce(into: [:]) { $0.merge($1.subscriptions, uniquingKeysWith: { _, new in new }) }, sourceNotices: notices,
                            quotaNotices: quotaNotices, readingIssues: issues,
                            consumerIdsByQuota: consumerIdsByQuota,
-                           billing: Self.mergeBilling(reports.flatMap(\.billing)), codexResetCredits: reports.first { $0.codexResetCredits != nil }?.codexResetCredits,
+                           billing: billing, codexResetCredits: reports.first { $0.codexResetCredits != nil }?.codexResetCredits,
                            codexResetCreditsObservedAt: reports.first { $0.codexResetCredits != nil }?.codexResetCreditsObservedAt,
                            completions: reports.flatMap(\.completions),
-                           turns: reports.flatMap(\.turns), services: AgentService.merge(reports.map { $0.services ?? [] }),
+                           turns: reports.flatMap(\.turns), services: services,
                            activeQuotaPoolIDs: reports.compactMap(\.activeQuotaPoolIDs).reduce(into: [String: Set<String>]()) {
                                $0.merge($1, uniquingKeysWith: { $0.union($1) })
                            },

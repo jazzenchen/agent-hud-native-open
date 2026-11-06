@@ -9,6 +9,8 @@ public struct UsageInsights: Hashable, Codable, Sendable {
     /// reports written before sampling details were introduced still decode.
     public let sampling: QuotaSampling?
     public let capacityObservation: QuotaObservation?
+    /// Matched event timestamps, rather than quarter-hour buckets, supplied by the combined ledger reader.
+    public var exactCapacityEstimate: QuotaCapacityEstimate?
     public let weeklyCapHits: Int
     public let weeklyWaitTotal: TimeInterval
     public let weeklyWaitLongest: TimeInterval
@@ -22,12 +24,14 @@ public struct UsageInsights: Hashable, Codable, Sendable {
         weeklyWaitLongest: TimeInterval,
         weeklyWaitLongestAt: Date?,
         sampling: QuotaSampling? = nil,
-        capacityObservation: QuotaObservation? = nil
+        capacityObservation: QuotaObservation? = nil,
+        exactCapacityEstimate: QuotaCapacityEstimate? = nil
     ) {
         self.burnRatePctPerHour = burnRatePctPerHour
         self.timeToExhaust = timeToExhaust
         self.sampling = sampling
         self.capacityObservation = capacityObservation
+        self.exactCapacityEstimate = exactCapacityEstimate
         self.weeklyCapHits = weeklyCapHits
         self.weeklyWaitTotal = weeklyWaitTotal
         self.weeklyWaitLongest = weeklyWaitLongest

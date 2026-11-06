@@ -150,7 +150,7 @@ public enum QuotaMath {
             }
             amounts[cost.currency, default: 0] += cost.total
         }
-        return amounts.isEmpty ? nil : QuotaListCost(amounts: amounts, hours: hours, hasUnpricedUsage: hasUnpricedUsage)
+        return amounts.isEmpty && !hasUnpricedUsage ? nil : QuotaListCost(amounts: amounts, hours: hours, hasUnpricedUsage: hasUnpricedUsage)
     }
 }
 
@@ -190,11 +190,12 @@ public struct QuotaListCost: Hashable, Sendable {
     /// How long the observed part of the cycle is, in hours; above zero.
     public let hours: Double
 
-    /// Some calls had no public price. Their known cost can be shown, but cannot estimate the whole window.
+    /// Some calls had no public price; their cost is treated as zero while their tokens still count.
     public let hasUnpricedUsage: Bool
 
     public init(amounts: [String: Decimal], hours: Double, hasUnpricedUsage: Bool = false) {
-        self.amounts = amounts
+        // An entirely unpriced API reference uses USD zero; known currencies are never converted.
+        self.amounts = amounts.isEmpty && hasUnpricedUsage ? ["USD": 0] : amounts
         self.hours = hours
         self.hasUnpricedUsage = hasUnpricedUsage
     }
@@ -202,8 +203,8 @@ public struct QuotaListCost: Hashable, Sendable {
     /// Approximate full-cycle API equivalent. The consumed share must cover the same interval as amounts;
     /// never divide a partial local tally by the whole cycle's cumulative used share.
     public func estimatedCapacity(usedPercent: Double) -> [String: Decimal]? {
-        guard usedPercent.isFinite, usedPercent >= 5, usedPercent <= 100, !hasUnpricedUsage,
-              !amounts.isEmpty, amounts.values.allSatisfy({ !$0.isNaN && $0 > 0 }) else { return nil }
+        guard usedPercent.isFinite, usedPercent >= 5, usedPercent <= 100,
+              !amounts.isEmpty, amounts.values.allSatisfy({ !$0.isNaN && $0 >= 0 }) else { return nil }
         return amounts.mapValues { $0 * 100 / Decimal(usedPercent) }
     }
 

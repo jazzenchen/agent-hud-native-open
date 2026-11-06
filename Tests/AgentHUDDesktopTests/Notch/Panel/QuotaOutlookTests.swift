@@ -151,16 +151,18 @@ final class QuotaOutlookTests: XCTestCase {
     }
 
     @MainActor
-    func testCostHoverExplainsMissingPrices() throws {
+    func testCostHoverKeepsKnownOrZeroEstimatesWithMissingPrices() throws {
         try withStore([grid[9]]) { store in
             let old = try metrics("exhaustsBeforeReset", in: store)
-            let priced = QuotaRowMetrics(row: old.row, insights: old.insights, outlook: old.outlook, now: now,
-                                         tokensPerHour: nil, cost: QuotaListCost(amounts: ["USD": 40], hours: 1, hasUnpricedUsage: true),
-                                         capacityEstimate: QuotaCapacityEstimate(tokens: 3333, amounts: nil, hasUnpricedUsage: true))
-            let hint = try XCTUnwrap(priced.hoverHint(.cost, fallback: nil))
-            XCTAssertTrue(hint.contains("Missing model prices"))
-            XCTAssertEqual(hint.components(separatedBy: "\n").count, 2)
-            XCTAssertFalse(hint.contains("$44.44"))
+            for amount in [Decimal(400) / 9, 0] {
+                let priced = QuotaRowMetrics(row: old.row, insights: old.insights, outlook: old.outlook, now: now,
+                    tokensPerHour: nil, cost: QuotaListCost(amounts: ["USD": amount], hours: 1, hasUnpricedUsage: true),
+                    capacityEstimate: QuotaCapacityEstimate(tokens: 3333, amounts: ["USD": amount], hasUnpricedUsage: true))
+                let hint = try XCTUnwrap(priced.hoverHint(.cost, fallback: nil))
+                XCTAssertTrue(hint.contains("Estimated total capacity: " + MoneyFormat.short(amount, currency: "USD")))
+                XCTAssertEqual(hint.components(separatedBy: "\n").count, 2)
+                XCTAssertFalse(hint.contains("Missing model prices"))
+            }
         }
     }
 
@@ -205,10 +207,10 @@ final class QuotaOutlookTests: XCTestCase {
         window.replyRate = QuotaReplyRate(tokensPerSecond: 9.5, calls: 3, tokensOut: 570)
         try withStore([window, far]) { store in
             let row = try metrics("exhaustsBeforeReset", in: store)
-            // The model the windows count has no list price, so the cycle has no cost.
-            XCTAssertEqual(PanelMeasure.allCases.map { row.value($0) }, ["90%", "10.0%/h", "9.5/s", "3.0k", nil])
+            // The model has no list price; available calls therefore contribute zero cost.
+            XCTAssertEqual(PanelMeasure.allCases.map { row.value($0) }, ["90%", "10.0%/h", "9.5/s", "3.0k", "$0.00"])
             XCTAssertEqual(PanelMeasure.allCases.map { row.detail($0, isLoading: false) },
-                           ["2h 00m", ChartData.relativeWeekdayTime(now.addingTimeInterval(hour), now: now), "3 replies", "1.0k/h", "—"])
+                           ["2h 00m", ChartData.relativeWeekdayTime(now.addingTimeInterval(hour), now: now), "3 replies", "1.0k/h", "$0.00/h"])
             XCTAssertEqual(store.view.consumed(for: window.name)?.used, 3000, "only the cycle's selected model counts")
             let date = now.addingTimeInterval(10 * 86400)
             XCTAssertEqual(try metrics("monthly", in: store).exhaustionTimeLabel, QuotaForecast.timeLabel(date, now: now))
