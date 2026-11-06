@@ -26,7 +26,9 @@ final class ExternalModelPrices: @unchecked Sendable {
         }
     }
 
-    func model(named name: String) -> ModelCatalog.Model? { lock.withLock { models[name] } }
+    func model(named name: String) -> ModelCatalog.Model? {
+        lock.withLock { models[name] ?? BuiltinModelCatalog.shared.aliases[name].flatMap { models[$0] } }
+    }
     var sourceInfo: ModelPriceSourceInfo { lock.withLock { info } }
     func install(_ parsed: [String: ModelCatalog.Model], data: Data, at date: Date?) {
         let revision = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -62,11 +64,20 @@ final class ExternalModelPrices: @unchecked Sendable {
             let base = ModelCatalog.Rates(input: input, cacheWrite: write, cacheRead: read, output: output)
             var tiers: [ModelCatalog.Price.Tier] = []
             var complete = true
-            for field in row.keys.sorted() where field.hasPrefix("input_cost_per_token_above_") && field.hasSuffix("k_tokens") {
-                let suffix = String(field.dropFirst("input_cost_per_token".count))
+            let priceKeys = ["input_cost_per_token", "output_cost_per_token", readKey, writeKey]
+            let suffixes = Set(priceKeys.flatMap { prefix in row.keys.compactMap { key -> String? in
+                guard key.hasPrefix(prefix) else { return nil }
+                let suffix = String(key.dropFirst(prefix.count))
+                return suffix.range(of: #"^_above_[0-9]+k_tokens$"#, options: .regularExpression) == nil ? nil : suffix
+            } })
+            var thresholds = Set<Int>()
+            for suffix in suffixes.sorted() {
                 let number = suffix.dropFirst("_above_".count).dropLast("k_tokens".count)
                 guard let thousands = Int(number), (1...10_000).contains(thousands),
-                      let longInput = rate(row, field), let longOutput = rate(row, "output_cost_per_token" + suffix) else {
+                      thresholds.insert(thousands).inserted,
+                      let longInput = rate(row, "input_cost_per_token" + suffix), let longOutput = rate(row, "output_cost_per_token" + suffix),
+                      (row[readKey + suffix] == nil || rate(row, readKey + suffix) != nil),
+                      (row[writeKey + suffix] == nil || rate(row, writeKey + suffix) != nil) else {
                     complete = false; break
                 }
                 let longRead = rate(row, readKey + suffix) ?? (row[readKey] == nil ? longInput : nil)

@@ -20,6 +20,7 @@ cp "$BIN_DIR/AgentHUDOpen" "$APP_DIR/Contents/MacOS/$APP_NAME"
 xcrun vtool -set-build-version macos "$MIN_MACOS" "$(xcrun --sdk macosx --show-sdk-version)" -replace \
   -output "$APP_DIR/Contents/MacOS/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME" >&2
 cp -R "$BIN_DIR/AgentHUDOpen_AgentHUDDesktop.bundle" "$APP_DIR/Contents/Resources/"
+cp -R "$BIN_DIR/AgentHUDOpen_AgentHUDCore.bundle" "$APP_DIR/Contents/Resources/"
 cp "$ROOT/assets/AppIcon.icns" "$APP_DIR/Contents/Resources/"
 cp "$ROOT/LICENSE" "$APP_DIR/Contents/Resources/LICENSE.txt"
 cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'

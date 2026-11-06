@@ -101,3 +101,28 @@ extension ExternalModelPricesTests {
         XCTAssertEqual(ModelCatalog.model(for: "claude-model:deepseek-flash")?.peakHours, true)
     }
 }
+
+extension ExternalModelPricesTests {
+    func testInvalidLongCachePricesNeverBecomeMissingFieldDefaults() throws {
+        for key in ["cache_read_input_token_cost", "cache_creation_input_token_cost"] {
+            var invalid = row
+            invalid.removeValue(forKey: key)
+            invalid[key + "_above_272k_tokens"] = -1
+            let data = try JSONSerialization.data(withJSONObject: ["valid": row, "invalid": invalid])
+            XCTAssertEqual(Set(try ExternalModelPrices.parse(data).keys), ["valid"])
+        }
+    }
+    func testOutputOrCacheOnlyTiersCannotBeFlattenedToBasePrices() throws {
+        var orphan = row; orphan.removeValue(forKey: "input_cost_per_token_above_272k_tokens")
+        let data = try JSONSerialization.data(withJSONObject: ["valid": row, "orphan": orphan])
+        XCTAssertEqual(Set(try ExternalModelPrices.parse(data).keys), ["valid"])
+    }
+    func testKnownAliasesFollowTheRefreshedCanonicalPrice() throws {
+        var canonical = row; canonical["litellm_provider"] = "xai"
+        let data = try JSONSerialization.data(withJSONObject: ["grok-build-0.1": canonical])
+        let cache = ExternalModelPrices(cacheURL: nil)
+        cache.install(try ExternalModelPrices.parse(data), data: data, at: Date())
+        XCTAssertNotNil(cache.model(named: "grok-code-fast-1"))
+        XCTAssertEqual(cache.model(named: "grok-code-fast-1"), cache.model(named: "grok-build-0.1"))
+    }
+}

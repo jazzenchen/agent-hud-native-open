@@ -4,7 +4,7 @@ import Foundation
 /// vendor's API and how full a session's context is. Prices are per million tokens at the vendors' published rates, as
 /// checked on `checkedOn`. A model missing here has no estimate; nothing is guessed from a name it does not carry exactly.
 public enum ModelCatalog {
-    public static let checkedOn = "2026-09-25"
+    public static let checkedOn = BuiltinModelCatalog.shared.checkedOn
 
     /// The platforms a vendor sells on: its international one, priced in US dollars, and its China-mainland one, priced in
     /// yuan, where the two lists differ. A vendor with one list for everyone has it as `international`.
