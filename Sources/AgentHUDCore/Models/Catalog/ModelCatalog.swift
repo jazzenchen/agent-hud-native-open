@@ -143,7 +143,9 @@ public enum ModelCatalog {
     }
 
     /// The model a consumer called, whichever provider served it.
-    private static func listed(_ agentId: String) -> Model? { name(of: agentId).flatMap { models[$0] } }
+    private static func listed(_ agentId: String) -> Model? {
+        name(of: agentId).flatMap { ExternalModelPrices.shared.model(named: $0) ?? models[$0] }
+    }
 
     /// What one call would cost at list price on the platform it went through, in that platform's currency: at the tier
     /// its prompt reaches, and at DeepSeek's peak rates when made in Beijing working hours. nil when the model has no

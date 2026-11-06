@@ -116,6 +116,14 @@ Reads never run in parallel: the usage store runs one pass of source reads or on
 - An API balance's burn rate in the panel is the estimated cost of the requests recorded for its account over its block's period, spread over the part of the period that has run, the days without a request included, and its run-out is when the balance as read reaches zero at that rate (`BalanceSpend`). It counts only what this Mac's clients recorded, where the trend counts the balance's own fall, and a request without a price in the balance's currency leaves both unknown. A balance's recorded costs reach back the month the usage ledger keeps.
 - A session whose source never says what its turn is doing leaves the running indicator 120 s after its last observation; one whose source reports a running turn keeps it until the turn ends, or until 30 minutes without an observation say its client is gone. Either way it stays in history without an invented end time.
 
+## Automatic model prices
+
+The desktop collector checks the [LiteLLM community price registry](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) when it starts and hourly thereafter. A validated cache younger than 24 hours skips the download; failed attempts are retried no sooner than one hour later. The JSON is validated before being saved atomically as `model-prices-litellm.json` in the app's support directory. A bad download leaves the last good snapshot in service. Without a valid cache, the built-in catalog remains available. A price update wakes normal collection so derived cost views are refreshed. No LiteLLM Python SDK or other runtime package is installed.
+
+The adapter accepts official OpenAI, Anthropic, Gemini and xAI chat-model price entries. Per-token prices become per-million prices; explicitly complete long-context tiers and Claude Code's one-hour cache-write convention are preserved. Invalid prices, incomplete tiers and unsupported or routed model names are rejected. Unsupported models fall back to the built-in catalog, retaining existing regional and peak-hour rules; models absent from both sources stay unpriced. Context windows continue to come from the built-in catalog or client records. Prices are API-equivalent comparison values, not subscription charges or quota multipliers. This feature adds no historical price versions, subscription-cycle records or automatic rewrite of previously persisted cost summaries.
+
+The refresh performs a public HTTPS GET without account identifiers, API keys, conversation content or usage records. Source metadata keeps the active source, last successful update time, accepted model count and content revision. Only the live host opts into background refresh; demo, snapshot and custom/test stores do not start the downloader.
+
 ## Code map
 
 | Concept | Code |
