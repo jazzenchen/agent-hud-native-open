@@ -14,6 +14,8 @@ struct QuotaForecastDetails: View {
 
     var body: some View {
         Text(hint)
+            .lineSpacing(3)
+            .frame(maxWidth: hint.contains("\n") ? 340 : nil, alignment: .leading)
             .font(.ui(12, .medium))
             .monospacedDigit()
             .foregroundStyle(theme.text)

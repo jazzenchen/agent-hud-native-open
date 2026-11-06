@@ -143,7 +143,7 @@ struct QuotaCell: View {
             case .number: number
             }
         }
-        .help(forecastHint ?? "")
+        .help(metrics.hoverHint(metric, fallback: forecastHint) ?? "")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.agent.name)
         .accessibilityValue(spokenValue)

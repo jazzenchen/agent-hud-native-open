@@ -261,7 +261,7 @@ struct ProviderQuotaBlock: View {
                               tokensPerHour: store.quotaTokensPerHour(for: row.id), replyRate: replyRate(row),
                               forecastHint: store.quotaForecastHint(for: row.id),
                               consumed: consumed(row),
-                              cost: cost(row), isLoading: store.isLoading)
+                              cost: cost(row), capacityEstimate: capacityEstimate(row), isLoading: store.isLoading)
             }
         }
     }
@@ -269,7 +269,11 @@ struct ProviderQuotaBlock: View {
     private func metrics(_ row: AgentRow) -> QuotaRowMetrics {
         QuotaRowMetrics(row: row, insights: store.report?.insightsByAgent[row.id], outlook: store.view.outlook(for: row.id),
                         now: store.now, tokensPerHour: store.quotaTokensPerHour(for: row.id), replyRate: replyRate(row),
-                        consumed: consumed(row), cost: cost(row))
+                        consumed: consumed(row), cost: cost(row), capacityEstimate: capacityEstimate(row))
+    }
+
+    private func capacityEstimate(_ row: AgentRow) -> QuotaCapacityEstimate? {
+        metric == .consumed || metric == .cost ? store.view.capacityEstimate(for: row.id) : nil
     }
 
     /// The cycle's list cost is priced from every bucket of the window, so only the measure that shows it asks for it.

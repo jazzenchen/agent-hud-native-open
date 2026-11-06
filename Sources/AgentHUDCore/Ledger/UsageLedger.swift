@@ -77,11 +77,12 @@ public actor UsageLedger {
         public init(_ kind: Kind, at timestamp: Date) { self.kind = kind; self.timestamp = timestamp }
     }
 
-    private let storage: LedgerStorage
+    let storage: LedgerStorage
     private var passOpen = false
     private var expiredAt: Date?
     /// What `recachedBuckets(since:)` last read, by log, and the write mark and generation it was read at.
     private var recachedRead: (mark: Int, generation: Int, byLog: [String: [UsageBucket]])?
+    var quotaCapacityRead: QuotaCapacityLedgerCache?
     /// Changes when a failed pass rolled back writes that providers may already reflect in memory.
     public private(set) var generation = 0
     /// Grows with every change to a contribution; `changedKeys(after:)` names what changed since a mark taken earlier.

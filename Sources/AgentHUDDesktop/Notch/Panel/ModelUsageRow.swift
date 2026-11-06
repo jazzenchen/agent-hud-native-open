@@ -15,6 +15,7 @@ struct ModelUsageRow: View {
     var forecastHint: String?
     var consumed: QuotaConsumption?
     var cost: QuotaListCost?
+    var capacityEstimate: QuotaCapacityEstimate?
     var isLoading = false
     @State private var isHovered = false
     @Environment(\.panelSpacing) private var spacing
@@ -95,7 +96,7 @@ struct ModelUsageRow: View {
 
     private var metrics: QuotaRowMetrics {
         QuotaRowMetrics(row: row, insights: insights, outlook: outlook, now: now, tokensPerHour: tokensPerHour,
-                        replyRate: replyRate, consumed: consumed, cost: cost)
+                        replyRate: replyRate, consumed: consumed, cost: cost, capacityEstimate: capacityEstimate)
     }
 
     private var metricValue: String? { metrics.value(metric) }
@@ -108,10 +109,7 @@ struct ModelUsageRow: View {
 
     private var exhaustionTimeLabel: String? { metrics.exhaustionTimeLabel }
 
-    private var displayedForecastHint: String? {
-        guard metric == .burnRate, let exhaustionTimeLabel else { return forecastHint }
-        return L10n.text("预计耗尽：\(exhaustionTimeLabel)", "Exhausts \(exhaustionTimeLabel)")
-    }
+    private var displayedForecastHint: String? { metrics.hoverHint(metric, fallback: forecastHint) }
 
     private var projectedAtReset: Double? { metrics.projectedAtReset }
 
@@ -142,9 +140,11 @@ struct QuotaRowMetrics {
     let replyRate: QuotaReplyRate?
     let consumed: QuotaConsumption?
     let cost: QuotaListCost?
+    let capacityEstimate: QuotaCapacityEstimate?
 
     init(row: AgentRow, insights: UsageInsights?, outlook: QuotaOutlook?, now: Date, tokensPerHour: Double?,
-         replyRate: QuotaReplyRate? = nil, consumed: QuotaConsumption? = nil, cost: QuotaListCost? = nil) {
+         replyRate: QuotaReplyRate? = nil, consumed: QuotaConsumption? = nil, cost: QuotaListCost? = nil,
+         capacityEstimate: QuotaCapacityEstimate? = nil) {
         self.row = row
         self.insights = row.assessment.showsLevel ? insights : nil
         self.outlook = row.assessment.showsLevel ? outlook : nil
@@ -153,6 +153,7 @@ struct QuotaRowMetrics {
         self.replyRate = row.assessment.showsLevel ? replyRate : nil
         self.consumed = row.assessment.showsLevel ? consumed : nil
         self.cost = row.assessment.showsLevel ? cost : nil
+        self.capacityEstimate = row.assessment.showsLevel ? capacityEstimate : nil
     }
 
     func value(_ metric: PanelMeasure) -> String? {
@@ -232,10 +233,45 @@ struct QuotaRowMetrics {
 
     var exhaustionTimeLabel: String? {
         guard let date = exhaustsBeforeReset else { return nil }
-        if date.timeIntervalSince(now) < 7 * 86400 { return ChartData.relativeWeekdayTime(date, now: now) }
-        return date.formatted(Date.FormatStyle().month(.abbreviated).day()
-            .hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
-            .locale(L10n.dateLocale))
+        return QuotaForecast.timeLabel(date, now: now)
+    }
+
+    /// Output rate keeps only the exhaustion outlook; consumption and cost add their projected total above it.
+    func hoverHint(_ metric: PanelMeasure, fallback: String?) -> String? {
+        guard row.assessment.showsLevel else { return fallback }
+        let timing = exhaustionTimeLabel.map { L10n.text("预计耗尽：\($0)", "Estimated exhaustion: \($0)") } ?? fallback
+        if metric == .tokens { return compactExhaustion }
+        guard metric == .consumed || metric == .cost else { return timing }
+        func amounts(_ values: [String: Decimal]) -> String {
+            values.keys.sorted().map { MoneyFormat.short(values[$0] ?? 0, currency: $0) }.joined(separator: " · ")
+        }
+        let figure: String
+        switch metric {
+        case .consumed:
+            let tokens = capacityEstimate.map { TokenFormat.short($0.tokens) } ?? "—"
+            figure = L10n.text("预计总 Token：", "Estimated total tokens: ") + tokens
+        case .cost:
+            let estimate = capacityEstimate?.amounts
+            figure = L10n.text("预计总额度：", "Estimated total capacity: ") +
+                (estimate.map { amounts($0) } ?? (capacityEstimate?.hasUnpricedUsage == true
+                    ? L10n.text("部分模型缺价", "Missing model prices") : "—"))
+        case .quota, .burnRate, .tokens:
+            return timing
+        }
+        return figure + "\n" + compactExhaustion
+    }
+
+    private var compactExhaustion: String {
+        let value: String
+        switch outlook {
+        case .exhausted: value = L10n.text("已耗尽", "Exhausted")
+        case .exhausts(_, beforeReset: false): value = L10n.text("重置前不会耗尽", "Not before reset")
+        case .exhausts(_, beforeReset: true): value = exhaustionTimeLabel ?? L10n.text("暂无预测", "Unavailable")
+        case .noUsage: value = L10n.text("暂无消耗", "No usage")
+        case .insufficientData where insights?.sampling != nil: value = L10n.text("采样中", "Sampling")
+        default: value = L10n.text("暂无预测", "Unavailable")
+        }
+        return L10n.text("预计耗尽：", "Estimated exhaustion: ") + value
     }
 
     /// Used by the reset at the existing burn rate, when the outlook has the rest last past the reset; the UI does not

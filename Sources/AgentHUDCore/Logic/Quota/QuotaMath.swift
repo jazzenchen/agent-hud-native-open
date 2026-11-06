@@ -48,7 +48,8 @@ public enum QuotaMath {
                              timeToExhaust: snapshot.flatMap(\.remainingPct).flatMap { burn?.timeToExhaust(remainingPct: $0) },
                              weeklyCapHits: caps.hits, weeklyWaitTotal: caps.totalWait,
                              weeklyWaitLongest: caps.longestWait, weeklyWaitLongestAt: caps.longestAt,
-                             sampling: pace.sampling)
+                             sampling: pace.sampling,
+                             capacityObservation: UsageAnalytics.capacityObservation(samples: samples, cycle: snapshot?.cycle, now: now))
     }
 
     /// The window's outlook at `now`.
@@ -141,11 +142,15 @@ public enum QuotaMath {
         let hours = now.timeIntervalSince(start) / 3600
         guard hours > 0 else { return nil }
         var amounts: [String: Decimal] = [:]
+        var hasUnpricedUsage = false
         for bucket in usage where consumers.contains(bucket.agentId) && bucket.start >= start && bucket.start < now {
-            guard let cost = ModelCatalog.cost(of: bucket, regions: regions) else { continue }
+            guard let cost = ModelCatalog.cost(of: bucket, regions: regions) else {
+                if bucket.total + bucket.cacheReadTokens > 0 { hasUnpricedUsage = true }
+                continue
+            }
             amounts[cost.currency, default: 0] += cost.total
         }
-        return amounts.isEmpty ? nil : QuotaListCost(amounts: amounts, hours: hours)
+        return amounts.isEmpty && !hasUnpricedUsage ? nil : QuotaListCost(amounts: amounts, hours: hours, hasUnpricedUsage: hasUnpricedUsage)
     }
 }
 
@@ -185,9 +190,22 @@ public struct QuotaListCost: Hashable, Sendable {
     /// How long the observed part of the cycle is, in hours; above zero.
     public let hours: Double
 
-    public init(amounts: [String: Decimal], hours: Double) {
-        self.amounts = amounts
+    /// Some calls had no public price; their cost is treated as zero while their tokens still count.
+    public let hasUnpricedUsage: Bool
+
+    public init(amounts: [String: Decimal], hours: Double, hasUnpricedUsage: Bool = false) {
+        // An entirely unpriced API reference uses USD zero; known currencies are never converted.
+        self.amounts = amounts.isEmpty && hasUnpricedUsage ? ["USD": 0] : amounts
         self.hours = hours
+        self.hasUnpricedUsage = hasUnpricedUsage
+    }
+
+    /// Approximate full-cycle API equivalent. The consumed share must cover the same interval as amounts;
+    /// never divide a partial local tally by the whole cycle's cumulative used share.
+    public func estimatedCapacity(usedPercent: Double) -> [String: Decimal]? {
+        guard usedPercent.isFinite, usedPercent >= 5, usedPercent <= 100,
+              !amounts.isEmpty, amounts.values.allSatisfy({ !$0.isNaN && $0 >= 0 }) else { return nil }
+        return amounts.mapValues { $0 * 100 / Decimal(usedPercent) }
     }
 
     /// The currencies in code order, so the one shown first does not change from pass to pass.
