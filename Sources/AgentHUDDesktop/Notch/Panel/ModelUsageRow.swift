@@ -108,10 +108,7 @@ struct ModelUsageRow: View {
 
     private var exhaustionTimeLabel: String? { metrics.exhaustionTimeLabel }
 
-    private var displayedForecastHint: String? {
-        guard metric == .burnRate, let exhaustionTimeLabel else { return forecastHint }
-        return L10n.text("预计耗尽：\(exhaustionTimeLabel)", "Exhausts \(exhaustionTimeLabel)")
-    }
+    private var displayedForecastHint: String? { metrics.hoverHint(metric, fallback: forecastHint) }
 
     private var projectedAtReset: Double? { metrics.projectedAtReset }
 
@@ -232,10 +229,52 @@ struct QuotaRowMetrics {
 
     var exhaustionTimeLabel: String? {
         guard let date = exhaustsBeforeReset else { return nil }
-        if date.timeIntervalSince(now) < 7 * 86400 { return ChartData.relativeWeekdayTime(date, now: now) }
-        return date.formatted(Date.FormatStyle().month(.abbreviated).day()
-            .hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
-            .locale(L10n.dateLocale))
+        return QuotaForecast.timeLabel(date, now: now)
+    }
+
+    /// Output rate keeps only the exhaustion outlook; consumption and cost add their projected total above it.
+    func hoverHint(_ metric: PanelMeasure, fallback: String?) -> String? {
+        guard row.assessment.showsLevel else { return fallback }
+        let timing = exhaustionTimeLabel.map { L10n.text("预计耗尽：\($0)", "Estimated exhaustion: \($0)") } ?? fallback
+        if metric == .tokens { return compactExhaustion }
+        guard metric == .consumed || metric == .cost else { return timing }
+        func amounts(_ values: [String: Decimal]) -> String {
+            values.keys.sorted().map { MoneyFormat.short(values[$0] ?? 0, currency: $0) }.joined(separator: " · ")
+        }
+        let figure: String
+        switch metric {
+        case .consumed:
+            let tokens = estimatedTokens.map { TokenFormat.short($0) } ?? "—"
+            figure = L10n.text("预计总 Token：", "Estimated total tokens: ") + tokens
+        case .cost:
+            let estimate = row.usedPct.flatMap { cost?.estimatedCapacity(usedPercent: $0) }
+            figure = L10n.text("预计总额度：", "Estimated total capacity: ") +
+                (estimate.map { amounts($0) } ?? (cost?.hasUnpricedUsage == true
+                    ? L10n.text("部分模型缺价", "Missing model prices") : "—"))
+        case .quota, .burnRate, .tokens:
+            return timing
+        }
+        return figure + "\n" + compactExhaustion
+    }
+
+    private var estimatedTokens: Int? {
+        guard let tokens = consumed?.tokens, tokens > 0, let used = row.usedPct, used.isFinite, (5...100).contains(used) else { return nil }
+        let estimate = (Double(tokens) * 100 / used).rounded()
+        guard estimate.isFinite, estimate > 0, estimate < Double(Int.max) else { return nil }
+        return Int(estimate)
+    }
+
+    private var compactExhaustion: String {
+        let value: String
+        switch outlook {
+        case .exhausted: value = L10n.text("已耗尽", "Exhausted")
+        case .exhausts(_, beforeReset: false): value = L10n.text("重置前不会耗尽", "Not before reset")
+        case .exhausts(_, beforeReset: true): value = exhaustionTimeLabel ?? L10n.text("暂无预测", "Unavailable")
+        case .noUsage: value = L10n.text("暂无消耗", "No usage")
+        case .insufficientData where insights?.sampling != nil: value = L10n.text("采样中", "Sampling")
+        default: value = L10n.text("暂无预测", "Unavailable")
+        }
+        return L10n.text("预计耗尽：", "Estimated exhaustion: ") + value
     }
 
     /// Used by the reset at the existing burn rate, when the outlook has the rest last past the reset; the UI does not

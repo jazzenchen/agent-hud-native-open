@@ -39,6 +39,18 @@ public enum QuotaForecast {
         }
     }
 
+    /// Exhaustion times always use HH:mm, including dates farther away. Localized Date.FormatStyle may otherwise
+    /// write Chinese hours and minutes with characters while nearby dates use a colon.
+    public static func timeLabel(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
+        if date.timeIntervalSince(now) < 7 * 86400 {
+            return ChartData.relativeWeekdayTime(date, now: now, calendar: calendar)
+        }
+        let day = date.formatted(Date.FormatStyle(locale: L10n.dateLocale, calendar: calendar, timeZone: calendar.timeZone)
+            .month(.abbreviated).day())
+        let clock = String(format: "%02d:%02d", calendar.component(.hour, from: date), calendar.component(.minute, from: date))
+        return "\(day) \(clock)"
+    }
+
     /// The share of the window used by its reset, in words.
     public static func byReset(_ projectedUsedPct: Double) -> String {
         L10n.text("重置时 \(Int(projectedUsedPct.rounded()))%", "\(Int(projectedUsedPct.rounded()))% by reset")

@@ -141,11 +141,15 @@ public enum QuotaMath {
         let hours = now.timeIntervalSince(start) / 3600
         guard hours > 0 else { return nil }
         var amounts: [String: Decimal] = [:]
+        var hasUnpricedUsage = false
         for bucket in usage where consumers.contains(bucket.agentId) && bucket.start >= start && bucket.start < now {
-            guard let cost = ModelCatalog.cost(of: bucket, regions: regions) else { continue }
+            guard let cost = ModelCatalog.cost(of: bucket, regions: regions) else {
+                if bucket.total + bucket.cacheReadTokens > 0 { hasUnpricedUsage = true }
+                continue
+            }
             amounts[cost.currency, default: 0] += cost.total
         }
-        return amounts.isEmpty ? nil : QuotaListCost(amounts: amounts, hours: hours)
+        return amounts.isEmpty ? nil : QuotaListCost(amounts: amounts, hours: hours, hasUnpricedUsage: hasUnpricedUsage)
     }
 }
 
@@ -154,10 +158,13 @@ public enum QuotaMath {
 public struct QuotaConsumption: Hashable, Sendable {
     public let used: Int64
     public let capacity: Int64?
+    /// Local model tokens, separately from provider-native credits, requests or minutes.
+    public let tokens: Int?
 
-    public init(used: Int64, capacity: Int64? = nil) {
+    public init(used: Int64, capacity: Int64? = nil, tokens: Int? = nil) {
         self.used = used
         self.capacity = capacity
+        self.tokens = tokens
     }
 }
 
@@ -185,9 +192,21 @@ public struct QuotaListCost: Hashable, Sendable {
     /// How long the observed part of the cycle is, in hours; above zero.
     public let hours: Double
 
-    public init(amounts: [String: Decimal], hours: Double) {
+    /// Some calls had no public price. Their known cost can be shown, but cannot estimate the whole window.
+    public let hasUnpricedUsage: Bool
+
+    public init(amounts: [String: Decimal], hours: Double, hasUnpricedUsage: Bool = false) {
         self.amounts = amounts
         self.hours = hours
+        self.hasUnpricedUsage = hasUnpricedUsage
+    }
+
+    /// Approximate full-cycle API equivalent at the observed used share. This is not an official subscription limit;
+    /// local logs may omit other devices. Small percentages amplify rounding and therefore give no estimate.
+    public func estimatedCapacity(usedPercent: Double) -> [String: Decimal]? {
+        guard usedPercent.isFinite, usedPercent >= 5, usedPercent <= 100, !hasUnpricedUsage,
+              !amounts.isEmpty, amounts.values.allSatisfy({ !$0.isNaN && $0 > 0 }) else { return nil }
+        return amounts.mapValues { $0 * 100 / Decimal(usedPercent) }
     }
 
     /// The currencies in code order, so the one shown first does not change from pass to pass.

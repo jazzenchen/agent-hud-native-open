@@ -259,11 +259,12 @@ public struct ReportView: Sendable {
     /// the local ledger begins is not guessed at.
     public func consumed(for agentId: String) -> QuotaConsumption? {
         guard counts(agentId), let report, let snapshot = report.snapshot(for: agentId) else { return nil }
-        if let used = snapshot.used { return QuotaConsumption(used: used, capacity: snapshot.capacity) }
-        guard let consumers = report.consumerIdsByQuota[agentId],
-              let tokens = QuotaMath.tokensTotal(snapshot: snapshot, consumers: consumers, usage: report.usage, now: now)
-        else { return nil }
-        return QuotaConsumption(used: Int64(tokens), capacity: nil)
+        let tokens = report.consumerIdsByQuota[agentId].flatMap {
+            QuotaMath.tokensTotal(snapshot: snapshot, consumers: $0, usage: report.usage, now: now)
+        }
+        if let used = snapshot.used { return QuotaConsumption(used: used, capacity: snapshot.capacity, tokens: tokens) }
+        guard let tokens else { return nil }
+        return QuotaConsumption(used: Int64(tokens), capacity: nil, tokens: tokens)
     }
 
     /// The recent reply speed of the models this window's consumers use: output tokens over the spans calls were

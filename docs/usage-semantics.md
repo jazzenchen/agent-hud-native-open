@@ -138,3 +138,5 @@ Reads never run in parallel: the usage store runs one pass of source reads or on
 ## Related
 
 [providers.md](providers.md) per-client fields and request intervals · [session-lifecycle.md](session-lifecycle.md) running and terminal turns · [architecture.md](architecture.md) design invariants
+
+The HUD's output-rate hover shows only the exhaustion outlook, keeping its existing value and caption. Consumption and cost show two lines: estimated full-cycle tokens or API-equivalent money, followed by the same exhaustion outlook. These approximate local-call estimates may omit other devices and are not official subscription limits. Estimates need at least five percentage points of quota consumption; monetary projections also require priced calls. Currencies stay separate and provider-native credits/minutes are never labelled as tokens. A projection past the reset says “Not before reset”; sampling, unknown and exhausted states remain concise. Forecast figures already labelled Estimated omit an additional approximation symbol. Exhaustion clocks consistently use `HH:mm`, including dates more than a week away.

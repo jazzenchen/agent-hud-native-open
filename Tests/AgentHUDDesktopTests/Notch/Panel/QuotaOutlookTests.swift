@@ -117,7 +117,7 @@ final class QuotaOutlookTests: XCTestCase {
         }
     }
 
-    /// The hover shows every line of a hint at its own length, however long the hint's lines are.
+    /// Multiline hints wrap within the popover instead of growing across the screen.
     @MainActor
     func testTheHoverShowsEveryLineOfAHint() {
         let agent = AgentDescriptor(id: "window", vendor: "Codex", model: "Weekly", source: "", enabled: true)
@@ -128,7 +128,70 @@ final class QuotaOutlookTests: XCTestCase {
         let first = "Quota reset; collecting new readings", second = "Sampled less than 1m; at least 15m of readings needed"
         let one = size(first), both = size(first + "\n" + second)
         XCTAssertGreaterThan(both.height, one.height + 10)
-        XCTAssertGreaterThanOrEqual(both.width, width(second) + 20 - 0.5)
+        XCTAssertGreaterThanOrEqual(both.width, min(width(second), 340) + 20 - 0.5)
+        XCTAssertLessThanOrEqual(both.width, 360.5)
+    }
+
+    @MainActor
+    func testCostHoverIncludesCapacityAndSharesExhaustionFormat() throws {
+        try withStore([grid[9]]) { store in
+            let old = try metrics("exhaustsBeforeReset", in: store)
+            let priced = QuotaRowMetrics(row: old.row, insights: old.insights, outlook: old.outlook, now: now,
+                                         tokensPerHour: old.tokensPerHour, cost: QuotaListCost(amounts: ["USD": 40], hours: 1))
+            let hint = try XCTUnwrap(priced.hoverHint(.cost, fallback: "old duration"))
+            XCTAssertEqual(hint.components(separatedBy: "\n").count, 2)
+            XCTAssertTrue(hint.contains("Estimated total capacity: $44.44"))
+            XCTAssertTrue(hint.contains("Estimated exhaustion: "))
+            XCTAssertFalse(hint.contains("Used API equivalent"))
+            XCTAssertFalse(hint.contains("locally recorded"))
+            XCTAssertFalse(hint.contains("old duration"))
+            XCTAssertEqual(priced.hoverHint(.quota, fallback: "old duration"), priced.hoverHint(.burnRate, fallback: "old duration"))
+        }
+    }
+
+    @MainActor
+    func testCostHoverExplainsMissingPrices() throws {
+        try withStore([grid[9]]) { store in
+            let old = try metrics("exhaustsBeforeReset", in: store)
+            let priced = QuotaRowMetrics(row: old.row, insights: old.insights, outlook: old.outlook, now: now,
+                                         tokensPerHour: nil, cost: QuotaListCost(amounts: ["USD": 40], hours: 1, hasUnpricedUsage: true))
+            let hint = try XCTUnwrap(priced.hoverHint(.cost, fallback: nil))
+            XCTAssertTrue(hint.contains("Missing model prices"))
+            XCTAssertEqual(hint.components(separatedBy: "\n").count, 2)
+            XCTAssertFalse(hint.contains("$44.44"))
+        }
+    }
+
+    @MainActor
+    func testReplyRateHoverShowsOnlyExhaustionWhileTokenHoverAddsTheTotal() throws {
+        var window = grid[9]
+        window.replyRate = QuotaReplyRate(tokensPerSecond: 9.5, calls: 3, tokensOut: 570)
+        try withStore([window]) { store in
+            let row = try metrics(window.name, in: store)
+            let requests = try XCTUnwrap(row.hoverHint(.tokens, fallback: "old\nmultiline hint"))
+            let tokens = try XCTUnwrap(row.hoverHint(.consumed, fallback: "old\nmultiline hint"))
+            XCTAssertTrue(requests.hasPrefix("Estimated exhaustion: "))
+            XCTAssertFalse(requests.contains("Sampled"))
+            XCTAssertTrue(tokens.hasPrefix("Estimated total tokens: 3.3k\n"))
+            XCTAssertEqual(requests.components(separatedBy: "\n").count, 1)
+            XCTAssertEqual(tokens.components(separatedBy: "\n").count, 2)
+            XCTAssertEqual(requests.components(separatedBy: "\n").last, tokens.components(separatedBy: "\n").last)
+            XCTAssertFalse(tokens.contains("multiline hint"))
+        }
+    }
+
+    @MainActor
+    func testCompactHoversHandleResetAndInsufficientSamplesWithoutAnExtraParagraph() throws {
+        try withStore([grid[10], grid[14], grid[1]]) { store in
+            let afterReset = try metrics("exhaustsAfterReset", in: store)
+            XCTAssertEqual(afterReset.hoverHint(.cost, fallback: nil)?.components(separatedBy: "\n").last,
+                           "Estimated exhaustion: Not before reset")
+            let sampling = try metrics("sampling", in: store)
+            XCTAssertEqual(sampling.hoverHint(.consumed, fallback: nil), "Estimated total tokens: —\nEstimated exhaustion: Sampling")
+            let exhausted = try metrics("exhausted", in: store)
+            XCTAssertEqual(exhausted.hoverHint(.tokens, fallback: nil)?.components(separatedBy: "\n").last,
+                           "Estimated exhaustion: Exhausted")
+        }
     }
 
     /// The row's other measures on one window of the grid, and a window that runs out a week or more ahead, which the
@@ -146,8 +209,7 @@ final class QuotaOutlookTests: XCTestCase {
                            ["2h 00m", ChartData.relativeWeekdayTime(now.addingTimeInterval(hour), now: now), "3 replies", "1.0k/h", "—"])
             XCTAssertEqual(store.view.consumed(for: window.name)?.used, 3000, "only the cycle's selected model counts")
             let date = now.addingTimeInterval(10 * 86400)
-            XCTAssertEqual(try metrics("monthly", in: store).exhaustionTimeLabel, date.formatted(Date.FormatStyle().month(.abbreviated).day()
-                .hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(Locale(identifier: "en_GB"))))
+            XCTAssertEqual(try metrics("monthly", in: store).exhaustionTimeLabel, QuotaForecast.timeLabel(date, now: now))
         }
     }
 
@@ -160,6 +222,8 @@ final class QuotaOutlookTests: XCTestCase {
             let row = try metrics(window.name, in: store)
             XCTAssertEqual(row.value(.consumed), "7.5k", "the provider's cycle tally takes priority over local tokens")
             XCTAssertEqual(row.detail(.consumed, isLoading: false), "/ 30k")
+            let hint = try XCTUnwrap(row.hoverHint(.consumed, fallback: nil))
+            XCTAssertTrue(hint.hasPrefix("Estimated total tokens: 3.3k\n"), "provider-native credit counts must not be labelled as tokens")
             XCTAssertEqual(store.quotaTokensPerHour(for: window.name), 1000)
             XCTAssertNil(row.value(.tokens), "token consumption alone supplies no call timing")
             XCTAssertEqual(row.detail(.tokens, isLoading: false), "—")
