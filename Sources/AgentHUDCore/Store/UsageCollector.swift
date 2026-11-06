@@ -39,6 +39,9 @@ final class UsageCollector {
     private var pollTask: Task<Void, Never>?
     /// Moves the store's clock on, so countdowns re-render, and confirms a quiet stretch as current data.
     private var clockTask: Task<Void, Never>?
+    private var priceTask: Task<Void, Never>?
+    /// Only the live host opts in; demos and custom/test stores do not start price downloads.
+    private let updatesModelPrices: Bool
     /// Wakes the waiting loop: a file change, a timer, a refresh, a settings change that needs a read.
     private var wake: AsyncStream<Void>.Continuation?
     /// One pass of the pipeline runs at a time; a request during a pass is served by the next one.
@@ -85,10 +88,11 @@ final class UsageCollector {
     /// The provider's last report: the logs looked at on a schedule and a single source's checks come from it.
     private var local: UsageReport?
 
-    init(provider: any UsageProvider, settings: SettingsStore, hooks: UsageCollectionHooks) {
+    init(provider: any UsageProvider, settings: SettingsStore, hooks: UsageCollectionHooks, updatesModelPrices: Bool = false) {
         self.provider = provider
         self.settings = settings
         self.hooks = hooks
+        self.updatesModelPrices = updatesModelPrices
         sources = provider.sources
     }
 
@@ -112,6 +116,21 @@ final class UsageCollector {
                 timer.cancel()
             }
         }
+        if updatesModelPrices {
+            priceTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    await ModelPriceFeed.shared.refreshIfNeeded()
+                    guard !Task.isCancelled, let self, let store = self.store else { return }
+                    let info = ModelPriceFeed.sourceInfo
+                    if store.modelPriceSource != info {
+                        store.modelPriceSource = info
+                        self.needsFetch = true
+                        self.wake?.yield()
+                    }
+                    do { try await Task.sleep(for: .seconds(3600)) } catch { return }
+                }
+            }
+        }
         clockTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
@@ -123,6 +142,8 @@ final class UsageCollector {
     }
 
     func stop() {
+        priceTask?.cancel()
+        priceTask = nil
         pollTask?.cancel()
         pollTask = nil
         clockTask?.cancel()

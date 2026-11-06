@@ -13,7 +13,7 @@ public struct CombinedUsageProvider: UsageProvider {
         public init(_ vendor: String, _ provider: any UsageProvider) { self.vendor = vendor; self.provider = provider }
     }
     /// The last result of every vendor, reused while its signals stay quiet.
-    private actor Results {
+    actor Results {
         struct Entry {
             let result: Result<UsageReport, UsageProviderError>
             let agents: [AgentDescriptor]
@@ -32,13 +32,19 @@ public struct CombinedUsageProvider: UsageProvider {
         }
         private var breakdowns: [String: Breakdown] = [:]
         private var breakdownGeneration: Int?
+        private var breakdownPriceRevision: String?
         /// The ledger's write mark when the breakdowns were read.
         private var breakdownMark = 0
-        func breakdowns(generation: Int) -> (values: [String: Breakdown], mark: Int) {
-            if breakdownGeneration != generation { breakdowns = [:]; breakdownGeneration = generation; breakdownMark = 0 }
+        func breakdowns(generation: Int, priceRevision: String) -> (values: [String: Breakdown], mark: Int) {
+            if breakdownGeneration != generation || breakdownPriceRevision != priceRevision {
+                breakdowns = [:]; breakdownGeneration = generation; breakdownPriceRevision = priceRevision; breakdownMark = 0
+            }
             return (breakdowns, breakdownMark)
         }
-        func storeBreakdowns(_ values: [String: Breakdown], mark: Int) { breakdowns = values; breakdownMark = mark }
+        func storeBreakdowns(_ values: [String: Breakdown], mark: Int, generation: Int, priceRevision: String) {
+            guard breakdownGeneration == generation, breakdownPriceRevision == priceRevision else { return }
+            breakdowns = values; breakdownMark = mark
+        }
     }
 
     private let vendors: [Source]
@@ -195,7 +201,8 @@ public struct CombinedUsageProvider: UsageProvider {
     /// source can record a session's events a pass or more after first reporting it.
     private func breakdowns(of roots: [LiveSession]) async -> [String: SessionUsage] {
         let sessions = roots.flatMap { [$0] + $0.descendantSessions }
-        let (known, mark) = await results.breakdowns(generation: await ledger.generation)
+        let generation = await ledger.generation, priceRevision = ModelPriceFeed.sourceInfo.revision
+        let (known, mark) = await results.breakdowns(generation: generation, priceRevision: priceRevision)
         let changed = await ledger.changedKeys(after: mark), now = await ledger.writeMark
         var kept: [String: Results.Breakdown] = [:], requests: [SessionUsageRequest] = []
         for session in sessions {
@@ -209,11 +216,11 @@ public struct CombinedUsageProvider: UsageProvider {
         if !requests.isEmpty, let read = try? await ledger.sessionUsage(requests) {
             let counts = Dictionary(sessions.map { ($0.id, [$0.tokensIn, $0.tokensOut, $0.cacheReadTokens]) }, uniquingKeysWith: { first, _ in first })
             for request in requests { kept[request.sessionID] = .init(counts: counts[request.sessionID] ?? [], request: request, usage: read[request.sessionID]) }
-            await results.storeBreakdowns(kept, mark: now)
+            await results.storeBreakdowns(kept, mark: now, generation: generation, priceRevision: priceRevision)
         } else {
             // Nothing could be read: keep what was known, and the mark it was read at, so the next pass reads it again.
             for request in requests { kept[request.sessionID] = known[request.sessionID] }
-            await results.storeBreakdowns(kept, mark: requests.isEmpty ? now : mark)
+            await results.storeBreakdowns(kept, mark: requests.isEmpty ? now : mark, generation: generation, priceRevision: priceRevision)
         }
         return kept.compactMapValues(\.usage)
     }

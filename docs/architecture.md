@@ -87,7 +87,7 @@ Agent HUD Open is a Swift package with three libraries and one executable. `Agen
 
 - The standalone bundle identifier is `app.agenthud.open`; preferences live in its UserDefaults domain, with separate domains for demo and snapshot runs.
 - The usage ledger, the restart copy of the report (including account labels), hashed Kimi identities and completion records live in the data directory ([storage](providers.md#storage)); token events keep 31 days, quota readings 30 days and API balance readings one day. No file contains credentials, and the only conversation text in them is a session's title, which can be the first line of its first prompt, 60 characters at most.
-- SwiftPM resources are located through `AppResources`; the app bundle carries `AgentHUDOpen_AgentHUDDesktop.bundle` under `Contents/Resources`.
+- SwiftPM resources are located through `AppResources`; the app bundle carries `AgentHUDOpen_AgentHUDDesktop.bundle` and the Core price snapshot in `AgentHUDOpen_AgentHUDCore.bundle` under `Contents/Resources`.
 
 ### Design invariants
 

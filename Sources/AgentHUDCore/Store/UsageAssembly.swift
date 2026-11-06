@@ -23,7 +23,7 @@ public enum UsageAssembly {
         let retained = RetainedUsageProvider(provider: provider,
                                              cacheURL: ledger == nil ? nil : AppSupport.directory.appendingPathComponent("last-usage-report.json"))
         let store = ledger == nil ? UsageStore(provider: retained, settings: settings, hooks: hooks, clock: { DemoClock.now })
-            : UsageStore(provider: retained, settings: settings, hooks: hooks)
+            : UsageStore(provider: retained, settings: settings, hooks: hooks, updatesModelPrices: true)
         store.ledger = ledger
         if ledger == nil { store.sampleTurnCalls = { DemoData.turnCalls(session: $0.id, turn: $1) } }
         if let report = retained.initialReport { store.replace(report: report) }

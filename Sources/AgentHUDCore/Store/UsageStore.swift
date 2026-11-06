@@ -18,6 +18,8 @@ public final class UsageStore {
     public static var historyHours: Int { StatsRange.days7.hours + 1 }
     /// The statistics window's page. Pointing out a quota window turns to Tokens, focusing a session to Sessions.
     public var statsTab: StatsTab = .tokens
+    /// Active list-price source; a change invalidates the collector's priced report.
+    public internal(set) var modelPriceSource = ModelPriceFeed.sourceInfo
     /// The quota window the statistics window points out, set by whatever opened it.
     public var selectedQuotaId: String? { didSet { if selectedQuotaId != nil { statsTab = .tokens } } }
     /// The session the Sessions page shows in place of its list; nil shows the list.
@@ -67,12 +69,13 @@ public final class UsageStore {
 
     /// `hooks` let a host choose the history window, receive each provider report and follow what each pass read.
     public init(provider: any UsageProvider, settings: SettingsStore, accessAllowed: @escaping () -> Bool = { true },
-                hooks: UsageCollectionHooks = UsageCollectionHooks(), clock: @escaping @Sendable () -> Date = { Date() }) {
+                hooks: UsageCollectionHooks = UsageCollectionHooks(), updatesModelPrices: Bool = false,
+                clock: @escaping @Sendable () -> Date = { Date() }) {
         self.settings = settings
         self.accessAllowed = accessAllowed
         self.clock = clock
         now = clock()
-        collector = UsageCollector(provider: provider, settings: settings, hooks: hooks)
+        collector = UsageCollector(provider: provider, settings: settings, hooks: hooks, updatesModelPrices: updatesModelPrices)
         collector.store = self
     }
 

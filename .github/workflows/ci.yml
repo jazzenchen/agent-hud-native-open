@@ -32,6 +32,8 @@ jobs:
           codesign --verify --deep --strict "build/Agent HUD Open.app"
           bundle="build/Agent HUD Open.app/Contents/Resources/AgentHUDOpen_AgentHUDDesktop.bundle"
           test -f "$bundle/claude.png" || test -f "$bundle/Contents/Resources/claude.png"
+          prices="build/Agent HUD Open.app/Contents/Resources/AgentHUDOpen_AgentHUDCore.bundle"
+          test -f "$prices/model-prices.json" || test -f "$prices/Contents/Resources/model-prices.json"
           test ! -e "build/Agent HUD Open.app/Contents/embedded.provisionprofile"
           xcrun vtool -show-build "build/Agent HUD Open.app/Contents/MacOS/Agent HUD Open" \
             | awk '/minos/ { minos = $2 } /sdk/ { sdk = $2 } END { exit sdk == minos }'

@@ -72,3 +72,7 @@ Per-client fields, endpoints and stored data: [providers](providers.md). Token c
 ## Related
 
 [providers.md](providers.md) per-client details · [usage-semantics.md](usage-semantics.md) counting and retention · [session-lifecycle.md](session-lifecycle.md) turn evidence · [../THIRD_PARTY_NOTICES.txt](../THIRD_PARTY_NOTICES.txt) provider protocol references and licenses
+
+## Public model-price feed
+
+The desktop collector downloads the [LiteLLM model-price JSON](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json) over HTTPS, without credentials, cookies, account identifiers, conversations or usage records. It checks cache age hourly, downloads at most once per day after success and retries no sooner than an hour after failure. The validated JSON cache is `model-prices-litellm.json` in the app's support directory. Failed or invalid downloads retain the last good prices; the bundled catalog is the fallback. This installs no remote code or LiteLLM SDK. See [Automatic model prices](usage-semantics.md#automatic-model-prices) for accepted schemas and pricing limits.

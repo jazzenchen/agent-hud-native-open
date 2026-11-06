@@ -12,7 +12,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "AgentHUDSupport", swiftSettings: [.swiftLanguageMode(.v6)]),
-        .target(name: "AgentHUDCore", dependencies: ["AgentHUDSupport"], swiftSettings: [.swiftLanguageMode(.v6)]),
+        .target(name: "AgentHUDCore", dependencies: ["AgentHUDSupport"], resources: [.process("Resources")], swiftSettings: [.swiftLanguageMode(.v6)]),
         .target(name: "AgentHUDDesktop", dependencies: ["AgentHUDCore"], resources: [.process("Resources")], swiftSettings: [.swiftLanguageMode(.v6)]),
         .executableTarget(name: "AgentHUDOpenApp", dependencies: ["AgentHUDDesktop", "AgentHUDCore"], swiftSettings: [.swiftLanguageMode(.v6)]),
         .testTarget(name: "AgentHUDSupportTests", dependencies: ["AgentHUDSupport"]),
