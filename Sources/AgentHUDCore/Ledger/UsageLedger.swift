@@ -312,7 +312,7 @@ public actor UsageLedger {
         return result
     }
 
-    /// Prompt tokens sent again because the cache no longer held them, in the periods of `since` and later, by 15-minute
+    /// Uncached input on calls flagged for a drop in cache reads, in the periods of `since` and later, by 15-minute
     /// period and the model of the call that sent them: cache writes where that call wrote to the cache, input otherwise.
     /// Every log that marks its prompts counts, whether or not a report lists its session, by the rule a session's turns
     /// count them (`SessionUsageBuilder.recached`). Logs are read again only once the ledger wrote to them.
@@ -354,13 +354,15 @@ public actor UsageLedger {
             SELECT c.key, r.start_ms, r.agent, r.wrote, SUM(r.tokens_in) FROM (
                 SELECT e.contribution_id, e.timestamp_ms / 900000 * 900000 AS start_ms, e.agent, e.tokens_in, e.cache_read,
                        e.cache_write > 0 AS wrote,
-                       LAG(e.tokens_in + e.cache_read) OVER (PARTITION BY e.contribution_id ORDER BY e.timestamp_ms, e.event) AS previous
+                       LAG(e.tokens_in + e.cache_read) OVER calls AS previous,
+                       LAG(e.cache_read) OVER calls AS previous_cache_read
                 FROM usage_event e WHERE e.contribution_id IN (
                     SELECT c.id FROM contribution c WHERE c.counted = 1
                     AND (?1 IS NULL OR c.key IN (SELECT value FROM json_each(?1)))
                     AND EXISTS (SELECT 1 FROM session_mark m WHERE m.contribution_id = c.id AND m.kind = 0))
+                WINDOW calls AS (PARTITION BY e.contribution_id ORDER BY e.timestamp_ms, e.event)
             ) r JOIN contribution c ON c.id = r.contribution_id
-            WHERE r.previous IS NOT NULL AND r.cache_read * 2 < r.previous AND r.tokens_in * 2 >= r.previous
+            WHERE r.cache_read < r.previous_cache_read AND r.cache_read * 2 < r.previous AND r.tokens_in * 2 >= r.previous
             GROUP BY c.key, r.start_ms, r.agent, r.wrote
             """, [keys]) { row in
             let sent = Int(row.int(4))
@@ -429,12 +431,14 @@ public actor UsageLedger {
         guard !ids.isEmpty else { return [] }
         let from = RecordCoding.milliseconds(start), through = RecordCoding.milliseconds(end)
         // The call before the turn tells whether its first call found the prompt in the cache.
-        var previous: Int?
+        var previous: SessionUsage.Tokens?
         if !callLog.isEmpty {
             try storage.connection.query("""
-                SELECT tokens_in + cache_read FROM usage_event WHERE contribution_id IN (SELECT value FROM json_each(?)) AND timestamp_ms < ?
+                SELECT tokens_in, cache_read FROM usage_event WHERE contribution_id IN (SELECT value FROM json_each(?)) AND timestamp_ms < ?
                 ORDER BY timestamp_ms DESC LIMIT 1
-                """, [Self.idList(Array(callLog)), .integer(from)]) { previous = Int($0.int(0)) }
+                """, [Self.idList(Array(callLog)), .integer(from)]) {
+                previous = SessionUsage.Tokens(tokensIn: Int($0.int(0)), cacheReadTokens: Int($0.int(1)))
+            }
         }
         var calls: [TurnCall] = []
         try storage.connection.query("""
@@ -451,7 +455,7 @@ public actor UsageLedger {
                 let sent = SessionUsageBuilder.recached(tokens, after: previous)
                 recached = sent > 0 ? sent : nil
                 context = tokens.tokensIn + tokens.cacheReadTokens
-                previous = context
+                previous = tokens
             }
             calls.append(TurnCall(timestamp: RecordCoding.date(row.int(3)), agentId: agentId, tokens: tokens, own: !subagents.contains(contribution),
                                   log: row.text(2) ?? "", source: row.text(1) ?? "", context: context, recached: recached,

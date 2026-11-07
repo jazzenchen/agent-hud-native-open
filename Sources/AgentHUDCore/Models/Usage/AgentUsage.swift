@@ -22,8 +22,8 @@ public struct AgentUsage: Hashable, Sendable, Identifiable {
     public let cost: ModelCatalog.ListCost?
     /// The share of the price spent reading context back from the cache, 0…1; nil when no model has a price.
     public let cacheReadShare: Double?
-    /// What its calls paid, in US dollars, to send context again after the cache lapsed or the model changed, those of
-    /// sessions it no longer lists included; nil when none did.
+    /// Estimated cost in US dollars of uncached input on calls flagged for a drop in cache reads, including calls in
+    /// sessions it no longer lists. Nil when no flagged calls have a price.
     public let recachedCost: Decimal?
     /// The most tokens of the counted kinds first.
     public let models: [Model]
@@ -32,8 +32,8 @@ public struct AgentUsage: Hashable, Sendable, Identifiable {
 
     /// Every agent with tokens in `interval`, the most tokens of `dimensions` first, as agents, models and sessions are
     /// ranked throughout; the international list price breaks ties. Buckets give the models, each session's breakdown
-    /// its part of the interval, and `recached` (`UsageReport.recached`) what was sent again. Prices follow each model's
-    /// platform.
+    /// its part of the interval, and `recached` (`UsageReport.recached`) the uncached input on flagged calls.
+    /// Prices follow each model's platform.
     public static func build(usage: [UsageBucket], recached sent: [UsageBucket], consumers: [AgentDescriptor], sessions: [LiveSession],
                              breakdowns: [String: SessionUsage], vendor sessionVendor: (LiveSession) -> String?,
                              interval: DateInterval, dimensions: TokenDimensions,

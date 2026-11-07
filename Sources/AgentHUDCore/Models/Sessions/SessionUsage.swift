@@ -77,8 +77,7 @@ public struct SessionUsage: Hashable, Codable, Sendable {
         public let subagents: Tokens?
         /// The largest prompt of the turn's calls in the session's own log, when it was above the context the turn ended with.
         public let peakContextTokens: Int?
-        /// Prompt tokens the session's own log sent again because the cache no longer held them: its cache lapsed or the
-        /// model changed. Nil when no call did.
+        /// Uncached input on calls flagged for a drop in cache reads. Nil when no call was flagged.
         public let recachedTokens: Int?
         /// What the turn's calls would cost at the vendors' API list prices, in the unit of the session's `listCost`; nil
         /// when a call's model has no list price.
@@ -194,11 +193,9 @@ public struct SessionUsageRequest: Hashable, Sendable {
 }
 
 /// Folds one session's calls, in time order, into its breakdown. Calls go to the turn of the latest prompt at or
-/// before them, sub-agents' calls included; calls before the first prompt form a turn of their own. A call in the
-/// session's own log that reads back less than half of the previous call's prompt from the cache and sends at least
-/// half of it again re-cached that prompt: the cache had lapsed or the model changed. A compaction shrinks the prompt
-/// instead, so it re-caches nothing. Calls are priced together per model and tier (`ListPricing`), once the session is
-/// built, since a long session with busy sub-agents is read again on every pass.
+/// before them, sub-agents' calls included; calls before the first prompt form a turn of their own.
+/// Calls are priced together per model and tier (`ListPricing`) once the session is built, since a long session
+/// with busy sub-agents is read again on every pass.
 struct SessionUsageBuilder {
     struct Call {
         let timestamp: Date
@@ -222,8 +219,7 @@ struct SessionUsageBuilder {
     private var latestAgent: String?
     private var pricing = ListPricing()
     private var listTally = ListPricing.Tally()
-    /// The prompt of the latest call in the session's own log.
-    private var previousPrompt: Int?
+    private var previousTokens: SessionUsage.Tokens?
     private struct TurnSums {
         var start: Date, end: Date
         var tokens = SessionUsage.Tokens(), calls = 0
@@ -242,10 +238,12 @@ struct SessionUsageBuilder {
 
     var isEmpty: Bool { calls == 0 }
 
-    /// What a call in the session's own log sent again after `previous`, the prompt of the call before it: its whole
-    /// input when it read back less than half of that prompt from the cache and sent at least half of it again.
-    static func recached(_ tokens: SessionUsage.Tokens, after previous: Int?) -> Int {
-        guard let previous, tokens.cacheReadTokens * 2 < previous, tokens.tokensIn * 2 >= previous else { return 0 }
+    /// Uncached input when cache reads fell and the call read less than half of the previous prompt
+    /// from cache while sending at least half that prompt's size as uncached input.
+    static func recached(_ tokens: SessionUsage.Tokens, after previous: SessionUsage.Tokens?) -> Int {
+        guard let previous, tokens.cacheReadTokens < previous.cacheReadTokens else { return 0 }
+        let previousPrompt = previous.tokensIn + previous.cacheReadTokens
+        guard tokens.cacheReadTokens * 2 < previousPrompt, tokens.tokensIn * 2 >= previousPrompt else { return 0 }
         return tokens.tokensIn
     }
 
@@ -260,8 +258,8 @@ struct SessionUsageBuilder {
         let prompt = tokens.tokensIn + tokens.cacheReadTokens
         var recached = 0
         if call.callLog {
-            recached = Self.recached(tokens, after: previousPrompt)
-            previousPrompt = prompt
+            recached = Self.recached(tokens, after: previousTokens)
+            previousTokens = tokens
             context = prompt
         }
         if call.own {
