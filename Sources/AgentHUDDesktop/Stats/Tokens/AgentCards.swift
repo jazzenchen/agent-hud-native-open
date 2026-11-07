@@ -271,10 +271,10 @@ private struct AgentCard: View {
 
     private func value(_ tokens: Int) -> String { tokens > 0 ? TokenFormat.short(tokens) : "—" }
 
-    /// Where the price went: reading context back from the cache, and sending it again after the cache lapsed.
+    /// Cost of cache reads and of uncached input on calls flagged for a drop in cache reads.
     private func moneyNote(_ usage: AgentUsage) -> String? {
         let note = [usage.cacheReadShare.map { L10n.text("缓存读占费用 ", "Cache reads ") + TokenFormat.percent($0 * 100) + L10n.text("", " of cost") },
-                    usage.recachedCost.map { L10n.text("缓存重写 ", "Cache rewrites ") + "≈" + MoneyFormat.amount($0, currency: "USD") }]
+                    usage.recachedCost.map { L10n.text("缓存读取下降时的输入 ", "Uncached input on cache drops ") + "≈" + MoneyFormat.amount($0, currency: "USD") }]
             .compactMap { $0 }
         return note.isEmpty ? nil : note.joined(separator: " · ")
     }

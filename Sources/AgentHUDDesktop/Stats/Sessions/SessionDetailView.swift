@@ -254,10 +254,10 @@ struct SessionDetailView: View {
                         HStack(spacing: 4) {
                             Image(systemName: SessionBarsChart.resentSymbol).font(.system(size: 8, weight: .bold))
                                 .foregroundStyle(theme.status(.warning))
-                            Text(L10n.text("缓存过期，上下文重发", "Cache expired, context sent again"))
+                            Text(L10n.text("缓存读取下降", "Cache reads dropped"))
                         }
-                        .help(L10n.text("缓存已失效（多半是空闲超过缓存时长）或换了模型，这一轮把上下文重新发送了一遍",
-                                        "The cache had lapsed, usually after sitting idle, or the model changed, so the turn sent its context again"))
+                        .help(L10n.text("本轮有调用读到的缓存比上一次少，且有较多未缓存输入",
+                                        "A call in this turn read fewer tokens from cache than the previous call and had substantial uncached input"))
                     }
                 }
                 .font(.ui(10))

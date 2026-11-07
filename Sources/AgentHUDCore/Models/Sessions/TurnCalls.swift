@@ -13,7 +13,7 @@ public struct TurnCall: Hashable, Sendable {
     public let source: String
     /// The call's prompt with cache reads, for calls in the session's log that records every call.
     public let context: Int?
-    /// Prompt tokens the call sent again because the cache no longer held them.
+    /// Uncached input if the call was flagged for a drop in cache reads.
     public let recached: Int?
     /// What the call would cost at the vendors' API list prices, in the unit of the session's `listCost`.
     public let listCost: Decimal?

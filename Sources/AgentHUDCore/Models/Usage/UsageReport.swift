@@ -105,7 +105,7 @@ public struct UsageReport: Hashable, Codable, Sendable {
     public let sessionCredits: [String: SessionCredits]?
     /// Every model's tokens today and over the last seven and thirty days; `usage` covers only the charts' week.
     public let periods: UsagePeriods?
-    /// Prompt tokens calls sent again because the cache no longer held them, in `usage`'s periods, by model: cache writes
+    /// Uncached input on calls flagged for a drop in cache reads, in `usage`'s periods, by model: cache writes
     /// where the call wrote to the cache, input otherwise (`UsageLedger.recachedBuckets(since:)`). It covers every
     /// session's calls, listed or not. Nil in a report that does not read them.
     public let recached: [UsageBucket]?

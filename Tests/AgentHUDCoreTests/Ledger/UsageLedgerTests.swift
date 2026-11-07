@@ -203,7 +203,7 @@ final class UsageLedgerTests: XCTestCase, @unchecked Sendable {
                 self.call("r3", 70, input: 1_300, write: 1_250, output: 10),
                 self.call("r4", 71, input: 100, write: 100, output: 10, cache: 1_300),
                 // A compaction shrinks the prompt, which sends nothing again.
-                self.call("r5", 72, input: 300, write: 300, output: 10),
+                self.call("r5", 72, input: 100, write: 100, output: 10, cache: 200),
                 // Another model reads none of the cache.
                 self.call("r6", 90, agent: "claude-model:claude-sonnet-5", input: 700, write: 700, output: 10),
             ])
@@ -228,7 +228,7 @@ final class UsageLedgerTests: XCTestCase, @unchecked Sendable {
                 self.call("r2", 2, input: 200, write: 200, output: 10, cache: 1_000),
                 self.call("r3", 70, input: 1_300, write: 1_250, output: 10),
                 self.call("r4", 71, input: 100, write: 100, output: 10, cache: 1_300),
-                self.call("r5", 72, input: 300, write: 300, output: 10),
+                self.call("r5", 72, input: 100, write: 100, output: 10, cache: 200),
                 self.call("r6", 90, agent: "claude-model:claude-sonnet-5", input: 700, write: 700, output: 10),
             ])
             try writer.addMarks(source: "claude", contribution: "p/r.jsonl", marks: [
@@ -246,10 +246,44 @@ final class UsageLedgerTests: XCTestCase, @unchecked Sendable {
         let first = try await ledger.recachedBuckets(since: base)
         XCTAssertEqual(sent(first), ["3600s claude-model:claude-opus-5 1300w 0i", "5400s claude-model:claude-sonnet-5 700w 0i"],
                        "the same calls a session's turns count, by the period and model of each")
-        try await ledger.write { try $0.upsert(source: "claude", contribution: "p/r.jsonl", events: [self.call("r7", 200, input: 2_000, output: 10)]) }
+        try await ledger.write { writer in
+            try writer.upsert(source: "claude", contribution: "p/r.jsonl", events: [
+                self.call("r7", 199, input: 100, output: 10, cache: 700),
+                self.call("r8", 200, input: 2_000, output: 10),
+            ])
+        }
         let second = try await ledger.recachedBuckets(since: base.addingTimeInterval(5_000))
         XCTAssertEqual(sent(second), ["5400s claude-model:claude-sonnet-5 700w 0i", "11700s claude-model:claude-opus-5 0w 2000i"],
                        "a log written since is read again, and periods before `since` are left out")
+    }
+
+    func testRecachedViewsOnlyFlagCallsWhenCacheReadsFall() async throws {
+        let ledger = UsageLedger.inMemory()
+        let log = "p/r.jsonl"
+        let agent = "codex-model:gpt-6.1-sol"
+        try await ledger.write { writer in
+            try writer.upsert(source: "codex", contribution: log, events: [
+                self.call("before-compaction", 1, agent: agent, input: 2_133, output: 10, cache: 445_056),
+                self.call("after-compaction", 2, agent: agent, input: 17_591, output: 10, cache: 12_032),
+                self.call("same-cache", 3, agent: agent, input: 18_225, output: 10, cache: 12_032),
+                self.call("more-cache", 4, agent: agent, input: 18_500, output: 10, cache: 13_000),
+                self.call("cache-drop", 5, agent: agent, input: 32_000, output: 10),
+                self.call("still-no-cache", 6, agent: agent, input: 33_000, output: 10),
+            ])
+            try writer.addMarks(source: "codex", contribution: log, marks: [
+                .init(.prompt, at: self.at(60)), .init(.compaction, at: self.at(90)), .init(.prompt, at: self.at(180)),
+            ])
+        }
+        let request = SessionUsageRequest(sessionID: "r", keys: [log], callLog: log)
+        let read = try await ledger.sessionUsage([request])
+        let turns = try XCTUnwrap(read["r"]).turns
+        XCTAssertEqual(turns.map(\.recachedTokens), [nil, 32_000])
+
+        let calls = try await ledger.turnCalls(request, from: self.at(180), through: self.at(360))
+        XCTAssertEqual(calls.map(\.recached), [nil, nil, 32_000, nil])
+
+        let buckets = try await ledger.recachedBuckets(since: base)
+        XCTAssertEqual(buckets.map(\.tokensIn), [32_000])
     }
 
     func testTurnCallsListATurnsCallsWithTheirContextCacheAndPrice() async throws {

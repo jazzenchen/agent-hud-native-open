@@ -14,7 +14,7 @@ struct SessionBar: Identifiable {
     var subagents: TokenKinds? = nil
     /// The turn's highest context, when above the one it ended with.
     var peakContext: Int? = nil
-    /// Prompt tokens sent again because the cache no longer held them.
+    /// Uncached input on calls flagged for a drop in cache reads.
     var recached: Int? = nil
     /// What the turn would cost at the API's list prices.
     var cost: Decimal? = nil
@@ -382,7 +382,7 @@ struct SessionBarDetail: View {
         return [bar.call.flatMap { $0.received.isEmpty ? nil : L10n.text("读入 \(names($0.received)) 的结果", "Read in \(names($0.received)) results") },
                 bar.call.flatMap { $0.tools.isEmpty ? nil : L10n.text("发起 ", "Asked for ") + names($0.tools) },
                 bar.call == nil ? bar.subagents.map { L10n.text("子 agent 新增 ", "Sub-agents added ") + TokenFormat.short($0.new) } : nil,
-                bar.recached.map { L10n.text("缓存过期，重发 \(TokenFormat.short($0))", "Cache expired, \(TokenFormat.short($0)) sent again") },
+                bar.recached.map { L10n.text("缓存读取下降，未缓存输入 \(TokenFormat.short($0))", "Cache reads dropped, \(TokenFormat.short($0)) uncached input") },
                 bar.context.map { L10n.text("上下文 ", "Context ") + TokenFormat.short($0)
                     + (bar.peakContext.map { L10n.text(" · 轮中最高 ", " · peak ") + TokenFormat.short($0) } ?? "") }].compactMap { $0 }
     }
